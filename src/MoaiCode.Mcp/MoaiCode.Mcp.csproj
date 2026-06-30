@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\MoaiCode.Core\MoaiCode.Core.csproj" />
+  </ItemGroup>
+</Project>

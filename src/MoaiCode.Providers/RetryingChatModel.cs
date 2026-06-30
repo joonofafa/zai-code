@@ -1,0 +1,80 @@
+using System.Runtime.CompilerServices;
+using MoaiCode.Core.Agent;
+using MoaiCode.Core.Messages;
+using MoaiCode.Core.Tools;
+
+namespace MoaiCode.Providers;
+
+/// <summary>
+/// IChatModel 데코레이터: 스트림이 시작되기 전(첫 이벤트 방출 전)에 발생한
+/// transient 오류(429/529/5xx)를 지수 백오프로 재시도 (TS withRetry 축약판).
+/// 일단 토큰이 방출되면 재시도하지 않음(부분 응답 중복 방지).
+/// </summary>
+public sealed class RetryingChatModel : IChatModel
+{
+    private readonly IChatModel _inner;
+    private readonly int _maxRetries;
+    private readonly Func<int, TimeSpan> _backoff;
+    private readonly Func<TimeSpan, CancellationToken, Task> _delay;
+
+    public RetryingChatModel(
+        IChatModel inner,
+        int maxRetries = 3,
+        Func<int, TimeSpan>? backoff = null,
+        Func<TimeSpan, CancellationToken, Task>? delay = null)
+    {
+        _inner = inner;
+        _maxRetries = maxRetries;
+        _backoff = backoff ?? (attempt => TimeSpan.FromMilliseconds(500 * Math.Pow(2, attempt)));
+        _delay = delay ?? Task.Delay;
+    }
+
+    public async IAsyncEnumerable<StreamEvent> StreamAsync(
+        IReadOnlyList<Message> messages,
+        IReadOnlyList<ITool> tools,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            var enumerator = _inner.StreamAsync(messages, tools, ct).GetAsyncEnumerator(ct);
+            var yielded = false;
+            var retry = false;
+
+            try
+            {
+                while (true)
+                {
+                    StreamEvent current;
+                    try
+                    {
+                        if (!await enumerator.MoveNextAsync().ConfigureAwait(false))
+                        {
+                            break;
+                        }
+
+                        current = enumerator.Current;
+                    }
+                    catch (ProviderException ex) when (ex.IsTransient && !yielded && attempt < _maxRetries)
+                    {
+                        retry = true;
+                        break;
+                    }
+
+                    yielded = true;
+                    yield return current;
+                }
+            }
+            finally
+            {
+                await enumerator.DisposeAsync().ConfigureAwait(false);
+            }
+
+            if (!retry)
+            {
+                yield break;
+            }
+
+            await _delay(_backoff(attempt), ct).ConfigureAwait(false);
+        }
+    }
+}

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\MoaiCode.Core\MoaiCode.Core.csproj" />
+    <ProjectReference Include="..\MoaiCode.Persistence\MoaiCode.Persistence.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Spectre.Console" />
+    <PackageReference Include="Markdig" />
+  </ItemGroup>
+</Project>

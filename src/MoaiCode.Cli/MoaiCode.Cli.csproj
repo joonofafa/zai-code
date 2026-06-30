@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>moai</AssemblyName>
+    <Version>0.1.0</Version>
+    <!-- 크로스 게시 대상 (Linux에서 win-x64 self-contained exe 생성 가능) -->
+    <RuntimeIdentifiers>win-x64;win-x86;win-arm64;linux-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- 기본 번들 스킬(awesome-claude-skills 큐레이션). 첫 실행 시 ~/.moai/bundled-skills 로 추출. -->
+    <EmbeddedResource Include="Resources/bundled-skills.zip" LogicalName="bundled-skills.zip" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MoaiCode.Core\MoaiCode.Core.csproj" />
+    <ProjectReference Include="..\MoaiCode.Providers\MoaiCode.Providers.csproj" />
+    <ProjectReference Include="..\MoaiCode.Tools\MoaiCode.Tools.csproj" />
+    <ProjectReference Include="..\MoaiCode.Tools.Bash\MoaiCode.Tools.Bash.csproj" />
+    <ProjectReference Include="..\MoaiCode.Mcp\MoaiCode.Mcp.csproj" />
+    <ProjectReference Include="..\MoaiCode.Config\MoaiCode.Config.csproj" />
+    <ProjectReference Include="..\MoaiCode.Persistence\MoaiCode.Persistence.csproj" />
+    <ProjectReference Include="..\MoaiCode.Tui\MoaiCode.Tui.csproj" />
+    <ProjectReference Include="..\MoaiCode.Sdk\MoaiCode.Sdk.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\MoaiCode.Core\MoaiCode.Core.csproj" />
+    <ProjectReference Include="..\..\src\MoaiCode.Providers\MoaiCode.Providers.csproj" />
+    <ProjectReference Include="..\..\src\MoaiCode.Tools\MoaiCode.Tools.csproj" />
+    <ProjectReference Include="..\..\src\MoaiCode.Tools.Bash\MoaiCode.Tools.Bash.csproj" />
+    <ProjectReference Include="..\..\src\MoaiCode.Persistence\MoaiCode.Persistence.csproj" />
+    <ProjectReference Include="..\..\src\MoaiCode.Mcp\MoaiCode.Mcp.csproj" />
+    <ProjectReference Include="..\..\src\MoaiCode.Tui\MoaiCode.Tui.csproj" />
+    <ProjectReference Include="..\..\src\MoaiCode.Config\MoaiCode.Config.csproj" />
+  </ItemGroup>
+</Project>

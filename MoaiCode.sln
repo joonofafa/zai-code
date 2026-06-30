@@ -1,0 +1,81 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MoaiCode.Core", "src\MoaiCode.Core\MoaiCode.Core.csproj", "{11111111-0000-0000-0000-000000000001}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MoaiCode.Providers", "src\MoaiCode.Providers\MoaiCode.Providers.csproj", "{11111111-0000-0000-0000-000000000002}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MoaiCode.Tools", "src\MoaiCode.Tools\MoaiCode.Tools.csproj", "{11111111-0000-0000-0000-000000000003}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MoaiCode.Tools.Bash", "src\MoaiCode.Tools.Bash\MoaiCode.Tools.Bash.csproj", "{11111111-0000-0000-0000-000000000004}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MoaiCode.Mcp", "src\MoaiCode.Mcp\MoaiCode.Mcp.csproj", "{11111111-0000-0000-0000-000000000005}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MoaiCode.Config", "src\MoaiCode.Config\MoaiCode.Config.csproj", "{11111111-0000-0000-0000-000000000006}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MoaiCode.Persistence", "src\MoaiCode.Persistence\MoaiCode.Persistence.csproj", "{11111111-0000-0000-0000-000000000007}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MoaiCode.Tui", "src\MoaiCode.Tui\MoaiCode.Tui.csproj", "{11111111-0000-0000-0000-000000000008}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MoaiCode.Cli", "src\MoaiCode.Cli\MoaiCode.Cli.csproj", "{11111111-0000-0000-0000-000000000009}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MoaiCode.Sdk", "src\MoaiCode.Sdk\MoaiCode.Sdk.csproj", "{11111111-0000-0000-0000-00000000000A}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MoaiCode.Core.Tests", "tests\MoaiCode.Core.Tests\MoaiCode.Core.Tests.csproj", "{11111111-0000-0000-0000-00000000000B}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{11111111-0000-0000-0000-000000000001}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0000-0000-0000-000000000001}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0000-0000-0000-000000000001}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0000-0000-0000-000000000001}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0000-0000-0000-000000000002}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0000-0000-0000-000000000002}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0000-0000-0000-000000000002}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0000-0000-0000-000000000002}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0000-0000-0000-000000000003}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0000-0000-0000-000000000003}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0000-0000-0000-000000000003}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0000-0000-0000-000000000003}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0000-0000-0000-000000000004}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0000-0000-0000-000000000004}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0000-0000-0000-000000000004}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0000-0000-0000-000000000004}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0000-0000-0000-000000000005}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0000-0000-0000-000000000005}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0000-0000-0000-000000000005}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0000-0000-0000-000000000005}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0000-0000-0000-000000000006}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0000-0000-0000-000000000006}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0000-0000-0000-000000000006}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0000-0000-0000-000000000006}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0000-0000-0000-000000000007}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0000-0000-0000-000000000007}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0000-0000-0000-000000000007}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0000-0000-0000-000000000007}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0000-0000-0000-000000000008}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0000-0000-0000-000000000008}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0000-0000-0000-000000000008}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0000-0000-0000-000000000008}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0000-0000-0000-000000000009}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0000-0000-0000-000000000009}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0000-0000-0000-000000000009}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0000-0000-0000-000000000009}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0000-0000-0000-00000000000A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0000-0000-0000-00000000000A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0000-0000-0000-00000000000A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0000-0000-0000-00000000000A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0000-0000-0000-00000000000B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0000-0000-0000-00000000000B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0000-0000-0000-00000000000B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0000-0000-0000-00000000000B}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
