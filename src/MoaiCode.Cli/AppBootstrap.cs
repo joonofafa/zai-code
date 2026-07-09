@@ -3,6 +3,7 @@ using MoaiCode.Config;
 using MoaiCode.Core.Agent;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Messages;
+using MoaiCode.Core.Security;
 using MoaiCode.Core.Tools;
 using MoaiCode.Mcp;
 using MoaiCode.Mcp.Skills;
@@ -128,10 +129,16 @@ public static class AppBootstrap
                 "moai: 비대화형이라 쓰기/실행 툴을 자동 거부합니다. " +
                 "자동 승인하려면 MOAI_YES=1 (또는 설정 permission=auto).");
         }
-        // 워크스페이스 밖 절대경로 쓰기 확인용 프롬프트 (대화형에서만; 비대화형이면 confine 시 거부).
-        var confirmer = interactive ? new SpectrePermissionGate() : (IPermissionGate?)null;
+        // 확인 전용 프롬프트(원격 실행/파괴적 명령/워크스페이스 밖 쓰기). 대화형에서만; 비대화형이면 거부.
+        // offerAlways:false — 여기서 "항상 허용"을 주면 이후 모든 ssh/rm 이 무확인 통과가 된다.
+        var confirmer = interactive ? new SpectrePermissionGate(offerAlways: false) : (IPermissionGate?)null;
+
+        // 규칙이 모르는 위험을 맥락으로 판정. 자동 승인이 일어나는 경로에서만 호출된다.
+        // MOAI_RISK_CLASSIFIER=0 으로 끌 수 있다(오프라인/지연 민감 환경).
+        var classifier = RiskClassifierEnabled() ? new LlmRiskClassifier(model) : null;
+
         IPermissionGate gate = new ModeAwarePermissionGate(
-            state, baseGate, cwd, settings.ConfineToWorkspace, confirmer);
+            state, baseGate, cwd, settings.ConfineToWorkspace, confirmer, classifier);
 
         var observer = new HarnessToolObserver(settings, checkpoints);
         var engine = new QueryEngine(
@@ -239,6 +246,20 @@ public static class AppBootstrap
     }
 
     // 비대화형에서 위험 툴 자동 승인 opt-in. MOAI_YES / MOAI_APPROVE / MOAI_AUTO_APPROVE = 1/true/yes.
+    // 위험 판정 분류기 on/off. 기본 켜짐 — MOAI_RISK_CLASSIFIER=0/false/off 로 끈다.
+    private static bool RiskClassifierEnabled()
+    {
+        var v = Environment.GetEnvironmentVariable("MOAI_RISK_CLASSIFIER");
+        if (string.IsNullOrEmpty(v))
+        {
+            return true;
+        }
+
+        return !(v.Equals("0", StringComparison.Ordinal)
+                 || v.Equals("false", StringComparison.OrdinalIgnoreCase)
+                 || v.Equals("off", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static bool HeadlessAutoApprove()
     {
         foreach (var name in new[] { "MOAI_YES", "MOAI_APPROVE", "MOAI_AUTO_APPROVE" })

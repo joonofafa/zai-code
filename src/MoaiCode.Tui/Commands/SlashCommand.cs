@@ -9,6 +9,9 @@ public enum AgentMode { Act, AutoAct, Plan }
 public sealed class AgentRuntimeState
 {
     public AgentMode Mode { get; set; } = AgentMode.Act;
+
+    /// <summary>이번 턴의 사용자 원문 요청. 위험 판정 분류기가 "이 명령이 요청된 일인가"를 볼 때 쓴다.</summary>
+    public string? LastUserRequest { get; set; }
 }
 
 /// <summary>로그인 계정/호스트/시각/조직명 정보 (/usage 표시용).</summary>

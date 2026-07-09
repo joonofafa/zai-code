@@ -66,11 +66,70 @@ public static class BashSecurity
         Rx(@"\bDOCKER_HOST="),
     };
 
-    /// <summary>원격 실행/전송 등 '항상 확인' 대상이면 true (권한 모드와 무관하게 게이트로 보냄).</summary>
+    /// <summary>
+    /// 파괴적이지만 정당할 수 있는 명령 — 차단하지 않고 '확인'을 받는다.
+    /// (rm -rf ~/proj, git push --force feature 처럼 하드 차단하면 도구를 못 쓰게 되는 것들.)
+    /// </summary>
+    private static readonly (Regex Pattern, string Reason)[] DestructiveConfirm =
+    {
+        (Rx(@"\bfind\b[^|;&]*\s-delete\b"), "find -delete (일괄 삭제)"),
+        (Rx(@"\bfind\b[^|;&]*-exec\s+rm\b"), "find -exec rm (일괄 삭제)"),
+        (Rx(@"\bgit\b[^|;&]*\bpush\b[^|;&]*\s(--force|-f)\b"), "git 강제 푸시(히스토리 덮어쓰기)"),
+        (Rx(@"\bgit\b[^|;&]*\breset\b[^|;&]*\s--hard\b"), "git reset --hard (작업 내용 폐기)"),
+        (Rx(@"\bgit\s+clean\b[^|;&]*-\w*[fd]"), "git clean -fd (추적 안 되는 파일 삭제)"),
+        (Rx(@"\baws\s+s3\s+(rb|rm)\b[^|;&]*--(force|recursive)\b"), "S3 버킷/객체 일괄 삭제"),
+        (Rx(@"\b(aws|gcloud|az)\b[^|;&]*\bdelete\b"), "클라우드 리소스 삭제"),
+        (Rx(@"\bterraform\s+destroy\b"), "terraform destroy (인프라 파괴)"),
+        (Rx(@"\bdocker\s+(system\s+prune|volume\s+rm|rmi)\b"), "docker 이미지/볼륨 제거"),
+        (Rx(@"\bsystemctl\s+(stop|disable|mask)\b"), "서비스 중지/비활성화"),
+        (Rx(@"\b(dropdb|DROP\s+(DATABASE|TABLE|SCHEMA))\b"), "데이터베이스 삭제"),
+        (Rx(@"\bchmod\s+-R\b"), "재귀 권한 변경(chmod -R)"),
+        (Rx(@"\bchown\s+-R\b"), "재귀 소유자 변경(chown -R)"),
+        (Rx(@"\btruncate\b[^|;&]*-s\s*0\b"), "파일 내용 비우기(truncate -s 0)"),
+        // `zellij delete-all-sessions`, `docker container prune-all` 등 일괄 파괴 서브커맨드.
+        (Rx(@"\b(delete|destroy|purge|prune|wipe|remove)[-_]?all\b"), "일괄 삭제 서브커맨드"),
+    };
+
+    /// <summary>
+    /// '항상 확인' 대상이면 true (권한 모드와 무관하게 게이트로 보냄).
+    /// 원격 실행/전송 + 파괴적이지만 정당할 수 있는 명령 + 재귀 rm.
+    /// </summary>
     public static bool NeedsConfirmation(string command)
     {
         var cmd = command?.Trim() ?? string.Empty;
-        return cmd.Length > 0 && RemoteExec.Any(p => p.IsMatch(cmd));
+        if (cmd.Length == 0)
+        {
+            return false;
+        }
+
+        return RemoteExec.Any(p => p.IsMatch(cmd))
+            || DestructiveConfirm.Any(d => d.Pattern.IsMatch(cmd))
+            || Rm.IsRecursiveDelete(cmd);
+    }
+
+    /// <summary>'확인' 사유(표시용). 해당 없으면 null.</summary>
+    public static string? ConfirmationReason(string command)
+    {
+        var cmd = command?.Trim() ?? string.Empty;
+        if (cmd.Length == 0)
+        {
+            return null;
+        }
+
+        if (RemoteExec.Any(p => p.IsMatch(cmd)))
+        {
+            return "원격 실행/전송 — 로컬 경계를 벗어남";
+        }
+
+        foreach (var (pattern, reason) in DestructiveConfirm)
+        {
+            if (pattern.IsMatch(cmd))
+            {
+                return reason;
+            }
+        }
+
+        return Rm.IsRecursiveDelete(cmd) ? "재귀/강제 삭제(rm -r)" : null;
     }
 
     private static Regex Rx(string p) =>
@@ -84,6 +143,22 @@ public static class BashSecurity
             return new Verdict(false, "빈 명령");
         }
 
+        // rm 은 플래그 표기 변형이 너무 많아 정규식으로는 계속 샌다 → 토큰 파싱으로 판정.
+        if (Rm.DisablesPreserveRoot(cmd))
+        {
+            return new Verdict(false, "차단된 고위험 명령: rm --no-preserve-root");
+        }
+
+        if (Rm.IsCriticalDelete(cmd))
+        {
+            return new Verdict(false, "차단된 고위험 명령: 루트·홈·시스템 디렉토리 재귀 삭제");
+        }
+
+        if (FindDeleteFromRoot.IsMatch(cmd))
+        {
+            return new Verdict(false, "차단된 고위험 명령: 루트에서 find -delete");
+        }
+
         foreach (var (pattern, reason) in Destructive)
         {
             if (pattern.IsMatch(cmd))
@@ -94,6 +169,9 @@ public static class BashSecurity
 
         return new Verdict(true, null);
     }
+
+    private static readonly Regex FindDeleteFromRoot =
+        Rx(@"\bfind\s+(/|~|\$HOME)(\s|$)[^|;&]*(-delete\b|-exec\s+rm\b)");
 
     public static bool IsReadOnlyCommand(string command)
     {

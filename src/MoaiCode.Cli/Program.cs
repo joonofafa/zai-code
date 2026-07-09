@@ -29,6 +29,7 @@ runCmd.SetAction(async (ParseResult pr, CancellationToken ct) =>
 
     var rt = await AppBootstrap.BuildAsync(interactive: false, verbose: false, ct);
     await using var _ = rt.Mcp;
+    rt.Ctx.State.LastUserRequest = prompt;   // 위험 판정 분류기용 원문 요청
     return await HeadlessRunner.RunAsync(rt.Ctx.Engine, prompt, ct);
 });
 root.Subcommands.Add(runCmd);

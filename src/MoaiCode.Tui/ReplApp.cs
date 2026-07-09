@@ -150,6 +150,9 @@ public sealed class ReplApp
                 continue;
             }
 
+            // 위험 판정 분류기가 "이 명령이 사용자가 시킨 일인가"를 보려면 원문 요청이 필요하다.
+            _ctx.State.LastUserRequest = expanded;
+
             await _ctx.History.AppendAsync(expanded, ct).ConfigureAwait(false);
             await ConsumeTurnAsync(expanded, ct).ConfigureAwait(false);
         }
