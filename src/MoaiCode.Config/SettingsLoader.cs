@@ -63,6 +63,10 @@ public static class SettingsLoader
                 Model = GetString(root, "model", "model_id") ?? baseline.Model,
                 Provider = GetString(root, "provider") ?? baseline.Provider,
                 BaseUrl = GetString(root, "baseUrl", "base_url") ?? baseline.BaseUrl,
+                Host = GetString(root, "host") ?? baseline.Host,
+                Account = GetString(root, "account", "email") ?? baseline.Account,
+                LoginAt = GetString(root, "loginAt", "login_at") ?? baseline.LoginAt,
+                OrgName = GetString(root, "orgName", "org_name") ?? baseline.OrgName,
                 ProxyUrl = GetString(root, "proxyUrl", "proxy_url", "proxy") ?? baseline.ProxyUrl,
                 ProxyUser = GetString(root, "proxyUser", "proxy_user") ?? baseline.ProxyUser,
                 Permission = ParsePermission(GetString(root, "permission", "permissionMode"))

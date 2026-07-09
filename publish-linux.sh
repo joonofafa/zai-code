@@ -16,11 +16,15 @@ dotnet publish src/MoaiCode.Cli/MoaiCode.Cli.csproj \
   -p:PublishSingleFile=true \
   -p:IncludeNativeLibrariesForSelfExtract=true \
   -p:EnableCompressionInSingleFile=true \
-  -p:PublishReadyToRun=true \
+  -p:PublishReadyToRun=false \
   -p:DebugType=none \
   -p:DebugSymbols=false \
   -o "${OUT}"
 
+# SHA-256 해시 생성 (고객사 화이트리스트/무결성 검증용). sha256sum 표준 포맷: "<hash>  <file>".
+( cd "${OUT}" && sha256sum moai > moai.sha256 )
+
 echo ""
 echo "✅ 게시 완료: ${OUT}/moai"
-echo "   → 이 파일 하나만 복사하면 런타임 설치 없이 실행됩니다."
+echo "   SHA-256: $(cut -d' ' -f1 "${OUT}/moai.sha256")"
+echo "   → 이 파일 하나만 복사하면 런타임 설치 없이 실행됩니다. (검증: sha256sum -c moai.sha256)"

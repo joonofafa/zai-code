@@ -16,6 +16,7 @@ namespace MoaiCode.Tools.Bash;
 public sealed class BashTool : ITool
 {
     private const int DefaultTimeoutMs = 120_000;
+    private const int MaxTimeoutMs = 600_000;   // 상한 10분 — 모델이 무한대 타임아웃을 넣어 턴이 멈추는 것 방지.
     private const int MaxOutputChars = 30_000;
     private const string CwdMarker = "__MOAI_CWD__:";
 
@@ -91,7 +92,8 @@ public sealed class BashTool : ITool
         }
 
         var (shell, args) = ResolveShell(command);
-        var timeout = inp.TimeoutMs ?? DefaultTimeoutMs;
+        // 모델이 제어하는 값이라 상한을 건다(무한/과대 타임아웃으로 턴이 멈추는 것 방지).
+        var timeout = Math.Clamp(inp.TimeoutMs ?? DefaultTimeoutMs, 1_000, MaxTimeoutMs);
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(timeout);

@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Tools;
 
 namespace MoaiCode.Mcp;
@@ -48,8 +49,11 @@ public sealed class McpTool : ITool
             yield break;
         }
 
+        // 외부(MCP) 결과는 신뢰불가 데이터 — 간접 프롬프트 인젝션 경계를 앞에 붙인다.
         yield return new ToolOutput(
-            string.IsNullOrEmpty(result.Text) ? "(no content)" : result.Text,
+            string.IsNullOrEmpty(result.Text)
+                ? "(no content)"
+                : Reminders.UntrustedToolOutput + result.Text,
             IsError: result.IsError);
     }
 }

@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Tools;
 
 namespace MoaiCode.Tools.Web;
@@ -20,6 +21,12 @@ public sealed class WebFetchTool : ITool
     private const int DefaultMaxLength = 50_000;
     private const int MaxRedirects = 5;
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
+
+    static WebFetchTool()
+    {
+        // .NET Core 는 UTF-*/ASCII/Latin1 만 내장한다. EUC-KR·CP949·Shift-JIS 등을 쓰려면 등록 필요.
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+    }
 
     public string Name => "WebFetch";
 
@@ -106,7 +113,8 @@ public sealed class WebFetchTool : ITool
         var header = finalUrl == uri.ToString()
             ? $"# {finalUrl}\n{statusLine}\n\n"
             : $"# {finalUrl} (redirected from {uri})\n{statusLine}\n\n";
-        yield return new ToolOutput(header + body);
+        // 웹 콘텐츠는 신뢰불가 — 간접 프롬프트 인젝션 경계를 앞에 붙인다.
+        yield return new ToolOutput(Reminders.UntrustedToolOutput + header + body);
     }
 
     private static async Task<(string Body, string FinalUrl, string Status)> FetchAsync(
@@ -152,7 +160,16 @@ public sealed class WebFetchTool : ITool
             var status = $"HTTP {(int)resp.StatusCode} {resp.ReasonPhrase} · {resp.Content.Headers.ContentType?.MediaType ?? "?"}";
             var bytes = await ReadCappedAsync(resp, ct).ConfigureAwait(false);
             var media = resp.Content.Headers.ContentType?.MediaType ?? string.Empty;
-            var text = Encoding.UTF8.GetString(bytes);
+
+            // 바이너리(PDF/이미지 등)를 텍스트로 디코딩하면 쓰레기 문자열이 컨텍스트를 오염시킨다.
+            if (!IsTextual(media))
+            {
+                return ($"(binary content: {media}, {bytes.Length} bytes — 텍스트로 표시하지 않음)",
+                    current.ToString(), status);
+            }
+
+            // charset 은 Content-Type → HTML meta → BOM 순으로 판별 (한국 사이트의 EUC-KR/CP949 대응).
+            var text = DecodeText(bytes, resp.Content.Headers.ContentType?.CharSet, media);
 
             if (media.Contains("html", StringComparison.OrdinalIgnoreCase))
             {
@@ -181,6 +198,84 @@ public sealed class WebFetchTool : ITool
         }
 
         return ms.ToArray();
+    }
+
+    // 텍스트로 취급할 미디어 타입. 빈 문자열(Content-Type 없음)은 기존 동작대로 텍스트로 간주.
+    private static bool IsTextual(string media)
+    {
+        if (string.IsNullOrEmpty(media))
+        {
+            return true;
+        }
+
+        if (media.StartsWith("text/", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return media.Contains("json", StringComparison.OrdinalIgnoreCase)
+            || media.Contains("xml", StringComparison.OrdinalIgnoreCase)
+            || media.Contains("javascript", StringComparison.OrdinalIgnoreCase)
+            || media.Contains("x-yaml", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// BOM → Content-Type charset → HTML meta charset → UTF-8 순으로 인코딩을 판별해 디코딩한다.
+    /// </summary>
+    public static string DecodeText(byte[] bytes, string? charset, string media)
+    {
+        // 1) BOM 이 있으면 헤더보다 우선(BOM 은 실제 바이트가 말하는 사실).
+        if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+        {
+            return Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);
+        }
+
+        if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
+        {
+            return Encoding.Unicode.GetString(bytes, 2, bytes.Length - 2);
+        }
+
+        if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF)
+        {
+            return Encoding.BigEndianUnicode.GetString(bytes, 2, bytes.Length - 2);
+        }
+
+        // 2) Content-Type: text/html; charset=euc-kr
+        var enc = TryGetEncoding(charset);
+
+        // 3) 헤더에 없으면 문서 앞부분의 <meta charset=…> 를 훑는다(한국 사이트가 흔히 이 경우).
+        if (enc is null && media.Contains("html", StringComparison.OrdinalIgnoreCase))
+        {
+            var head = Encoding.Latin1.GetString(bytes, 0, Math.Min(bytes.Length, 4096));
+            var m = MetaCharsetRegex.Match(head);
+            if (m.Success)
+            {
+                enc = TryGetEncoding(m.Groups[1].Value);
+            }
+        }
+
+        return (enc ?? Encoding.UTF8).GetString(bytes);
+    }
+
+    private static readonly Regex MetaCharsetRegex = new(
+        """<meta[^>]+charset\s*=\s*["']?\s*([A-Za-z0-9_\-]+)""",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static Encoding? TryGetEncoding(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return null;
+        }
+
+        try
+        {
+            return Encoding.GetEncoding(name.Trim().Trim('"', '\''));
+        }
+        catch (ArgumentException)
+        {
+            return null; // 알 수 없는 charset → 호출부에서 UTF-8 로 폴백
+        }
     }
 
     // SSRF 가드: 호스트가 링크로컬/클라우드 메타데이터(169.254.x, IPv6 link-local)로 해석되면 차단.

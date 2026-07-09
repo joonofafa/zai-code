@@ -22,10 +22,11 @@ public sealed class ReplApp
     private readonly bool _interactive;
     private readonly string _sessionId;
     private CancellationTokenSource? _activeTurnCts;
+    private bool _producedOutputInTurn;   // 이번 턴에 화면에 뭔가 렌더됐는지(빈 응답 감지)
 
     private readonly List<string> _history = new();
     private readonly bool _useRawEditor;
-    private readonly bool _inputBox;
+    private readonly BottomDock? _dock;   // 하단 고정 입력(opt-in: MOAI_BOTTOM_DOCK=1)
     private IReadOnlyList<string> _slashNames = Array.Empty<string>();
 
     public ReplApp(SlashContext ctx, SlashRegistry slash)
@@ -42,20 +43,25 @@ public sealed class ReplApp
             && !simple.Equals("false", StringComparison.OrdinalIgnoreCase);
         _useRawEditor = _interactive && !disabled;
 
-        // 입력창 박스(상/하 가로선). 기본 ON. 터미널에서 깨지면 MOAI_INPUT_BOX=0 으로 단일줄 폴백.
-        var box = Environment.GetEnvironmentVariable("MOAI_INPUT_BOX");
-        _inputBox = string.IsNullOrEmpty(box)
-            || (!box.Equals("0", StringComparison.Ordinal)
-                && !box.Equals("false", StringComparison.OrdinalIgnoreCase));
+        // 하단 고정 입력창+상태줄 — 기본 활성. MOAI_BOTTOM_DOCK=0(또는 off/false)로 opt-out.
+        // (MOAI_SIMPLE_INPUT 로 raw 에디터를 끄면 이 모드도 자동 비활성.)
+        var dockEnv = Environment.GetEnvironmentVariable("MOAI_BOTTOM_DOCK");
+        var dockOff = dockEnv is not null
+            && (dockEnv.Equals("0", StringComparison.Ordinal)
+                || dockEnv.Equals("false", StringComparison.OrdinalIgnoreCase)
+                || dockEnv.Equals("off", StringComparison.OrdinalIgnoreCase));
+        _dock = _useRawEditor && !dockOff && BottomDock.Fits() ? new BottomDock(BuildStatusLine) : null;
     }
 
     public async Task RunAsync(CancellationToken ct)
     {
         // 시그니처 배너: 그라데이션 ASCII (Banner.Render)
         Banner.Render();
-        AnsiConsole.MarkupLine($"[grey70]MoAI Code [white]{Markup.Escape(Banner.VersionString())}[/] — open coding agent[/]");
+        AnsiConsole.MarkupLine("[grey70]MoAI Code — Enterprise Coding Agent[/]");
         AnsiConsole.MarkupLine("[grey70]도움말: /help · 진행 중 ESC 또는 Ctrl+C=중단 · ↑/↓ 히스토리 · Tab 자동완성[/]");
         AnsiConsole.MarkupLine($"[grey70]session: {Markup.Escape(_sessionId)} (자동 저장 · /resume {Markup.Escape(_sessionId)} 로 복원)[/]");
+        // 배너~프롬프트 사이 공백 2줄.
+        AnsiConsole.WriteLine();
         AnsiConsole.WriteLine();
 
         if (_interactive)
@@ -80,6 +86,7 @@ public sealed class ReplApp
         }
         finally
         {
+            _dock?.Teardown();   // 스크롤 영역 원복 (하단 고정 모드였다면)
             if (_interactive)
             {
                 Console.CancelKeyPress -= OnCancelKeyPress;
@@ -93,20 +100,17 @@ public sealed class ReplApp
         while (!quit && !ct.IsCancellationRequested)
         {
             string? input;
-            if (_useRawEditor)
+            if (_dock is not null)
+            {
+                // 하단 고정: 상태줄+입력창은 화면 맨 아래, 출력은 위 영역에서 스크롤.
+                input = _dock.ReadLine(_history, _slashNames,
+                    () => { CycleMode(); return BuildStatusLine(); });
+            }
+            else if (_useRawEditor)
             {
                 Func<string> cycle = () => { CycleMode(); return BuildStatusLine(); };
-                if (_inputBox)
-                {
-                    // 박스(상/하 가로선 + 아래 상태줄). statusLine 전달 시 LineEditor 가 박스 렌더.
-                    input = LineEditor.ReadLine(_history, _slashNames, cycle, BuildStatusLine);
-                }
-                else
-                {
-                    // 폴백: 멀티라인 커서 없이 검증된 단일줄(상태줄을 위에 출력).
-                    Console.WriteLine(BuildStatusLine());
-                    input = LineEditor.ReadLine(_history, _slashNames, cycle);
-                }
+                // 상태줄을 프롬프트 위에 출력하는 단순 모드 (wrap 중복 없음).
+                input = LineEditor.ReadLine(_history, _slashNames, cycle, BuildStatusLine);
             }
             else
             {
@@ -160,7 +164,22 @@ public sealed class ReplApp
             return false;
         }
 
-        var result = await cmd.ExecuteAsync(_ctx, args, ct).ConfigureAwait(false);
+        SlashResult result;
+        try
+        {
+            result = await cmd.ExecuteAsync(_ctx, args, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // 슬래시 명령 하나의 오류가 REPL 전체를 죽이지 않게 한다.
+            AnsiConsole.MarkupLine($"[red]/{Markup.Escape(name)} 실행 오류: {Markup.Escape(ex.Message)}[/]");
+            return false;
+        }
+
         if (!string.IsNullOrEmpty(result.Output))
         {
             AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(result.Output)}[/]");
@@ -191,6 +210,10 @@ public sealed class ReplApp
             // 툴 호출 블록을 id로 기억해 두었다가, 실행 결과 렌더 시 Edit/Write의 입력으로 diff를 그린다.
             var pendingCalls = new Dictionary<string, ToolUseBlock>(StringComparer.Ordinal);
 
+            // 이 턴의 토큰 사용량을 모델별로 기록하기 위한 시작 스냅샷(엔진 누적 - 시작 = 이 턴 델타).
+            var startUsage = _ctx.Engine.CumulativeUsage;
+            _producedOutputInTurn = false;
+
             await using var e = _ctx.Engine.SubmitAsync(userInput, tct).GetAsyncEnumerator(tct);
             var has = await MoveNextWithSpinnerAsync(e, "생각 중", tct).ConfigureAwait(false);
 
@@ -203,22 +226,36 @@ public sealed class ReplApp
                         continue;
                     case ToolCallRequested t:
                         pendingCalls[t.Block.Id] = t.Block;
+                        _producedOutputInTurn = true;
                         RenderToolCall(t);
-                        has = await MoveNextWithSpinnerAsync(e, ProgressLabel(t.Block), tct).ConfigureAwait(false);
+                        has = await MoveNextWithSpinnerAsync(e, "처리 중", tct).ConfigureAwait(false);
                         continue;
                     case ToolExecuted x:
                         pendingCalls.TryGetValue(x.ToolUseId, out var callBlock);
                         RenderToolResult(x, callBlock);
                         has = await MoveNextWithSpinnerAsync(e, "처리 중", tct).ConfigureAwait(false);
                         continue;
-                    case TurnCompleted c:
-                        RenderUsage(c);
+                    case TurnCompleted:
+                        // 이 턴의 토큰을 현재 모델에 누적(로컬 /usage 집계).
+                        var cu = _ctx.Engine.CumulativeUsage;
+                        _ctx.Usage?.Record(
+                            CurrentModelLabel(),
+                            cu.InputTokens - startUsage.InputTokens,
+                            cu.OutputTokens - startUsage.OutputTokens);
+                        // 토큰 수치 대신 빈 줄 하나 — 응답과 다음 입력 프롬프트 사이 margin.
+                        AnsiConsole.WriteLine();
                         has = await MoveNextWithSpinnerAsync(e, "처리 중", tct).ConfigureAwait(false);
                         continue;
                     default:
                         has = await MoveNextWithSpinnerAsync(e, "처리 중", tct).ConfigureAwait(false);
                         continue;
                 }
+            }
+
+            // 턴이 정상 종료됐는데 화면에 아무것도 안 나왔으면(빈 응답) 사용자에게 알린다.
+            if (!_producedOutputInTurn)
+            {
+                AnsiConsole.MarkupLine("[grey70](빈 응답 — 모델이 콘텐츠를 반환하지 않았습니다. /model 로 다른 모델을 선택해 보세요.)[/]");
             }
         }
         catch (OperationCanceledException) when (turnCts.IsCancellationRequested && !ct.IsCancellationRequested)
@@ -263,10 +300,8 @@ public sealed class ReplApp
             _ => ("act mode", "\x1b[32m"),                     // green
         };
 
-        var model = ShortModel(_ctx.ProviderDesc);
-        var u = _ctx.Engine.CumulativeUsage;
-        var tok = FormatTokens(u.InputTokens + u.OutputTokens);
-        return $"{ansi}{modeTxt}\x1b[0m\x1b[38;5;249m (shift+tab to cycle) · {model} · {tok}\x1b[0m";
+        var model = CurrentModelLabel();
+        return $"{ansi}{modeTxt}\x1b[0m\x1b[38;5;249m (shift+tab to cycle) · {model}\x1b[0m";
     }
 
     // act → auto-act → plan → act 순환.
@@ -306,9 +341,6 @@ public sealed class ReplApp
         var slash = s.LastIndexOf('/');
         return slash >= 0 ? s[(slash + 1)..].Trim() : s;
     }
-
-    private static string FormatTokens(int n)
-        => n >= 1000 ? $"{n / 1000.0:0.0}k tok" : $"{n} tok";
 
     // 입력 히스토리(↑/↓ 회상)에 추가. 직전과 동일하면 중복 추가하지 않고, 크기를 제한한다.
     private void AddHistory(string line)
@@ -379,14 +411,18 @@ public sealed class ReplApp
         return await task.ConfigureAwait(false);
     }
 
-    private static void DrawSpinner(int frame, string label, double seconds)
+    private void DrawSpinner(int frame, string label, double seconds)
     {
         var spin = SpinnerFrames[frame % SpinnerFrames.Length];
-        // CR + 줄 전체 지우기 + dim 색으로 스피너/라벨/경과초. (AnsiConsole 렌더 전에 항상 지워지므로 충돌 없음)
-        Console.Write($"\r[2K[38;5;250m{spin} {label}… {seconds:0}s[0m");
+        // 턴 중엔 하단 고정이 해제된 일반 터미널이라 인라인 스피너로 표시.
+        // CR + 줄 전체 지우기 + dim 색으로 스피너/라벨/경과초.
+        Console.Write($"\r[2K[38;5;39m{spin} {label} ({seconds:0}s)[0m");
     }
 
-    private static void ClearSpinnerLine() => Console.Write("\r[2K");
+    private void ClearSpinnerLine()
+    {
+        Console.Write("\r[2K");
+    }
 
     private async Task<bool> StreamTextRunAsync(IAsyncEnumerator<StreamEvent> e, CancellationToken ct)
     {
@@ -394,14 +430,15 @@ public sealed class ReplApp
 
         if (!_interactive)
         {
-            AnsiConsole.Markup("[aqua]MoAI Code[/] ");
+            // 스트리밍 원문에는 추론 마커(<think>…, __THINKING_STATUS__:…)가 섞여 나오고, 마커가 델타
+            // 경계를 넘나들어 조각 단위로는 지울 수 없다. 텍스트 런을 다 모은 뒤 ThinkFilter 를 적용해
+            // 출력한다(예전엔 그대로 흘려보내 답변에 마커가 달라붙었다).
             var more = true;
             while (true)
             {
                 if (e.Current is TextDelta d)
                 {
                     sb.Append(d.Text);
-                    AnsiConsole.Markup(Markup.Escape(d.Text));
                 }
                 else
                 {
@@ -415,7 +452,15 @@ public sealed class ReplApp
                 }
             }
 
-            AnsiConsole.WriteLine();
+            var cleanText = ThinkFilter.Strip(sb.ToString());
+            if (!string.IsNullOrWhiteSpace(cleanText))
+            {
+                _producedOutputInTurn = true;
+                AnsiConsole.Markup("[aqua]MoAI Code[/] ");
+                AnsiConsole.Markup(Markup.Escape(cleanText));
+                AnsiConsole.WriteLine();
+            }
+
             return more;
         }
 
@@ -475,6 +520,7 @@ public sealed class ReplApp
         var finalText = ThinkFilter.Strip(sb.ToString());
         if (!string.IsNullOrWhiteSpace(finalText))
         {
+            _producedOutputInTurn = true;
             AnsiConsole.Write(BuildRenderedPanel(finalText));
         }
 
@@ -591,9 +637,11 @@ public sealed class ReplApp
             ? v.GetString()
             : null;
 
-    private static void RenderUsage(TurnCompleted c)
-        => AnsiConsole.MarkupLine(
-            $"[grey70]({c.Usage.OutputTokens} out tokens · stop={Markup.Escape(c.StopReason)})[/]");
+    // /usage 집계·상태줄에 쓰는 현재 모델 라벨. 라이브 모델(/model) 우선, 없으면 프로바이더 설명에서.
+    private string CurrentModelLabel()
+        => !string.IsNullOrEmpty(_ctx.Models?.CurrentModel)
+            ? _ctx.Models!.CurrentModel
+            : ShortModel(_ctx.ProviderDesc);
 
     // ESC 워처: 턴 동안 백그라운드로 ESC 를 감지해 turnCts 를 취소. IsPrompting(권한/선택 위젯이
     // stdin 점유) 중에는 절대 키를 읽지 않아 입력 충돌을 피한다. non-blocking(KeyAvailable) 폴링.

@@ -46,7 +46,8 @@ public static class AppBootstrap
         var model = ProviderFactory.CreateDefault(out var providerDesc);
         if (verbose)
         {
-            Console.WriteLine($"provider: {providerDesc}");
+            Console.WriteLine("Provider: BCCard AI Department");
+            Console.WriteLine($"Version: {Banner.VersionString()}");
         }
 
         var toolList = new List<ITool>(ToolRegistry.BuiltIn) { new BashTool() };
@@ -110,12 +111,23 @@ public static class AppBootstrap
         var checkpoints = new CheckpointStore(cwd);
 
         // 5) 권한 게이트 (설정 우선, ask는 대화형에서만 프롬프트)
+        // 보안: 비대화형(헤드리스/파이프)에서 ask 는 물어볼 수 없다. 예전엔 조용히 전면 자동승인이라
+        // 위험했다 → 이제 기본은 '거부'하고, 자동승인은 명시적 opt-in(MOAI_YES=1 등 / permission=auto)만.
+        var headlessApprove = HeadlessAutoApprove();
         IPermissionGate baseGate = settings.Permission switch
         {
             PermissionMode.Auto => new AutoApproveGate(),
             PermissionMode.Deny => new DenyAllGate(),
-            _ => interactive ? new SpectrePermissionGate() : new AutoApproveGate(),
+            _ => interactive
+                ? new SpectrePermissionGate()
+                : (headlessApprove ? new AutoApproveGate() : new DenyAllGate()),
         };
+        if (!interactive && settings.Permission == PermissionMode.Ask && !headlessApprove)
+        {
+            Console.Error.WriteLine(
+                "moai: 비대화형이라 쓰기/실행 툴을 자동 거부합니다. " +
+                "자동 승인하려면 MOAI_YES=1 (또는 설정 permission=auto).");
+        }
         // 워크스페이스 밖 절대경로 쓰기 확인용 프롬프트 (대화형에서만; 비대화형이면 confine 시 거부).
         var confirmer = interactive ? new SpectrePermissionGate() : (IPermissionGate?)null;
         IPermissionGate gate = new ModeAwarePermissionGate(
@@ -138,7 +150,17 @@ public static class AppBootstrap
             toolList.Select(t => t.Name).ToList(),
             skills.Select(s => s.Name).ToList(),
             mcpConfigs.Select(c => c.Name).ToList(),
-            providerDesc);
+            providerDesc,
+            // /model 로 라이브 전환 (지원 모델이면 non-null) + 선택 시 settings/env 영속화.
+            model as IModelControl,
+            chosen =>
+            {
+                SettingsWriter.Set(new Dictionary<string, string?> { ["model"] = chosen });
+                Environment.SetEnvironmentVariable("MOAI_MODEL", chosen);
+            },
+            // /usage: 모델별 로컬 토큰 누적 + 로그인 계정/시각.
+            new UsageStore(),
+            new AccountInfo(settings.Account, settings.Host ?? settings.BaseUrl, settings.LoginAt, settings.OrgName));
 
         return new AppRuntime(
             mcp, ctx, toolList, skills.Select(s => s.Name).ToList(), mcpConfigs, providerDesc, settings);
@@ -214,6 +236,24 @@ public static class AppBootstrap
         }
 
         return parts.Count == 0 ? null : string.Join("\n\n", parts);
+    }
+
+    // 비대화형에서 위험 툴 자동 승인 opt-in. MOAI_YES / MOAI_APPROVE / MOAI_AUTO_APPROVE = 1/true/yes.
+    private static bool HeadlessAutoApprove()
+    {
+        foreach (var name in new[] { "MOAI_YES", "MOAI_APPROVE", "MOAI_AUTO_APPROVE" })
+        {
+            var v = Environment.GetEnvironmentVariable(name);
+            if (!string.IsNullOrEmpty(v)
+                && (v.Equals("1", StringComparison.Ordinal)
+                    || v.Equals("true", StringComparison.OrdinalIgnoreCase)
+                    || v.Equals("yes", StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void ApplySettingsToEnv(Settings s)

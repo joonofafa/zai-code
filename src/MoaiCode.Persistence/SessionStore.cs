@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using MoaiCode.Core;
 using MoaiCode.Core.Messages;
 
 namespace MoaiCode.Persistence;
@@ -31,13 +32,17 @@ public sealed class SessionStore
         string sessionId, IReadOnlyList<Message> messages, CancellationToken ct = default)
     {
         Directory.CreateDirectory(_baseDir);
+        FilePermissions.RestrictDirToUser(_baseDir);   // 세션 디렉토리 0700
         var sb = new StringBuilder();
         foreach (var m in messages)
         {
             sb.AppendLine(JsonSerializer.Serialize<Message>(m, Json));
         }
 
-        await File.WriteAllTextAsync(PathFor(sessionId), sb.ToString(), ct).ConfigureAwait(false);
+        var path = PathFor(sessionId);
+        await File.WriteAllTextAsync(path, sb.ToString(), ct).ConfigureAwait(false);
+        // 트랜스크립트에 tool 출력·사용자 입력(시크릿 가능)이 담기므로 사용자 전용(0600).
+        FilePermissions.RestrictFileToUser(path);
     }
 
     public async Task<IReadOnlyList<Message>> LoadAsync(

@@ -11,7 +11,8 @@ public sealed record LoginResult(
     string? DefaultModel,
     IReadOnlyList<string> Models,
     string? MfaToken,
-    string? Error);
+    string? Error,
+    string? OrgName);
 
 /// <summary>open-moai 사이트의 CLI 로그인 엔드포인트 클라이언트.</summary>
 public sealed class OpenMoaiClient
@@ -45,7 +46,7 @@ public sealed class OpenMoaiClient
         }
         catch (Exception ex)
         {
-            return new LoginResult("error", null, null, null, Array.Empty<string>(), null, $"연결 실패: {ex.Message}");
+            return new LoginResult("error", null, null, null, Array.Empty<string>(), null, $"연결 실패: {ex.Message}", null);
         }
     }
 
@@ -83,12 +84,13 @@ public sealed class OpenMoaiClient
                 Str("defaultModel"),
                 models,
                 Str("mfaToken"),
-                Str("error") ?? Str("message"));
+                Str("error") ?? Str("message"),
+                Str("orgName"));
         }
         catch
         {
             var preview = text.Length > 200 ? text[..200] : text;
-            return new LoginResult("error", null, null, null, Array.Empty<string>(), null, $"응답 파싱 실패: {preview}");
+            return new LoginResult("error", null, null, null, Array.Empty<string>(), null, $"응답 파싱 실패: {preview}", null);
         }
     }
 }

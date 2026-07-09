@@ -17,5 +17,6 @@
     <ProjectReference Include="..\..\src\MoaiCode.Mcp\MoaiCode.Mcp.csproj" />
     <ProjectReference Include="..\..\src\MoaiCode.Tui\MoaiCode.Tui.csproj" />
     <ProjectReference Include="..\..\src\MoaiCode.Config\MoaiCode.Config.csproj" />
+    <ProjectReference Include="..\..\src\MoaiCode.Cli\MoaiCode.Cli.csproj" />
   </ItemGroup>
 </Project>

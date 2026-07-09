@@ -85,4 +85,62 @@ public class OpenAiChatModelTests
         Assert.Equal("ls", call.Block.Input.GetProperty("command").GetString());
         Assert.Equal("tool_calls", events.OfType<TurnCompleted>().Single().StopReason);
     }
+
+    [Fact]
+    public async Task Reasoning_only_response_falls_back_to_reasoning_text()
+    {
+        // 추론 모델이 content 없이 reasoning_content 만 흘리는 경우 → 빈 응답 대신 reasoning 을 답변으로.
+        var sse =
+            "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"reasoning_content\":\"곰곰이 \"},\"index\":0}]}\n" +
+            "\n" +
+            "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"생각한 결과\"},\"index\":0}]}\n" +
+            "\n" +
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}]}\n" +
+            "\n" +
+            "data: [DONE]\n\n";
+
+        var events = await Collect(sse);
+        var text = string.Concat(events.OfType<TextDelta>().Select(d => d.Text));
+        Assert.Equal("곰곰이 생각한 결과", text);
+    }
+
+    [Fact]
+    public async Task Error_in_sse_body_surfaces_as_exception()
+    {
+        // 게이트웨이가 200 + SSE 본문에 error 를 담아 보내면(모델 비활성 등) 빈 응답으로 삼키지 말고 예외.
+        var sse =
+            "data: {\"error\":{\"message\":\"model is disabled\",\"type\":\"invalid_request_error\",\"code\":403}}\n" +
+            "\n" +
+            "data: [DONE]\n\n";
+
+        var ex = await Assert.ThrowsAnyAsync<Exception>(() => Collect(sse));
+        Assert.Contains("model is disabled", ex.Message);
+    }
+
+    [Fact]
+    public async Task Error_as_plain_string_surfaces()
+    {
+        var sse = "data: {\"error\":\"upstream unavailable\"}\n\ndata: [DONE]\n\n";
+        var ex = await Assert.ThrowsAnyAsync<Exception>(() => Collect(sse));
+        Assert.Contains("upstream unavailable", ex.Message);
+    }
+
+    [Fact]
+    public async Task Content_present_suppresses_reasoning_fallback()
+    {
+        // content 가 있으면 reasoning 은 방출하지 않는다(생각 과정은 감춤).
+        var sse =
+            "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"internal thinking\"},\"index\":0}]}\n" +
+            "\n" +
+            "data: {\"choices\":[{\"delta\":{\"content\":\"final answer\"},\"index\":0}]}\n" +
+            "\n" +
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}]}\n" +
+            "\n" +
+            "data: [DONE]\n\n";
+
+        var events = await Collect(sse);
+        var text = string.Concat(events.OfType<TextDelta>().Select(d => d.Text));
+        Assert.Equal("final answer", text);
+        Assert.DoesNotContain("thinking", text);
+    }
 }

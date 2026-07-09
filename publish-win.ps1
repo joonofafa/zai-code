@@ -20,6 +20,11 @@ dotnet publish src/MoaiCode.Cli/MoaiCode.Cli.csproj `
   -p:DebugSymbols=false `
   -o $out
 
+# SHA-256 해시 생성 (고객사 화이트리스트/무결성 검증용). "<hash>  <file>" 표준 포맷.
+$hash = (Get-FileHash "$out/moai.exe" -Algorithm SHA256).Hash.ToLower()
+"$hash  moai.exe" | Out-File -Encoding ascii "$out/moai.exe.sha256"
+
 Write-Host ""
 Write-Host "OK 게시 완료: $out/moai.exe"
+Write-Host "   SHA-256: $hash"
 Write-Host "   -> 이 파일 하나만 복사하면 런타임 설치 없이 실행됩니다."

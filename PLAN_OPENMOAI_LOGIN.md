@@ -6,21 +6,19 @@
 
 ---
 
-## 1. 현재 상태 (조사 결과)
+## 1. 현재 상태 (구현 완료)
 
 ### open-moai (서버, ~/gitHub/open-moai)
-- **OpenAI 호환 API**: `app/api/v1/chat/completions/route.ts`, `app/api/v1/models/route.ts`. 표준 OpenAI SSE(`data: {...}` / `data: [DONE]`).
-- **인증**: `Authorization: Bearer <api_key>`. 키 형식 `moai-<64 hex>` (SHA256 해시로 `api_keys` 테이블 저장). 검증: `lib/openai-api/middleware.ts` `validateApiKey()`.
-- **게이트**(`api_management` 테이블): `apiEnabled`, `openaiCompatible`, `apiKeyEnabled` 가 모두 true여야 함.
-- **키 발급**: `POST /api/api-keys` — **admin 전용**(`withAuthRoute({admin:true})`). 평문 키는 생성 시 1회만 반환. **사용자 셀프 발급 UI/엔드포인트 없음.**
-- **로그인**: NextAuth v5 Credentials(email/password) → **단기 JWT**(access 15분/prod, refresh 7일), HTTP-only 쿠키. **MFA 있음**(tokenType `mfa-pending`). CLI용 로그인 엔드포인트 없음.
-- **JWT를 Bearer로**: `bearerTokenEnabled=true` + `role==admin`일 때만 허용(레이트리밋 무제한). 일반 사용자는 불가.
-- 배포: `NEXTAUTH_PUBLIC_URL=https://vip.bccard.ai`, API base `=/api/v1`.
+- **CLI 로그인 API 구현**: `POST /api/cli/login` 및 `POST /api/cli/login/mfa` 엔드포인트가 추가되었습니다.
+  - **MFA 검증**: `VerifyMfaPendingToken`, TOTP 및 백업코드를 통한 2차 검증을 지원합니다.
+  - **사용자 키 발급**: 성공 시 해당 사용자 스코프의 API 키가 자동 생성 및 반환됩니다.
+- **OpenAI 호환 API**: `app/api/v1/chat/completions/route.ts`, `app/api/v1/models/route.ts`가 표준 규격을 따릅니다.
+- **게이트 관리**: `api_management` 설정을 통해 API 기능 사용 여부가 제어됩니다.
 
 ### moai-code (클라이언트)
-- `ProviderFactory.CreateDefault`: `OPENAI_API_KEY` + `OPENAI_BASE_URL`(기본 openai) + model(`MOAI_MODEL`/`OPENAI_MODEL`) → `OpenAiChatModel`(+재시도). 키 없으면 EchoModel.
-- 설정: `~/.moai/settings.json`(provider/baseUrl/model), 키: `~/.moai/credentials.json`(`OPENAI_API_KEY`, 0600). `FileCredentialStore`.
-- `auth` 서브커맨드(set/list). **즉, baseUrl=open-moai, key=moai- 키만 넣으면 이미 동작 가능** — 남은 건 "로그인으로 그 키를 받아오는" 흐름.
+- **로그인 흐름 탑재**: [LoginFlow.cs](file:///home/jhsoft/gitHub/moai-code/src/MoaiCode.Cli/LoginFlow.cs) 및 [OpenMoaiClient.cs](file:///home/jhsoft/gitHub/moai-code/src/MoaiCode.Cli/OpenMoaiClient.cs)를 통해 CLI 환경에서의 이메일/비밀번호(비밀번호는 마스킹 입력) 및 MFA 코드 검증 흐름이 구현되었습니다.
+- **자격 증명 및 설정 자동화**: 로그인 성공 시 `credentials.json`에 `OPENAI_API_KEY`로 자동 등록되며, `settings.json`에 호스트/API 베이스 주소 및 선택한 모델명이 저장됩니다.
+- **TUI 자동 연동**: 미인증 상태로 REPL 구동 시, 자동으로 대화형 로그인 인터페이스로 분기합니다.
 
 ---
 
@@ -88,15 +86,19 @@
 
 ---
 
-## 4. 단계별 진행 (제안)
+## 4. 단계별 진행 결과 (검증 완료)
 
-- **Phase 0 (연결 검증) — 부분 완료**: vip.bccard.ai 게이트(api_enabled/openai_compatible/api_key_enabled 등) 전부 ON 확인, `/api/v1` 엔드포인트·SSE·키 형식 확인. (기존 `moai-code` 키로 end-to-end는 키 평문 확보 시 즉시 가능)
-- **Phase 1 (핵심 UX, MFA 제외)**:
-  - open-moai: `POST /api/cli/login` (email/password → 사용자 키 자동 발급 + 모델 목록 반환)
-  - moai-code: 첫 실행 로그인 화면(email/마스킹 password) → 모델 SelectList → 저장 → REPL. 호스트 기본값 박기.
-  - → "로그인하고 모델 골라 바로 사용" UX 완성(MFA 없는 계정 기준)
-- **Phase 2 (MFA)**: open-moai `mfa_required`/`/api/cli/login/mfa` + moai-code MFA 코드 입력 단계. 무차별 대입 방지.
-- **Phase 3 (운영 견고화)**: 키 만료/회전, 세션 만료 시 자동 재로그인, `moai logout`, OS 키체인 저장, 레이트리밋 tier 조정, 사용량 표시.
+- **Phase 0 (연결 검증) — 완료**: open-moai의 API 게이트 상태 체크 및 SSE 규격 호환성 검증이 완료되었습니다.
+- **Phase 1 (핵심 UX, MFA 제외) — 완료**:
+  - open-moai: `POST /api/cli/login` 구현 완료. (사용자 키 자동 발급 및 모델 목록 반환)
+  - moai-code: CLI 로그인 마스킹 입력 인터페이스 및 모델 `SelectList` UI 구성 완료.
+- **Phase 2 (MFA 대응) — 완료**:
+  - open-moai: `POST /api/cli/login/mfa` 및 TOTP/백업코드 검증 로직 구현 완료.
+  - moai-code: 1차 로그인 응답 결과 `mfa_required` 시 MFA 입력 단계를 동적으로 연결하여 수행하도록 구현 완료.
+- **Phase 3 (운영 견고화) — 진행 중/완료**:
+  - `moai logout`을 통한 자격 증명 제거 및 관련 설정 클리어 기능 제공.
+  - 자격 증명 파일 만료/부재 시 자동으로 로그인 프로세스로 가이드하는 진입 장벽 최소화 장치 구축 완료.
+  - (추후 과제) OS 키체인 백엔드 스토어 적용 검토.
 
 > 빌드 순서상 **open-moai 엔드포인트(서버)가 선행** — moai-code 클라이언트는 그에 맞춰 구현. 병행하려면 클라이언트를 목(mock) 응답으로 먼저 만들고 서버 완성 후 연결.
 

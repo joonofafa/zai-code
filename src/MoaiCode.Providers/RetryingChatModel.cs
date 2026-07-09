@@ -10,12 +10,24 @@ namespace MoaiCode.Providers;
 /// transient 오류(429/529/5xx)를 지수 백오프로 재시도 (TS withRetry 축약판).
 /// 일단 토큰이 방출되면 재시도하지 않음(부분 응답 중복 방지).
 /// </summary>
-public sealed class RetryingChatModel : IChatModel
+public sealed class RetryingChatModel : IChatModel, IModelControl
 {
     private readonly IChatModel _inner;
     private readonly int _maxRetries;
     private readonly Func<int, TimeSpan> _backoff;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
+
+    /// <summary>내부 모델이 전환을 지원하면 위임 (아니면 no-op/빈 목록).</summary>
+    public string CurrentModel
+    {
+        get => (_inner as IModelControl)?.CurrentModel ?? "";
+        set { if (_inner is IModelControl c) c.CurrentModel = value; }
+    }
+
+    public Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken ct)
+        => _inner is IModelControl c
+            ? c.ListModelsAsync(ct)
+            : Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
 
     public RetryingChatModel(
         IChatModel inner,

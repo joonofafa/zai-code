@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Json;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Messages;
 using MoaiCode.Core.Tools;
@@ -88,6 +89,34 @@ public sealed class QueryEngine
     {
         _messages.Clear();
         _messages.AddRange(messages);
+
+        // 복원된 대화에서 이미 Read/Write/Edit 한 파일 경로를 ReadTracker 에 재등록한다.
+        // ReadTracker 는 메모리 상태라 /resume 후 비어 있어, 모델은 "이미 읽었다"고 믿는데 write 전
+        // read 가드가 막아 Write 를 무한 재시도하는 루프가 생긴다 — 그걸 방지.
+        foreach (var m in messages)
+        {
+            if (m is not AssistantMessage a)
+            {
+                continue;
+            }
+
+            foreach (var tu in a.Content.OfType<ToolUseBlock>())
+            {
+                if (tu.Name is not ("Read" or "Write" or "Edit"))
+                {
+                    continue;
+                }
+
+                if (tu.Input.ValueKind == JsonValueKind.Object
+                    && tu.Input.TryGetProperty("path", out var pe)
+                    && pe.ValueKind == JsonValueKind.String
+                    && pe.GetString() is { Length: > 0 } path)
+                {
+                    var full = Path.IsPathRooted(path) ? path : Path.Combine(_workingDirectory, path);
+                    _reads.MarkRead(full);
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -167,6 +196,11 @@ public sealed class QueryEngine
             var toolCalls = new List<ToolUseBlock>();
             var stopReason = "end_turn";
             Usage lastUsage = new(0, 0);
+
+            // 모델에 보내기 전 tool_use ↔ tool_result 짝을 보증한다. 실패-루프 가드가 툴 처리 도중
+            // 턴을 끊거나, 손상된 세션을 /resume 하면 tool_result 없는 tool_use(고아)가 남아 Anthropic 등
+            // 엄격한 API 가 400을 낸다("tool_use ids were found without tool_result blocks").
+            EnsureToolResultsPaired();
 
             // 모델 스트림을 '시작'할 때 컨텍스트 초과(400)면 응급 컴팩션 후 재시도한다.
             // iterator 메서드는 try/catch 안에서 yield 할 수 없으므로, 예외가 나는 지점(첫 MoveNext)만
@@ -369,11 +403,13 @@ public sealed class QueryEngine
 
                     // 성공한 '동일' 읽기 호출(Grep/Glob/Read 등)을 반복하면 한 번만 부드럽게 막는다.
                     // (이미 결과가 위에 있는데 같은 호출을 또 하는 제자리걸음 방지.)
+                    // 주의: 여기서 _messages 에 직접 user 메시지를 넣으면 tool_result 들 사이에 끼어들어
+                    // tool_use/tool_result 연속성이 깨진다(Anthropic 400). 관찰과 함께 '전부 뒤'로 미룬다.
                     var sc = successCounts.TryGetValue(sig, out var s) ? s + 1 : 1;
                     successCounts[sig] = sc;
                     if (sc >= 2 && tool.IsReadOnly && dupNudged.Add(sig))
                     {
-                        _messages.Add(new UserMessage(Reminders.DuplicateToolCall(call.Name)));
+                        pendingObservations.Add(Reminders.DuplicateToolCall(call.Name));
                     }
                 }
             }
@@ -390,6 +426,74 @@ public sealed class QueryEngine
                 _messages.Add(new UserMessage(turnObservation!));
             }
         }
+    }
+
+    // 모델 전송 전 tool_use ↔ tool_result 짝을 '양방향'으로 정규화한다(Anthropic 등 엄격 API 대응).
+    // 규칙: assistant 의 각 tool_use 바로 뒤에, 같은 순서로, 대응 tool_result 만 연속 배치되어야 한다.
+    //  - 결과 없는 tool_use → 합성 결과 삽입   (400: "tool_use ids ... without tool_result")
+    //  - 대응 tool_use 없는/중복 tool_result → 제거 (400: "unexpected tool_use_id ... in tool_result")
+    //  - tool_result 사이에 끼어든 user 메시지(리마인더 등) → 전부 tool_result 뒤로 재배치
+    // 실패-루프 중단·손상된 /resume 세션도 이 단계에서 자가치유된다.
+    private void EnsureToolResultsPaired()
+    {
+        var fixedUp = new List<Message>(_messages.Count);
+
+        for (var i = 0; i < _messages.Count; i++)
+        {
+            var m = _messages[i];
+
+            if (m is AssistantMessage a && a.Content.OfType<ToolUseBlock>().Any())
+            {
+                fixedUp.Add(a);
+                var ids = a.Content.OfType<ToolUseBlock>().Select(t => t.Id).ToList();
+                var wanted = new HashSet<string>(ids, StringComparer.Ordinal);
+
+                // 다음 assistant 전까지의 구간에서 tool_result 를 모으고, 그 외(user 리마인더 등)는 뒤로 미룬다.
+                var j = i + 1;
+                var found = new Dictionary<string, ToolResultMessage>(StringComparer.Ordinal);
+                var deferred = new List<Message>();
+                while (j < _messages.Count && _messages[j] is not AssistantMessage)
+                {
+                    if (_messages[j] is ToolResultMessage tr)
+                    {
+                        if (wanted.Contains(tr.ToolUseId))
+                        {
+                            found.TryAdd(tr.ToolUseId, tr);   // 첫 번째만 채택 (중복은 버림)
+                        }
+
+                        // 대응 tool_use 가 없는 고아 tool_result 는 버린다.
+                    }
+                    else
+                    {
+                        deferred.Add(_messages[j]);
+                    }
+
+                    j++;
+                }
+
+                // tool_use 순서대로 결과를 '바로 뒤'에 연속 배치(없으면 합성).
+                foreach (var id in ids)
+                {
+                    fixedUp.Add(found.TryGetValue(id, out var tr)
+                        ? tr
+                        : new ToolResultMessage(id, "Tool call was interrupted; no result was produced.", true));
+                }
+
+                fixedUp.AddRange(deferred);   // 끼어 있던 user/리마인더는 tool_result 뒤로
+                i = j - 1;
+                continue;
+            }
+
+            if (m is ToolResultMessage)
+            {
+                continue;   // 앞에 대응 assistant tool_use 가 없는 고아 tool_result → 버림
+            }
+
+            fixedUp.Add(m);
+        }
+
+        _messages.Clear();
+        _messages.AddRange(fixedUp);
     }
 
     // 원래 사용자 요청을 다시 고정하는 system-reminder. 컴팩션/연장으로 의도가 희석되는 것을 막아
@@ -433,6 +537,8 @@ public sealed class QueryEngine
 
         var assistantText = new StringBuilder();
         Usage lastUsage = new(0, 0);
+
+        EnsureToolResultsPaired(); // 손상된 짝(고아 tool_use)이 있어도 마무리 호출이 400 나지 않게.
 
         // 툴 미제공 → 모델은 텍스트로만 마무리한다.
         await foreach (var ev in _model.StreamAsync(_messages, Array.Empty<ITool>(), ct)
@@ -671,6 +777,7 @@ public sealed class QueryEngine
             return false;
         }
 
+        // 의도형 어미(~겠습니다/할게요): 모든 "~하겠습니다" 류 포함.
         if (t.EndsWith("겠습니다", StringComparison.Ordinal)
             || t.EndsWith("겠다", StringComparison.Ordinal)
             || t.EndsWith("할게요", StringComparison.Ordinal)
@@ -678,6 +785,22 @@ public sealed class QueryEngine
             || t.EndsWith("보겠어요", StringComparison.Ordinal))
         {
             return true;
+        }
+
+        // 현재형 선언 어미(~합니다/~것입니다): 일반 설명과 헷갈리지 않게 '행동 동사'에 한정.
+        // 예: "Redraw 함수를 수정합니다", "...구현합니다", "...추가합니다", "...것입니다".
+        string[] actionEndings =
+        {
+            "수정합니다", "고칩니다", "구현합니다", "추가합니다", "제거합니다", "삭제합니다",
+            "변경합니다", "작성합니다", "생성합니다", "적용합니다", "진행합니다", "실행합니다",
+            "교체합니다", "만듭니다", "정리합니다", "수정할게요", "것입니다", "하겠음", "할 것입니다",
+        };
+        foreach (var e in actionEndings)
+        {
+            if (t.EndsWith(e, StringComparison.Ordinal))
+            {
+                return true;
+            }
         }
 
         // 영어: 마지막 ~60자에 의도 표현.

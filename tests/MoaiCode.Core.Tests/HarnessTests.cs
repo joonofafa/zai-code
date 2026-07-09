@@ -33,6 +33,9 @@ public class SystemPromptBuilderTests
         Assert.Contains("Primary working directory: /proj", p);
         Assert.Contains("To read files use Read", p);          // using-tools (Read present)
         Assert.Contains("Use tabs.", p);                       // CLAUDE.md injection
+        Assert.Contains("# Coding guidelines", p);             // 전역 기본 행동 지침
+        Assert.Contains("Simplicity First", p);
+        Assert.Contains("Every changed line should trace directly", p);
     }
 }
 

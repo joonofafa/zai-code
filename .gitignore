@@ -1,6 +1,30 @@
+# build output
 bin/
 obj/
 dist/
-*.user
-.vs/
+publish/
 artifacts/
+[Bb]uild/
+[Rr]elease/
+[Dd]ebug/
+
+# IDE / editor
+.vs/
+.idea/
+*.user
+*.suo
+*.userprefs
+
+# test
+TestResults/
+
+# logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# local secrets & settings (never commit)
+.moai/credentials.json
+.moai/settings.json

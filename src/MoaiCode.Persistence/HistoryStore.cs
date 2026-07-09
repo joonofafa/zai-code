@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MoaiCode.Core;
 
 namespace MoaiCode.Persistence;
 
@@ -28,10 +29,16 @@ public sealed class HistoryStore
         if (!string.IsNullOrEmpty(dir))
         {
             Directory.CreateDirectory(dir);
+            FilePermissions.RestrictDirToUser(dir);
         }
 
+        var existed = File.Exists(_path);
         var line = JsonSerializer.Serialize(new HistoryEntry(entry));
         await File.AppendAllTextAsync(_path, line + "\n", ct).ConfigureAwait(false);
+        if (!existed)
+        {
+            FilePermissions.RestrictFileToUser(_path); // 새로 만든 경우 0600 (사용자 입력 포함)
+        }
     }
 
     /// <summary>최근 n개를 오래된→최신 순으로 반환.</summary>

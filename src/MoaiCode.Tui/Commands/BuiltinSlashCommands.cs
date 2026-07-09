@@ -1,3 +1,5 @@
+using MoaiCode.Persistence;
+
 namespace MoaiCode.Tui.Commands;
 
 internal sealed class ExitCommand : ISlashCommand
@@ -30,9 +32,43 @@ internal sealed class ToolsCommand : ISlashCommand
 internal sealed class ModelCommand : ISlashCommand
 {
     public string Name => "model";
-    public string Description => "현재 프로바이더/모델";
-    public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
-        => Task.FromResult(new SlashResult($"provider: {ctx.ProviderDesc}"));
+    public string Description => "모델 변경 (목록에서 선택)";
+
+    // 로그인 직후 모델 선택과 동일한 화살표 선택 화면을 띄워 라이브 세션의 모델을 교체한다.
+    public async Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
+    {
+        var mc = ctx.Models;
+        if (mc is null)
+        {
+            return new SlashResult($"이 프로바이더는 모델 전환을 지원하지 않습니다. ({ctx.ProviderDesc})");
+        }
+
+        Spectre.Console.AnsiConsole.MarkupLine("[grey70]모델 목록 조회 중…[/]");
+        var models = await mc.ListModelsAsync(ct).ConfigureAwait(false);
+        if (models.Count == 0)
+        {
+            return new SlashResult("모델 목록을 가져오지 못했습니다 (로그인/네트워크 확인).");
+        }
+
+        // 현재 모델을 기본 선택으로.
+        var list = models.ToList();
+        var defIdx = list.FindIndex(m => string.Equals(m, mc.CurrentModel, StringComparison.OrdinalIgnoreCase));
+        if (defIdx < 0)
+        {
+            defIdx = 0;
+        }
+
+        var pick = SelectList.Prompt("사용할 모델을 선택하세요:", models, defIdx);
+        if (pick < 0)
+        {
+            return new SlashResult("변경 없음");
+        }
+
+        var chosen = models[pick];
+        mc.CurrentModel = chosen;          // 라이브 반영 (QueryEngine/서브에이전트/컴팩션 공유 인스턴스)
+        ctx.PersistModel?.Invoke(chosen);  // settings.json + env 저장 (다음 실행에도 유지)
+        return new SlashResult($"모델 변경됨: {chosen}");
+    }
 }
 
 internal sealed class SkillsCommand : ISlashCommand
@@ -63,6 +99,72 @@ internal sealed class CostCommand : ISlashCommand
         return Task.FromResult(new SlashResult(
             $"usage: in={u.InputTokens} out={u.OutputTokens} cacheRead={u.CacheReadTokens}"));
     }
+}
+
+// /usage: 로그인 계정·시간 + 모델별 로컬 토큰 사용량. Spectre 로 직접 렌더(색/정렬)하고 빈 결과 반환.
+internal sealed class UsageCommand : ISlashCommand
+{
+    public string Name => "usage";
+    public string Description => "로그인 계정·시간·모델별 토큰 사용량(로컬)";
+
+    public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
+    {
+        var ac = ctx.Account;
+        var email = string.IsNullOrWhiteSpace(ac?.Email) ? "(알 수 없음)" : ac!.Email!;
+        var host = string.IsNullOrWhiteSpace(ac?.Host) ? "(미설정)" : ac!.Host!;
+        var org = string.IsNullOrWhiteSpace(ac?.OrgName) ? null : ac!.OrgName!;
+
+        Spectre.Console.AnsiConsole.WriteLine();
+        Spectre.Console.AnsiConsole.MarkupLine(
+            $"[aqua]계정[/] [grey85]{Spectre.Console.Markup.Escape(email)}[/] [grey70]· {Spectre.Console.Markup.Escape(host)}[/]");
+        if (org is not null)
+        {
+            Spectre.Console.AnsiConsole.MarkupLine(
+                $"[grey70]조직: [/][grey85]{Spectre.Console.Markup.Escape(org)}[/]");
+        }
+        Spectre.Console.AnsiConsole.MarkupLine(
+            $"[grey70]로그인: {Spectre.Console.Markup.Escape(FormatTime(ac?.LoginAt))} · 현재: {DateTimeOffset.Now:yyyy-MM-dd HH:mm}[/]");
+
+        var usage = ctx.Usage;
+        var rows = usage?.All() ?? System.Array.Empty<ModelUsage>();
+        var since = usage is not null ? $" · {usage.Since:yyyy-MM-dd}부터" : "";
+
+        Spectre.Console.AnsiConsole.WriteLine();
+        Spectre.Console.AnsiConsole.MarkupLine($"[grey70]모델별 토큰 사용량 (로컬 기준{since})[/]");
+
+        if (rows.Count == 0)
+        {
+            Spectre.Console.AnsiConsole.MarkupLine("[grey70]  (아직 기록 없음 — 대화 후 표시됩니다)[/]");
+            return Task.FromResult(new SlashResult(""));
+        }
+
+        long ti = 0, to = 0, tt = 0;
+        var nameW = System.Math.Max(10, rows.Max(r => r.Model.Length));
+        foreach (var r in rows)
+        {
+            ti += r.InputTokens;
+            to += r.OutputTokens;
+            tt += r.Turns;
+            Spectre.Console.AnsiConsole.MarkupLine(
+                $"[grey85]  {Spectre.Console.Markup.Escape(r.Model.PadRight(nameW))}[/] " +
+                $"[grey70]in[/] [white]{r.InputTokens,11:N0}[/]  " +
+                $"[grey70]out[/] [white]{r.OutputTokens,10:N0}[/]  " +
+                $"[grey70]turns {r.Turns}[/]");
+        }
+
+        Spectre.Console.AnsiConsole.MarkupLine(
+            $"[grey70]  {Spectre.Console.Markup.Escape("합계".PadRight(nameW))}[/] " +
+            $"[grey70]in[/] [white]{ti,11:N0}[/]  " +
+            $"[grey70]out[/] [white]{to,10:N0}[/]  " +
+            $"[grey70]turns {tt}[/]");
+
+        return Task.FromResult(new SlashResult(""));
+    }
+
+    private static string FormatTime(string? iso)
+        => !string.IsNullOrWhiteSpace(iso) && DateTimeOffset.TryParse(iso, out var t)
+            ? t.ToString("yyyy-MM-dd HH:mm")
+            : "(알 수 없음)";
 }
 
 internal sealed class PlanModeCommand : ISlashCommand

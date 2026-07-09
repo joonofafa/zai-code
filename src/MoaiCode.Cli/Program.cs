@@ -117,11 +117,11 @@ authCmd.Subcommands.Add(authListCmd);
 root.Subcommands.Add(authCmd);
 
 // login / logout: open-moai 계정 로그인 (목표 UX — 설정 제로)
-var hostOpt = new Option<string?>("--host") { Description = "open-moai 호스트 (기본 vip.bccard.ai)" };
+var hostOpt = new Option<string?>("--host") { Description = "open-moai 호스트 (env MOAI_LOGIN_HOST > 설정 host > 컴파일 기본값)" };
 var loginCmd = new Command("login", "open-moai 계정으로 로그인 (이메일/비번/MFA → 모델 선택)");
 loginCmd.Options.Add(hostOpt);
 loginCmd.SetAction(async (ParseResult pr, CancellationToken ct) =>
-    await LoginFlow.RunAsync(pr.GetValue(hostOpt) ?? LoginFlow.DefaultHost, ct) ? 0 : 1);
+    await LoginFlow.RunAsync(pr.GetValue(hostOpt) ?? LoginFlow.ResolveDefaultHost(), ct) ? 0 : 1);
 root.Subcommands.Add(loginCmd);
 
 var logoutCmd = new Command("logout", "저장된 로그인(키) 제거");
@@ -169,18 +169,12 @@ root.SetAction(async (ParseResult pr, CancellationToken ct) =>
     // 첫 실행/미인증 시 자동 로그인 (엔터프라이즈: 열면 바로 로그인 화면)
     if (interactive && !LoginFlow.HasCredential())
     {
-        await LoginFlow.RunAsync(LoginFlow.DefaultHost, ct);
+        await LoginFlow.RunAsync(LoginFlow.ResolveDefaultHost(), ct);
     }
 
     var rt = await AppBootstrap.BuildAsync(
         interactive: interactive, verbose: true, ct);
     await using var _ = rt.Mcp;
-
-    Console.WriteLine($"tools: {string.Join(", ", rt.Ctx.ToolNames)}");
-    if (rt.SkillNames.Count > 0)
-    {
-        Console.WriteLine($"skills: {string.Join(", ", rt.SkillNames)}");
-    }
 
     var app = new ReplApp(rt.Ctx, SlashRegistry.CreateDefault());
     try

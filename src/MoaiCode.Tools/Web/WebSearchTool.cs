@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Tools;
 
 namespace MoaiCode.Tools.Web;
@@ -124,7 +125,9 @@ public sealed class WebSearchTool : ITool
         var i = 1;
         foreach (var r in results)
         {
-            sb.Append(i++).Append(". ").AppendLine(r.Title ?? r.Url ?? "(untitled)");
+            // engine 을 함께 표기한다 — 어떤 검색 엔진이 준 결과인지 알아야 품질 문제를 진단/판별할 수 있다.
+            var engine = string.IsNullOrWhiteSpace(r.Engine) ? "" : $" [{r.Engine}]";
+            sb.Append(i++).Append(". ").Append(r.Title ?? r.Url ?? "(untitled)").AppendLine(engine);
             if (!string.IsNullOrWhiteSpace(r.Url))
             {
                 sb.Append("   ").AppendLine(r.Url);
@@ -138,7 +141,8 @@ public sealed class WebSearchTool : ITool
             sb.AppendLine();
         }
 
-        yield return new ToolOutput(sb.ToString().TrimEnd());
+        // 검색 결과(외부 콘텐츠)는 신뢰불가 — 인젝션 경계를 앞에 붙인다.
+        yield return new ToolOutput(Reminders.UntrustedToolOutput + sb.ToString().TrimEnd());
     }
 
     private static async Task<SearchResponse?> CallAsync(string url, string key, Input inp, CancellationToken ct)

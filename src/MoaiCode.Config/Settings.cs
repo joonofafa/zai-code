@@ -13,6 +13,18 @@ public sealed record Settings
     public string? Model { get; init; }
     public string? BaseUrl { get; init; }
 
+    /// <summary>로그인 호스트 (예: https://vip.bccard.ai). /usage 표시용.</summary>
+    public string? Host { get; init; }
+
+    /// <summary>로그인 계정(이메일). 로그인 시 저장. /usage 표시용.</summary>
+    public string? Account { get; init; }
+
+    /// <summary>마지막 로그인 시각(ISO 8601). /usage 표시용.</summary>
+    public string? LoginAt { get; init; }
+
+    /// <summary>로그인 사용자의 소속 조직명. 로그인 시 서버에서 수신. /usage 표시용.</summary>
+    public string? OrgName { get; init; }
+
     /// <summary>HTTP(S) 프록시 서버 (예: http://proxy.corp:8080). 사내망용. 비번은 credentials(PROXY_PASSWORD).</summary>
     public string? ProxyUrl { get; init; }
 

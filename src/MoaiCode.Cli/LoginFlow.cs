@@ -10,8 +10,39 @@ namespace MoaiCode.Cli;
 /// </summary>
 public static class LoginFlow
 {
-    // 엔터프라이즈 배포 기본 호스트 (설정/인자로 오버라이드 가능).
+    // 엔터프라이즈 배포 기본 호스트 (컴파일 시 최종 fallback).
+    // CLI 인자(--host) 처리는 호출자(Program.cs) 책임이며, 이 함수는 인자가 없을 때
+    // 사용할 값을 결정한다. 우선순위: (1) 환경변수 MOAI_LOGIN_HOST,
+    // (2) 설정 파일의 host 키, (3) DefaultHost 상수.
     public const string DefaultHost = "https://vip.bccard.ai";
+
+    /// <summary>
+    /// 런타임에 실제 사용할 호스트 결정 (env → 설정 → 상수 순).
+    /// CLI 인자로 명시된 host가 있다면 호출자가 그 값을 우선 사용해야 한다.
+    /// </summary>
+    public static string ResolveDefaultHost()
+    {
+        var env = Environment.GetEnvironmentVariable("MOAI_LOGIN_HOST");
+        if (!string.IsNullOrWhiteSpace(env))
+        {
+            return env.Trim();
+        }
+
+        try
+        {
+            var s = SettingsLoader.Load(Directory.GetCurrentDirectory());
+            if (!string.IsNullOrWhiteSpace(s.Host))
+            {
+                return s.Host!.Trim();
+            }
+        }
+        catch
+        {
+            // best-effort: 설정 파싱 실패 시 상수 fallback.
+        }
+
+        return DefaultHost;
+    }
 
     public static async Task<bool> RunAsync(string host, CancellationToken ct)
     {
@@ -68,6 +99,9 @@ public static class LoginFlow
             ["host"] = host,
             ["baseUrl"] = baseUrl,
             ["model"] = model,
+            ["account"] = email,
+            ["loginAt"] = DateTimeOffset.Now.ToString("o"),
+            ["orgName"] = r.OrgName,
         });
 
         AnsiConsole.MarkupLine($"[green]✓ 로그인 완료[/] [grey70]· {Markup.Escape(model ?? "(모델 미선택)")} · {Markup.Escape(host)}[/]");
@@ -79,7 +113,10 @@ public static class LoginFlow
         // 키 제거 + 설정의 호스트/baseUrl 정리.
         var store = new FileCredentialStore();
         store.Set("OPENAI_API_KEY", string.Empty);
-        SettingsWriter.Set(new Dictionary<string, string?> { ["baseUrl"] = null, ["host"] = null });
+        SettingsWriter.Set(new Dictionary<string, string?>
+        {
+            ["baseUrl"] = null, ["host"] = null, ["account"] = null, ["loginAt"] = null,
+        });
         AnsiConsole.MarkupLine("[grey70]로그아웃됨 (저장된 키 제거)[/]");
     }
 

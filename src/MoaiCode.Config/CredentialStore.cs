@@ -62,20 +62,49 @@ public sealed class FileCredentialStore : ICredentialStore
         if (!string.IsNullOrEmpty(dir))
         {
             Directory.CreateDirectory(dir);
+            if (!OperatingSystem.IsWindows())
+            {
+                try
+                {
+                    // 부모 디렉토리도 사용자 전용(0700).
+                    File.SetUnixFileMode(dir,
+                        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+                }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
         }
 
-        File.WriteAllText(_path, JsonSerializer.Serialize(dict));
+        var json = JsonSerializer.Serialize(dict);
 
-        if (!OperatingSystem.IsWindows())
+        // Race-free write: 임시파일에 쓰고 chmod 후 원자적 이동.
+        // (File.WriteAllText 이후 chmod 하면 짧게나마 world-readable 창이 열림.)
+        var tmp = _path + ".tmp";
+        try
         {
-            try
+            // 임시파일 생성 즉시 0600 적용 (world-readable window 회피).
+            using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
             {
-                File.SetUnixFileMode(_path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                if (!OperatingSystem.IsWindows())
+                {
+                    try
+                    {
+                        File.SetUnixFileMode(tmp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                    }
+                    catch (IOException) { }
+                    catch (UnauthorizedAccessException) { }
+                }
+                var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+                fs.Write(bytes, 0, bytes.Length);
             }
-            catch (IOException)
-            {
-                // best-effort
-            }
+
+            // 원자적 교체 (동일 파일시스템). File.Move 는 퍼미션을 유지하므로 재적용 불필요.
+            File.Move(tmp, _path, overwrite: true);
+        }
+        catch
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+            throw;
         }
     }
 }

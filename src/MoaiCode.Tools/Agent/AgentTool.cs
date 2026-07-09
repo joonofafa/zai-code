@@ -96,7 +96,9 @@ public sealed class AgentTool : ITool
             }
         }
 
-        yield return new ToolOutput(sb.Length == 0 ? "(sub-agent produced no output)" : sb.ToString());
+        // 서브에이전트 원문에도 추론 마커가 섞여 있다 — 부모 컨텍스트를 오염시키지 않도록 제거.
+        var output = ThinkFilter.Strip(sb.ToString());
+        yield return new ToolOutput(output.Length == 0 ? "(sub-agent produced no output)" : output);
     }
 
     private static JsonElement Parse(string json)

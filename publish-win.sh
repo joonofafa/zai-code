@@ -21,6 +21,11 @@ dotnet publish src/MoaiCode.Cli/MoaiCode.Cli.csproj \
   -p:DebugSymbols=false \
   -o "${OUT}"
 
+# SHA-256 해시 생성 (고객사 화이트리스트/무결성 검증용).
+( cd "${OUT}" && sha256sum moai.exe > moai.exe.sha256 )
+
 echo ""
 echo "✅ 게시 완료: ${OUT}/moai.exe"
+echo "   SHA-256: $(cut -d' ' -f1 "${OUT}/moai.exe.sha256")"
 echo "   → 이 파일 하나만 Windows 11로 복사하면 런타임 설치 없이 실행됩니다."
+echo "     (검증: PowerShell 'Get-FileHash moai.exe -Algorithm SHA256')"

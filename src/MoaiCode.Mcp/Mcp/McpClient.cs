@@ -25,13 +25,19 @@ public sealed class McpClient : IAsyncDisposable
         _pump = Task.Run(PumpAsync);
     }
 
+    // 하드코딩하면 릴리스 때마다 어긋난다(실제로 1.1.2 로 굳어 있었다).
+    private static string ClientVersion =>
+        System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version is { } v
+            ? $"{v.Major}.{v.Minor}.{v.Build}"
+            : "0.0.0";
+
     public async Task InitializeAsync(CancellationToken ct)
     {
         var p = new JsonObject
         {
             ["protocolVersion"] = ProtocolVersion,
             ["capabilities"] = new JsonObject(),
-            ["clientInfo"] = new JsonObject { ["name"] = "moai-code", ["version"] = "0.1.0" },
+            ["clientInfo"] = new JsonObject { ["name"] = "moai-code", ["version"] = ClientVersion },
         };
 
         await RequestAsync("initialize", p, ct).ConfigureAwait(false);

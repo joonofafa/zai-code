@@ -4,9 +4,11 @@
 
 ## 한 줄 요약
 
-MoAI Code(OpenClaude 기반) C# 포트의 **동작하는 walking skeleton**을 Phase 0~5(부분)까지 구현·검증 완료.
-10개 프로젝트 솔루션이 빌드(0 경고/0 오류)되고, **32개 단위 테스트 전부 통과**하며,
-**런타임 미설치 환경에서 단일 바이너리 실행**을 실제로 확인함.
+MoAI Code(OpenClaude 기반) C# 포트. **Phase 0~5 완료 + Phase 6~8 상당 부분 구현**
+(MCP·스킬·플러그인·서브에이전트·Task·헤드리스·`auth`/`login`/`proxy` 서브커맨드·
+엔터프라이즈 로그인/MFA·컴팩션·goal 리앵커).
+**11개 프로젝트 솔루션**(Core/Providers/Tools/Tools.Bash/Mcp/Config/Persistence/Tui/Cli/Sdk/Tests)이
+빌드되고 xUnit 스위트가 통과하며, **런타임 미설치 환경에서 단일 바이너리 실행**도 확인함.
 
 ## 완료된 작업
 
