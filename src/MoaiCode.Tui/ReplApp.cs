@@ -133,22 +133,25 @@ public sealed class ReplApp
             var trimmed = input.Trim();
             if (trimmed.Length > 0)
             {
-                AddHistory(trimmed);
+                AddHistory(trimmed); // 히스토리(↑)에는 접힌 표식 그대로 — 다시 불러도 확장된다.
             }
 
-            if (trimmed.StartsWith('/'))
+            // 붙여넣기 표식을 원문으로 되돌린 뒤 모델/세션에 전달한다.
+            var expanded = PasteStore.Expand(trimmed);
+
+            if (expanded.StartsWith('/'))
             {
-                quit = await HandleCommandAsync(trimmed, ct).ConfigureAwait(false);
+                quit = await HandleCommandAsync(expanded, ct).ConfigureAwait(false);
                 continue;
             }
 
-            if (string.IsNullOrWhiteSpace(trimmed))
+            if (string.IsNullOrWhiteSpace(expanded))
             {
                 continue;
             }
 
-            await _ctx.History.AppendAsync(trimmed, ct).ConfigureAwait(false);
-            await ConsumeTurnAsync(trimmed, ct).ConfigureAwait(false);
+            await _ctx.History.AppendAsync(expanded, ct).ConfigureAwait(false);
+            await ConsumeTurnAsync(expanded, ct).ConfigureAwait(false);
         }
     }
 

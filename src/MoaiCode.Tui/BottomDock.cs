@@ -169,9 +169,21 @@ public sealed class BottomDock
         var savedCurrent = "";
         Draw(buf, pos);
 
+        // 붙여넣기를 ESC[200~ … ESC[201~ 로 감싸 받는다 → 붙여넣은 개행이 Enter 로 오인되지 않는다.
+        Console.Write(BracketedPaste.Enable);
+        try
+        {
         while (true)
         {
-            var key = Console.ReadKey(intercept: true);
+            var key = BracketedPaste.ReadKey();
+
+            // 붙여넣기: 여러 줄이면 표식으로 접어 넣는다. 도크가 예약한 행수가 그대로 유지된다.
+            if (BracketedPaste.TryReadPaste(key, out var pasted))
+            {
+                PasteStore.Insert(buf, ref pos, pasted);
+                Draw(buf, pos);
+                continue;
+            }
 
             if (key.Key == ConsoleKey.Enter || key.KeyChar == '\r' || key.KeyChar == '\n')
             {
@@ -188,7 +200,13 @@ public sealed class BottomDock
             switch (key.Key)
             {
                 case ConsoleKey.Backspace:
-                    if (pos > 0) { buf.Remove(pos - 1, 1); pos--; DrawCoalesced(buf, pos); }
+                    if (pos > 0)
+                    {
+                        // 붙여넣기 표식은 한 글자씩이 아니라 통째로 지운다.
+                        var n = PasteStore.PlaceholderLengthEndingAt(buf.ToString(), pos);
+                        var del = n > 0 ? n : 1;
+                        buf.Remove(pos - del, del); pos -= del; DrawCoalesced(buf, pos);
+                    }
                     break;
                 case ConsoleKey.Delete:
                     if (pos < buf.Length) { buf.Remove(pos, 1); DrawCoalesced(buf, pos); }
@@ -254,6 +272,11 @@ public sealed class BottomDock
                     }
                     break;
             }
+        }
+        }
+        finally
+        {
+            Console.Write(BracketedPaste.Disable);
         }
     }
 

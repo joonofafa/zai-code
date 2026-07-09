@@ -64,9 +64,21 @@ public static class LineEditor
         var r = new PromptRenderer(hasStatus);
         r.Refresh(buf, pos);
 
+        // 붙여넣기를 ESC[200~ … ESC[201~ 로 감싸 받는다 → 붙여넣은 개행이 Enter 로 오인되지 않는다.
+        Console.Write(BracketedPaste.Enable);
+        try
+        {
         while (true)
         {
-            var key = Console.ReadKey(intercept: true);
+            var key = BracketedPaste.ReadKey();
+
+            // 붙여넣기: 여러 줄이면 표식으로 접어 넣는다(전송하지 않음).
+            if (BracketedPaste.TryReadPaste(key, out var pasted))
+            {
+                PasteStore.Insert(buf, ref pos, pasted);
+                r.Refresh(buf, pos);
+                continue;
+            }
 
             if (key.Key == ConsoleKey.Enter || key.KeyChar == '\r' || key.KeyChar == '\n')
             {
@@ -84,7 +96,13 @@ public static class LineEditor
             switch (key.Key)
             {
                 case ConsoleKey.Backspace:
-                    if (pos > 0) { buf.Remove(pos - 1, 1); pos--; DrawCoalesced(r, buf, pos); }
+                    if (pos > 0)
+                    {
+                        // 붙여넣기 표식은 한 글자씩이 아니라 통째로 지운다.
+                        var n = PasteStore.PlaceholderLengthEndingAt(buf.ToString(), pos);
+                        var del = n > 0 ? n : 1;
+                        buf.Remove(pos - del, del); pos -= del; DrawCoalesced(r, buf, pos);
+                    }
                     break;
 
                 case ConsoleKey.Delete:
@@ -174,6 +192,11 @@ public static class LineEditor
                     }
                     break;
             }
+        }
+        }
+        finally
+        {
+            Console.Write(BracketedPaste.Disable);
         }
     }
 
