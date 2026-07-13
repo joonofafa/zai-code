@@ -1,3 +1,4 @@
+using MoaiCode.Core.Tools;
 using MoaiCode.Persistence;
 
 namespace MoaiCode.Tui.Commands;
@@ -98,6 +99,67 @@ internal sealed class CostCommand : ISlashCommand
         var u = ctx.Engine.CumulativeUsage;
         return Task.FromResult(new SlashResult(
             $"usage: in={u.InputTokens} out={u.OutputTokens} cacheRead={u.CacheReadTokens}"));
+    }
+}
+
+// /permissions: 영속 allow/deny 규칙 조회·편집 (Claude Code permissions.allow/deny 대응).
+internal sealed class PermissionsCommand : ISlashCommand
+{
+    public string Name => "permissions";
+    public string Description => "권한 규칙 조회·추가·삭제 (allow/deny · settings.json 영속)";
+
+    public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
+    {
+        var rules = ctx.Rules;
+        if (rules is null)
+        {
+            return Task.FromResult(new SlashResult("권한 규칙 저장소를 사용할 수 없습니다."));
+        }
+
+        var sub = args.Length > 0 ? args[0].ToLowerInvariant() : "list";
+        var rest = string.Join(' ', args.Skip(1)).Trim();
+
+        switch (sub)
+        {
+            case "allow" when rest.Length > 0:
+                rules.AddAllow(rest);
+                return Task.FromResult(new SlashResult($"allow 추가: {rest}"));
+            case "deny" when rest.Length > 0:
+                rules.AddDeny(rest);
+                return Task.FromResult(new SlashResult($"deny 추가: {rest}"));
+            case "remove" when rest.Length > 0:
+                var ok = rules.Remove(rest);
+                return Task.FromResult(new SlashResult(ok ? $"삭제: {rest}" : $"해당 규칙 없음: {rest}"));
+            case "allow":
+            case "deny":
+            case "remove":
+                return Task.FromResult(new SlashResult(
+                    "사용법: /permissions allow <패턴> · deny <패턴> · remove <패턴>\n"
+                    + "예: /permissions allow Bash(ssh moai-ec2)"));
+            default:
+                Render(rules);
+                return Task.FromResult(new SlashResult(string.Empty));
+        }
+    }
+
+    private static void Render(IPermissionRuleStore rules)
+    {
+        Spectre.Console.AnsiConsole.WriteLine();
+        Spectre.Console.AnsiConsole.MarkupLine("[aqua]권한 규칙[/] [grey70]· settings.json 에 저장됨[/]");
+        Spectre.Console.AnsiConsole.MarkupLine("[green]allow[/] " + (rules.Allow.Count == 0 ? "[grey58](없음)[/]" : ""));
+        foreach (var r in rules.Allow)
+        {
+            Spectre.Console.AnsiConsole.MarkupLine($"  [grey85]{Spectre.Console.Markup.Escape(r)}[/]");
+        }
+
+        Spectre.Console.AnsiConsole.MarkupLine("[red]deny[/] " + (rules.Deny.Count == 0 ? "[grey58](없음)[/]" : ""));
+        foreach (var r in rules.Deny)
+        {
+            Spectre.Console.AnsiConsole.MarkupLine($"  [grey85]{Spectre.Console.Markup.Escape(r)}[/]");
+        }
+
+        Spectre.Console.AnsiConsole.MarkupLine(
+            "[grey58]추가: /permissions allow Bash(git status) · 삭제: /permissions remove <패턴>[/]");
     }
 }
 

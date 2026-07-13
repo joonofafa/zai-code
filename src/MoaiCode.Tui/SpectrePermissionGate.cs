@@ -6,27 +6,24 @@ namespace MoaiCode.Tui;
 
 /// <summary>
 /// 대화형 권한 다이얼로그. 비-읽기전용 툴 실행 전 사용자에게 허용 여부를 묻는다.
-/// "항상 허용"은 세션 동안 해당 스코프(예: Bash(git status))만 자동 승인한다.
-/// 스코프를 안전하게 좁힐 수 없는 호출(복합 셸 명령, rm/sudo 등)엔 항상 허용을 제공하지 않는다.
+/// "항상 허용"은 명령 prefix 스코프(예: Bash(ssh moai-ec2))로 좁혀 규칙 저장소에 영속시킨다
+/// (다음 실행에도 유지). 스코프를 안전하게 좁힐 수 없는 호출엔 항상 허용을 제공하지 않는다.
 /// </summary>
 public sealed class SpectrePermissionGate : IPermissionGate
 {
-    private readonly HashSet<string> _alwaysAllow = new(StringComparer.Ordinal);
     private readonly bool _offerAlways;
+    private readonly Action<string>? _persistAllow;
 
-    /// <param name="offerAlways">
-    /// false 면 "항상 허용"을 제공하지 않는다(원격 실행/파괴적 명령 확인 전용 게이트).
-    /// </param>
-    public SpectrePermissionGate(bool offerAlways = true) => _offerAlways = offerAlways;
+    /// <param name="offerAlways">false 면 "항상 허용"을 제공하지 않는다.</param>
+    /// <param name="persistAllow">"항상 허용" 선택 시 스코프 패턴을 저장하는 콜백(규칙 저장소에 영속).</param>
+    public SpectrePermissionGate(bool offerAlways = true, Action<string>? persistAllow = null)
+    {
+        _offerAlways = offerAlways;
+        _persistAllow = persistAllow;
+    }
 
     public ValueTask<bool> AllowAsync(ITool tool, ToolUseBlock call, CancellationToken ct)
     {
-        var scope = PermissionRule.TryScope(tool, call);
-        if (scope is not null && _alwaysAllow.Contains(scope))
-        {
-            return ValueTask.FromResult(true);
-        }
-
         AnsiConsole.WriteLine();
         var display = ToolDisplay.Describe(tool.Name, call.Input);
         if (display.Length > 2000)
@@ -39,9 +36,10 @@ public sealed class SpectrePermissionGate : IPermissionGate
             .BorderColor(Color.Yellow);
         AnsiConsole.Write(panel);
 
-        var canAlways = _offerAlways && scope is not null;
+        var scope = _offerAlways ? PermissionRule.TryScope(tool, call) : null;
+        var canAlways = scope is not null;
         var choices = canAlways
-            ? new[] { "허용 (한 번)", $"항상 허용 (이 세션) — {scope}", "거부" }
+            ? new[] { "허용 (한 번)", $"항상 허용 (저장) — {scope}", "거부" }
             : new[] { "허용 (한 번)", "거부" };
 
         // 화살표 선택 위젯(SelectList). Spectre SelectionPrompt 는 단일 파일에서 크래시하므로 미사용.
@@ -54,7 +52,7 @@ public sealed class SpectrePermissionGate : IPermissionGate
 
         if (canAlways && choice == 1)
         {
-            _alwaysAllow.Add(scope!);
+            _persistAllow?.Invoke(scope!);
             return ValueTask.FromResult(true);
         }
 

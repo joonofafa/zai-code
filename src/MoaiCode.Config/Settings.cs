@@ -31,6 +31,12 @@ public sealed record Settings
     /// <summary>프록시 인증 사용자 (선택). 비번은 credentials 저장소의 PROXY_PASSWORD.</summary>
     public string? ProxyUser { get; init; }
 
+    /// <summary>영속 권한 규칙(Claude Code permissions.allow). 예: "Bash(ssh moai-ec2)".</summary>
+    public IReadOnlyList<string> AllowRules { get; init; } = Array.Empty<string>();
+
+    /// <summary>영속 권한 거부 규칙(permissions.deny). deny 가 allow 를 이긴다.</summary>
+    public IReadOnlyList<string> DenyRules { get; init; } = Array.Empty<string>();
+
     public int MaxTurns { get; init; } = 12;
     public string? OutputStyle { get; init; }
     public string? LintCommand { get; init; }

@@ -73,10 +73,10 @@ public sealed class PermissionScopeTests
     }
 
     [Theory]
-    // 한 번 허용해도 세션 전체로 넓히면 안 되는 명령.
+    // 프롬프트 "항상 허용"으로는 넓히지 않는 명령(파괴적 단일명령/권한상승/네트워크 egress).
+    // ssh 는 호스트 단위로 스코프 가능하므로 여기서 제외(PermissionRuleMatchTests 참고).
     [InlineData("rm -rf build")]
     [InlineData("sudo apt install x")]
-    [InlineData("ssh host uptime")]
     [InlineData("curl https://example.com")]
     [InlineData("chmod 777 f")]
     public void Dangerous_commands_get_no_always_allow_scope(string command)

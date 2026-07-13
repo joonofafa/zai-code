@@ -2,7 +2,8 @@
 
 > OpenClaude의 에이전트 품질은 코드 구조가 아니라 **요소요소에 박힌 프롬프트**에서 나온다.
 > 이 문서는 그 프롬프트를 전수 매핑한 것이다. 출처는 모두 `~/gitHub/openclaude/src/...` (TS 원본).
-> C# 포트(`MoaiCode`)는 현재 시스템 프롬프트 12줄 + 툴 description 1줄짜리 스텁만 있어 **하네스가 사실상 비어있다.**
+> 이 문서는 최초 갭 분석과 이식 결과를 함께 보존한다. 현재 C# 포트에는 모듈식 시스템 프롬프트,
+> 툴 설명, 런타임 복구, 컴팩션, goal 리앵커, 출력 스타일과 주요 프롬프트형 명령이 구현돼 있다.
 
 ## 이식 우선순위 (Tier)
 
@@ -35,7 +36,7 @@
 - `computeSimpleEnvInfo()` — cwd, platform, OS, 모델, knowledge cutoff
 - 워크트리 감지 시 별도 노트
 
-> 포트 메모: 현재 `AppBootstrap.SystemPrompt`(12줄)를 이 모듈식 구조로 교체. 정적/동적 경계는 추후 캐싱과 연계.
+> 포트 결과: `SystemPromptBuilder`가 이 모듈식 구조를 조립하고 `AppBootstrap`이 환경·저장소 맵·프로젝트 지침을 주입한다. 정적/동적 캐시 경계는 후속 과제다.
 
 ---
 
@@ -120,7 +121,8 @@ IMPORTANT: Avoid using this tool to run [find, grep, cat, head, tail, sed, awk, 
 | 18 | 비대화형 팀 종료 | `cli/print.ts:~375` | "You are running in non-interactive mode and cannot return a response until your team is shut down…" |
 | 19 | 스탑훅 피드백 | `utils/hooks.ts:~2096` | "Stop hook feedback:\n{error}" (TaskCompleted/TeammateIdle 동일 패턴) |
 
-> **C# 포트 핵심**: 현재 우리 `QueryEngine`엔 #1~#4(빈응답/복구/폴백/실패루프) 상태머신과 메시지가 전무. 우리가 본 "안녕하세요" 군더더기 문제도 결국 시스템 프롬프트 + 이런 리마인더 부재 탓. **T1으로 #1,#5,#7,#8,#10이 최우선**(파일툴/권한/멀웨어/린터 알림).
+> **C# 포트 결과**: `QueryEngine`과 `Reminders`에 연속 진행, 출력 제한, 누락 툴콜, 실패 루프,
+> 권한 거부, 멀웨어·불신 데이터 경계 등의 핵심 복구 메시지가 구현됐다. 원본 24종 전체와의 정합성은 계속 추적한다.
 
 ---
 
@@ -196,26 +198,26 @@ Rules: include only information present above; do not invent… output only the 
 
 ---
 
-## 현재 C# 포트 갭 & 이식 계획
+## C# 포트 이식 현황
 
 | 영역 | OpenClaude | MoaiCode 현재 | 액션 |
 |---|---|---|---|
-| 시스템 프롬프트 | 11+ 섹션 모듈식 + 컨텍스트 주입 | 12줄 하드코딩 | A 섹션 모듈식으로 재작성 (`SystemPromptBuilder`) |
-| 툴 description | 풀 텍스트(각 prompt.ts) | 1줄 스텁 | B의 6개 핵심(Read/Write/Edit/Glob/Grep/Bash) verbatim 교체 |
-| 런타임 리마인더 | 24종 | 없음 | C의 #1,#5,#7,#8,#10 우선 + QueryEngine 복구 상태머신 |
-| 컴팩션/메모리/goal | 다수 | 없음 | T2, 멀티턴 길어질 때 |
-| 서브에이전트 프롬프트 | 7종 | AgentTool 시스템프롬프트 1줄 | Explore/Plan/general/fork verbatim |
-| 출력스타일/커맨드/스킬 | 다수 | 없음 | T3 |
+| 시스템 프롬프트 | 11+ 섹션 모듈식 + 컨텍스트 주입 | `SystemPromptBuilder` + 환경/RepoMap/CLAUDE.md 주입 | ✅ 핵심 이식 |
+| 툴 description | 풀 텍스트(각 prompt.ts) | 파일·검색·Bash·Agent·Task·OrgDocs 등 상세 설명 | ✅ 핵심 이식 |
+| 런타임 리마인더 | 24종 | 연속진행·실패루프·출력제한·권한·불신 데이터 경계 등 | ✅ 핵심 이식 |
+| 컴팩션/메모리/goal | 다수 | 선제/강제 컴팩션 + 최대 턴 연장 + goal 리앵커 | ◐ 메모리/변형 고도화 남음 |
+| 서브에이전트 프롬프트 | 7종 | general/explore/plan/verification | ✅ 주요 유형 이식 |
+| 출력스타일/커맨드/스킬 | 다수 | 출력 스타일, `/init`·`/review`·`/security-review`·`/bughunter`·`/simplify`, 번들 스킬 | ✅ 주요 기능 구현 |
 
-**이식 진행 상황 (2026-06-26)**:
+**이식 진행 상황 (최종 코드 대조 2026-07-13)**:
 - ✅ **T1a 완료** — `MoaiCode.Core/Agent/Prompts/SystemPromptBuilder.cs`(intro+cyber/system/doing-tasks/actions/using-tools/tone/output-efficiency/environment/CLAUDE.md) + `PromptContext`, `AppBootstrap.BuildPromptContext`(git/OS/date/CLAUDE.md 수집)
 - ✅ **T1b 완료** — 6개 툴 description 원문 정합 교체(Read/Write/Edit/Glob/Grep/Bash) + Agent description
 - ✅ **T1c 완료** — `Reminders.cs`(빈파일/멀웨어 system-reminder, 권한거부 문구, continuation nudge, tool-failure-loop) → FileReadTool/QueryEngine 연결
 - ✅ **T2 완료** — `CompactionPrompts.ContextCollapse` + QueryEngine 안전 컴팩션(꼬리 UserMessage 경계) + `SubAgentPrompts`(general/explore/plan) AgentTool subagent_type 연결
-- 검증: 68개 테스트 통과, OpenRouter 라이브에서 전용툴 우선·간결 응답 확인
 - ✅ **T3 완료** — read-before-edit 강제(`ReadTracker`), Verification 서브에이전트, 출력스타일(Explanatory/Learning, `OutputStyles`+settings), 프롬프트형 슬래시(`/init`,`/review`, SlashResult.SubmitPrompt)
 - ✅ **TUI 마크다운 렌더링** — `MarkdownRenderer`(Markdig→Spectre: 헤딩/문단/리스트/코드블록패널/인용/표/굵게·기울임·인라인코드·링크), 스트리밍 중 원문→완료 시 렌더 교체
-- 검증: 76개 테스트 통과
-- ⏳ **남은 것**: 본격 컴팩션 3변형(BASE/PARTIAL), 메모리추출/goal/타이틀/제안 프롬프트, /bughunter류, 번들스킬(simplify/loop/batch), 코드블록 신택스 하이라이트
+- ✅ **후속 강화** — 출력 제한/툴콜 누락 복구, 최대 턴 컴팩션 연장, goal 리앵커, Task 미완료 감지, read/write 복원 가드, 불신 외부 데이터 경계
+- ✅ **프롬프트형 명령/스킬** — `/security-review`, `/bughunter`, `/simplify`와 번들 스킬 추출 구현
+- ⏳ **남은 것**: 컴팩션 BASE/PARTIAL 변형, 장기 메모리 추출, 타이틀/제안 프롬프트, 코드블록 신택스 하이라이트 고도화
 
 > 원문 전체는 위 `src/...` 경로에서 직접 가져와 이식한다(이 문서는 지도 + 핵심 발췌).

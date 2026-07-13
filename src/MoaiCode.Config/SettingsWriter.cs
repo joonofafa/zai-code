@@ -35,6 +35,46 @@ public static class SettingsWriter
             }
         }
 
+        Write(path, obj);
+    }
+
+    /// <summary>permissions.allow/deny 배열을 저장(기존 다른 키 보존).</summary>
+    public static void SetPermissions(
+        IReadOnlyList<string> allow, IReadOnlyList<string> deny, string? path = null)
+    {
+        path ??= DefaultPath;
+
+        JsonObject obj;
+        try
+        {
+            obj = (File.Exists(path) ? JsonNode.Parse(File.ReadAllText(path)) as JsonObject : null) ?? new JsonObject();
+        }
+        catch
+        {
+            obj = new JsonObject();
+        }
+
+        var perms = obj["permissions"] as JsonObject ?? new JsonObject();
+        perms["allow"] = ToArray(allow);
+        perms["deny"] = ToArray(deny);
+        obj["permissions"] = perms;
+
+        Write(path, obj);
+    }
+
+    private static JsonArray ToArray(IReadOnlyList<string> items)
+    {
+        var arr = new JsonArray();
+        foreach (var s in items)
+        {
+            arr.Add(s);
+        }
+
+        return arr;
+    }
+
+    private static void Write(string path, JsonObject obj)
+    {
         var dir = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(dir))
         {

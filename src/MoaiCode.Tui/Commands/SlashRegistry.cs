@@ -36,6 +36,7 @@ public sealed class SlashRegistry
             new McpCommand(),
             new CostCommand(),
             new UsageCommand(),
+            new PermissionsCommand(),
             new PlanModeCommand(),
             new ActModeCommand(),
             new CheckpointCreateCommand(),

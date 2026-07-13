@@ -188,6 +188,56 @@ public sealed class RiskGateTests
         Assert.Equal(0, classifier.Calls);
     }
 
+    [Fact]
+    public async Task Allow_rule_lets_ssh_through_without_confirming()
+    {
+        // 핵심 회귀: ssh moai-ec2 를 항상 허용했으면 확인 티어를 건너뛴다(매번 묻던 문제).
+        var state = new AgentRuntimeState { Mode = AgentMode.Act };
+        var confirmer = new RecordingGate(false);
+        var rules = new MoaiCode.Config.PermissionRules(allow: new[] { "Bash(ssh moai-ec2)" });
+        var gate = new ModeAwarePermissionGate(
+            state, new SpectreLikeDeny(), Path.GetTempPath(), confine: false,
+            confirmer: confirmer, classifier: null, rules: rules);
+
+        Assert.True(await gate.AllowAsync(new FakeTool("Bash"), Call("ssh moai-ec2 'uptime'"), default));
+        Assert.Equal(0, confirmer.Calls); // 확인 프롬프트가 뜨지 않는다
+    }
+
+    [Fact]
+    public async Task Allow_rule_for_host_does_not_cover_a_different_host()
+    {
+        var state = new AgentRuntimeState { Mode = AgentMode.Act };
+        var confirmer = new RecordingGate(false);
+        var rules = new MoaiCode.Config.PermissionRules(allow: new[] { "Bash(ssh moai-ec2)" });
+        var gate = new ModeAwarePermissionGate(
+            state, new SpectreLikeDeny(), Path.GetTempPath(), confine: false,
+            confirmer: confirmer, classifier: null, rules: rules);
+
+        // 다른 호스트는 여전히 확인 티어로 → confirmer(거부) 호출됨.
+        Assert.False(await gate.AllowAsync(new FakeTool("Bash"), Call("ssh other-host 'x'"), default));
+        Assert.Equal(1, confirmer.Calls);
+    }
+
+    [Fact]
+    public async Task Deny_rule_blocks_before_everything()
+    {
+        var state = new AgentRuntimeState { Mode = AgentMode.AutoAct };
+        var classifier = new StubClassifier(new RiskVerdict(RiskDecision.Allow, ""));
+        var rules = new MoaiCode.Config.PermissionRules(deny: new[] { "Bash(curl)" });
+        var gate = new ModeAwarePermissionGate(
+            state, new AutoApproveGate(), Path.GetTempPath(), confine: false,
+            confirmer: null, classifier: classifier, rules: rules);
+
+        Assert.False(await gate.AllowAsync(new FakeTool("Bash"), Call("curl https://x"), default));
+        Assert.Equal(0, classifier.Calls); // deny 는 분류기보다 먼저
+    }
+
+    private sealed class SpectreLikeDeny : IPermissionGate
+    {
+        public ValueTask<bool> AllowAsync(ITool tool, ToolUseBlock call, CancellationToken ct) =>
+            ValueTask.FromResult(false);
+    }
+
     [Theory]
     // 조회성 명령은 분류기(LLM 왕복)를 태우지 않는다 — auto 모드의 비용/지연 방지.
     [InlineData("ls -la")]

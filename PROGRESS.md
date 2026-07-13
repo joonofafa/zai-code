@@ -1,10 +1,10 @@
 # 진행 현황 (자율 세션)
 
-날짜: 2026-06-26 · 환경: Linux 개발 머신(.NET 10.0.301 SDK는 `~/.dotnet`에 user-local 설치)
+최종 코드 대조: 2026-07-13 · 현재 버전: 1.3.0 · .NET SDK 10.0.301 (`~/.dotnet/dotnet`)
 
 ## 한 줄 요약
 
-MoAI Code(OpenClaude 기반) C# 포트. **Phase 0~5 완료 + Phase 6~8 상당 부분 구현**
+MoAI Code(OpenClaude 기반) C# 포트. **Phase 0~8 핵심 기능 + 하네스·보안 강화 구현 완료**
 (MCP·스킬·플러그인·서브에이전트·Task·헤드리스·`auth`/`login`/`proxy` 서브커맨드·
 엔터프라이즈 로그인/MFA·컴팩션·goal 리앵커).
 **11개 프로젝트 솔루션**(Core/Providers/Tools/Tools.Bash/Mcp/Config/Persistence/Tui/Cli/Sdk/Tests)이
@@ -14,7 +14,7 @@ MoAI Code(OpenClaude 기반) C# 포트. **Phase 0~5 완료 + Phase 6~8 상당 �
 
 | Phase | 내용 | 상태 |
 |---|---|---|
-| 0 | 10-프로젝트 솔루션 골격, DI 준비, CPM, 빌드/게시 파이프라인 | ✅ |
+| 0 | 11-프로젝트 솔루션 골격, CPM, 빌드/게시 파이프라인 | ✅ |
 | 1 | OpenAI 호환 프로바이더 + SSE 스트리밍(`SseReader`, `OpenAiChatModel`), 툴콜 청크 누적 | ✅ |
 | 2 | 에이전트 루프 툴 디스패치 + 멀티턴(`QueryEngine`) | ✅ |
 | 3 | 코어 파일 툴: Read/Write/Edit/Glob/Grep | ✅ |
@@ -26,11 +26,15 @@ MoAI Code(OpenClaude 기반) C# 포트. **Phase 0~5 완료 + Phase 6~8 상당 �
 | 8 | System.CommandLine 2.0.9 서브커맨드(`run`/`tools`/`skills`/`mcp list`/`auth` + 기본 REPL), `AppBootstrap` 공유, `HeadlessRunner`, 슬래시 레지스트리 | ✅ |
 | 5+ | 설정 머지(`SettingsLoader` 3-tier JSONC) + 자격증명(`ICredentialStore`/`FileCredentialStore`) + 입력 히스토리(`HistoryStore`) + `/history` + `auth` 서브커맨드 + 프로바이더 오류 우아한 처리 | ✅ |
 | 6+ | 플러그인 로딩(`PluginLoader`) + 서브에이전트(`AgentTool`) + Task 툴(`TaskStore`/TaskCreate/List/Update) | ✅ |
+| 7+ | 모듈식 시스템 프롬프트, 런타임 복구 리마인더, 안전 컴팩션, goal 리앵커, 출력 스타일, 프롬프트형 슬래시 명령 | ✅ |
+| 8+ | 엔터프라이즈 로그인/MFA/모델 선택, 프록시, 조직 문서검색(`OrgDocs`) | ✅ |
+| 보안 | 워크스페이스 쓰기 스코프, 고위험 명령 확인, 비대화형 fail-closed, LLM 위험 분류 | ✅ |
 
-## 검증 결과 (직접 실행)
+## 검증 이력
 
 - `dotnet build` → 0 경고, 0 오류
-- `dotnet test` → **62/62 통과** (SSE/툴콜/파일툴/디스패치/Bash보안/세션/재시도/MCP/스킬/권한게이트/슬래시명령/설정머지/자격증명/히스토리/Agent/Task/플러그인)
+- 2026-07-13 `~/.dotnet/dotnet test MoaiCode.sln --no-restore` → **288/288 통과**, 실패/건너뜀 0.
+- 파일툴·하네스·권한·위험 분류·조직 문서검색을 포함한 전체 테스트 프로젝트와 의존 프로젝트 빌드 성공.
 - **MCP end-to-end 실프로세스 검증**: 파이썬 stdio MCP 서버에 연결 → `mcp__py__ping` 툴 발견, `greet` 스킬 로딩 확인
 - **TUI 검증**: PTY에서 Spectre.Live 패널이 토큰 단위 증분 렌더 확인 / 파이프(비대화형)에서는 평문 스트리밍 폴백 확인
 - **서브커맨드 검증**: `--version`/`--help`/`run "..."`(헤드리스)/`tools`/`skills`/`mcp list` 동작 확인
@@ -59,15 +63,16 @@ dotnet run --project src/MoaiCode.Cli -- run "이 폴더 요약해줘"   # 헤�
 ## 서브커맨드 / 슬래시 명령
 
 - CLI: `moai` (REPL) · `run "<prompt>" [-m model]` · `tools` · `skills` · `mcp list` · `auth set <provider> <key>` · `auth list` · `--version` · `--help`
-- REPL 슬래시: `/help /tools /model /skills /mcp /cost /history /sessions /save <name> /resume <name> /clear /exit`
-- 설정: `~/.claude/settings.json` → `./.claude/settings.json` → env 순 머지 (keys: model, provider, baseUrl, permission, maxTurns)
-- 자격증명: `openclaude auth set openai <key>` → `~/.openclaude/credentials.json` (env 없을 때 자동 주입)
+- REPL 슬래시: `/plan /act /checkpoint /checkpoints /checkpoint-diff /restore /history /sessions /save /resume /init /review /security-review /bughunter /simplify /help` 등
+- 설정: `~/.claude/settings.json` → `~/.moai/settings.json` → `./.claude/settings.json` → env 순 머지
+- 자격증명: `moai auth set openai <key>` → `~/.moai/credentials.json` (env 없을 때 자동 주입)
 
 ## 다음 단계 (미착수)
 
 - LSP(gRPC) 툴 — 규모가 커서 후순위
-- Phase 7 나머지: 뷰포트 스크롤/히스토리 화살표 네비게이션, 마크다운 렌더, 입력 멀티라인/붙여넣기
+- TUI 뷰포트 스크롤 및 입력 히스토리 화살표 탐색 고도화
 - 프로바이더 확장: Anthropic 네이티브, Gemini, reasoning 포맷 변형
 - 플러그인 명령/MCP 기여(현재는 스킬만), 자격증명 OS 키체인 백엔드
+- 컴팩션 변형·장기 메모리·타이틀/제안 프롬프트 고도화
 
 전체 로드맵: 상위 `../CSHARP_PORT_PLAN.md`.

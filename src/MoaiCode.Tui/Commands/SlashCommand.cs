@@ -1,4 +1,5 @@
 using MoaiCode.Core.Agent;
+using MoaiCode.Core.Tools;
 using MoaiCode.Persistence;
 
 namespace MoaiCode.Tui.Commands;
@@ -34,7 +35,9 @@ public sealed record SlashContext(
     Action<string>? PersistModel = null,
     // /usage: 모델별 로컬 토큰 사용량 + 로그인 계정/시각.
     UsageStore? Usage = null,
-    AccountInfo? Account = null);
+    AccountInfo? Account = null,
+    // /permissions: 영속 allow/deny 규칙 조회·편집.
+    IPermissionRuleStore? Rules = null);
 
 /// <summary>
 /// 슬래시 명령 실행 결과. Output은 호출측이 렌더, Quit이면 REPL 종료.

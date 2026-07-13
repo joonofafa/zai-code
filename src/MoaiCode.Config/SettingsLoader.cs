@@ -84,6 +84,9 @@ public static class SettingsLoader
                               ?? baseline.ConfineToWorkspace,
                 ContextWindowTokens = GetInt(root, "contextWindow", "context_window", "contextWindowTokens")
                                       ?? baseline.ContextWindowTokens,
+                // 규칙은 레이어 간 합집합(user + project 누적). permissions.allow/deny 또는 top-level allow/deny.
+                AllowRules = MergeRules(baseline.AllowRules, GetRuleList(root, "allow")),
+                DenyRules = MergeRules(baseline.DenyRules, GetRuleList(root, "deny")),
             };
         }
     }
@@ -136,6 +139,59 @@ public static class SettingsLoader
         }
 
         return null;
+    }
+
+    // permissions.{allow|deny} 배열(Claude Code 형식) 우선, 없으면 top-level {allow|deny}.
+    private static IReadOnlyList<string> GetRuleList(JsonElement root, string key)
+    {
+        if (root.TryGetProperty("permissions", out var perms) &&
+            perms.ValueKind == JsonValueKind.Object &&
+            perms.TryGetProperty(key, out var arr) &&
+            arr.ValueKind == JsonValueKind.Array)
+        {
+            return ReadStringArray(arr);
+        }
+
+        if (root.TryGetProperty(key, out var top) && top.ValueKind == JsonValueKind.Array)
+        {
+            return ReadStringArray(top);
+        }
+
+        return Array.Empty<string>();
+    }
+
+    private static IReadOnlyList<string> ReadStringArray(JsonElement arr)
+    {
+        var list = new List<string>();
+        foreach (var e in arr.EnumerateArray())
+        {
+            if (e.ValueKind == JsonValueKind.String && e.GetString() is { Length: > 0 } s)
+            {
+                list.Add(s);
+            }
+        }
+
+        return list;
+    }
+
+    private static IReadOnlyList<string> MergeRules(IReadOnlyList<string> baseline, IReadOnlyList<string> added)
+    {
+        if (added.Count == 0)
+        {
+            return baseline;
+        }
+
+        var seen = new HashSet<string>(baseline, StringComparer.Ordinal);
+        var merged = new List<string>(baseline);
+        foreach (var r in added)
+        {
+            if (seen.Add(r))
+            {
+                merged.Add(r);
+            }
+        }
+
+        return merged;
     }
 
     private static int? GetInt(JsonElement obj, params string[] keys)

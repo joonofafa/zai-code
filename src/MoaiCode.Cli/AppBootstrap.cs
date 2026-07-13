@@ -114,13 +114,17 @@ public static class AppBootstrap
         // 5) 권한 게이트 (설정 우선, ask는 대화형에서만 프롬프트)
         // 보안: 비대화형(헤드리스/파이프)에서 ask 는 물어볼 수 없다. 예전엔 조용히 전면 자동승인이라
         // 위험했다 → 이제 기본은 '거부'하고, 자동승인은 명시적 opt-in(MOAI_YES=1 등 / permission=auto)만.
+        // 영속 권한 규칙(Claude Code permissions.allow/deny). "항상 허용" 선택 시 여기에 저장된다.
+        var rules = PermissionRules.LoadDefault(settings);
+        void PersistAllow(string pattern) => rules.AddAllow(pattern);
+
         var headlessApprove = HeadlessAutoApprove();
         IPermissionGate baseGate = settings.Permission switch
         {
             PermissionMode.Auto => new AutoApproveGate(),
             PermissionMode.Deny => new DenyAllGate(),
             _ => interactive
-                ? new SpectrePermissionGate()
+                ? new SpectrePermissionGate(persistAllow: PersistAllow)
                 : (headlessApprove ? new AutoApproveGate() : new DenyAllGate()),
         };
         if (!interactive && settings.Permission == PermissionMode.Ask && !headlessApprove)
@@ -129,16 +133,18 @@ public static class AppBootstrap
                 "moai: 비대화형이라 쓰기/실행 툴을 자동 거부합니다. " +
                 "자동 승인하려면 MOAI_YES=1 (또는 설정 permission=auto).");
         }
-        // 확인 전용 프롬프트(원격 실행/파괴적 명령/워크스페이스 밖 쓰기). 대화형에서만; 비대화형이면 거부.
-        // offerAlways:false — 여기서 "항상 허용"을 주면 이후 모든 ssh/rm 이 무확인 통과가 된다.
-        var confirmer = interactive ? new SpectrePermissionGate(offerAlways: false) : (IPermissionGate?)null;
+        // 확인 프롬프트(원격 실행/파괴적 명령/워크스페이스 밖 쓰기). 대화형에서만; 비대화형이면 거부.
+        // "항상 허용"은 명령 prefix 스코프(Bash(ssh moai-ec2))로만 저장되므로 무차별 통과가 되지 않는다.
+        var confirmer = interactive
+            ? new SpectrePermissionGate(persistAllow: PersistAllow)
+            : (IPermissionGate?)null;
 
         // 규칙이 모르는 위험을 맥락으로 판정. 자동 승인이 일어나는 경로에서만 호출된다.
         // MOAI_RISK_CLASSIFIER=0 으로 끌 수 있다(오프라인/지연 민감 환경).
         var classifier = RiskClassifierEnabled() ? new LlmRiskClassifier(model) : null;
 
         IPermissionGate gate = new ModeAwarePermissionGate(
-            state, baseGate, cwd, settings.ConfineToWorkspace, confirmer, classifier);
+            state, baseGate, cwd, settings.ConfineToWorkspace, confirmer, classifier, rules);
 
         var observer = new HarnessToolObserver(settings, checkpoints);
         var engine = new QueryEngine(
@@ -167,7 +173,8 @@ public static class AppBootstrap
             },
             // /usage: 모델별 로컬 토큰 누적 + 로그인 계정/시각.
             new UsageStore(),
-            new AccountInfo(settings.Account, settings.Host ?? settings.BaseUrl, settings.LoginAt, settings.OrgName));
+            new AccountInfo(settings.Account, settings.Host ?? settings.BaseUrl, settings.LoginAt, settings.OrgName),
+            rules);
 
         return new AppRuntime(
             mcp, ctx, toolList, skills.Select(s => s.Name).ToList(), mcpConfigs, providerDesc, settings);

@@ -11,7 +11,7 @@ MoAI Code — OpenClaude(TypeScript 코딩 에이전트 CLI)를 기반으로 한
 
 ## 진행 현황 (요약)
 
-Phase 0의 walking skeleton을 넘어 **Phase 5~7의 대부분 기능이 구현된 상태**입니다.
+**Phase 0~8의 핵심 기능과 하네스·보안 강화가 구현된 상태**입니다.
 세부는 [`PROGRESS.md`](PROGRESS.md) 참고.
 
 | Phase | 내용 | 상태 |
@@ -23,8 +23,9 @@ Phase 0의 walking skeleton을 넘어 **Phase 5~7의 대부분 기능이 구현�
 | 4 | BashTool + `BashSecurity` deny-list | ✅ |
 | 5 | 세션/히스토리/체크포인트/사용량 스토어, 3-tier 설정, 자격증명 파일 스토어 | ✅ |
 | 6 | MCP(stdio) 클라이언트·툴 어댑팅, 스킬·플러그인 로더, 번들 스킬 추출 | ✅ |
-| 7 | Spectre TUI MVU, 슬래시 커맨드, 컴팩션(선제/강제), goal 리앵커, `AgentTool`, Task 툴 | ✅ |
+| 7 | Spectre TUI MVU, 마크다운·붙여넣기, 슬래시 커맨드, 컴팩션·goal 리앵커, `AgentTool`, Task 툴 | ✅ |
 | 8 | System.CommandLine 서브커맨드, 헤드리스 러너, 사내망 프록시, 엔터프라이즈 로그인/MFA | ✅ |
+| 강화 | 하네스 프롬프트·복구 리마인더, 조직 문서검색, 권한 스코프·LLM 위험 분류 | ✅ |
 | ⏭ | Anthropic/Gemini 네이티브, OS 키링 백엔드, 다국어 예고형 감지 확장 | ⏳ |
 
 ## 솔루션 구조
@@ -65,7 +66,7 @@ dotnet run --project src/MoaiCode.Cli -- tools
 dotnet run --project src/MoaiCode.Cli -- skills
 
 # API 키 저장 (~/.moai/credentials.json, unix 0600)
-dotnet run --project src/MoaiCode.Cli -- auth set OPENAI_API_KEY sk-...
+dotnet run --project src/MoaiCode.Cli -- auth set openai sk-...
 
 # 엔터프라이즈 로그인 (호스트는 MOAI_LOGIN_HOST 환경변수로 오버라이드 가능)
 dotnet run --project src/MoaiCode.Cli -- login
@@ -91,10 +92,10 @@ ARM64 Windows는 `./publish-win.sh win-arm64`.
 
 ## 설정
 
-- `~/.moai/settings.json` (사용자) → `<repo>/.moai/settings.json` (프로젝트) → 환경변수 순으로 머지.
-- 주요 키: `Model`, `BaseUrl`, `Permission`(Ask/Auto/Deny), `MaxTurns`,
-  `ContextWindowTokens`, `ConfineToWorkspace`, `RepoMapTokens`, `OutputStyle`,
-  `Account`, `Host`, `LoginAt`.
+- `~/.claude/settings.json` → `~/.moai/settings.json` → `<repo>/.claude/settings.json` → 환경변수 순으로 머지.
+- 주요 키: `model`, `provider`, `baseUrl`, `permission`(`ask`/`auto`/`deny`), `maxTurns`,
+  `contextWindow`, `confineToWorkspace`, `repoMapTokens`, `outputStyle`, `checkpoints`,
+  `lintCommand`, `testCommand`, `account`, `host`, `loginAt`, `orgName`.
 - 자격증명: `~/.moai/credentials.json` (파일 기반. unix 0600. OS 키체인 백엔드는 로드맵).
 
 ## MCP
@@ -104,12 +105,13 @@ ARM64 Windows는 `./publish-win.sh win-arm64`.
 
 ## 슬래시 커맨드 (REPL)
 
-`/clear`, `/resume`, `/model`, `/cost`, `/usage`, `/tools`, `/skills`, `/help` 등.
+`/plan`, `/act`, `/checkpoint`, `/restore`, `/resume`, `/model`, `/usage`, `/init`,
+`/review`, `/security-review`, `/bughunter`, `/simplify`, `/help` 등.
 
 ## 알려진 제약 / 로드맵
 
 - 프로바이더 라우팅: 현재 OpenAI 호환만. Anthropic·Gemini 네이티브 경로는 미구현.
 - 자격증명은 파일 기반. Windows Credential Manager / macOS Keychain / libsecret 백엔드 예정.
 - `LooksLikeAnnouncedAction`(예고형 감지)은 한/영 특화. 다국어 확장 예정.
-- 엔터프라이즈 로그인 호스트는 `MOAI_LOGIN_HOST` 환경변수 또는 `login <host>` 인자로 지정.
+- 엔터프라이즈 로그인 호스트는 `MOAI_LOGIN_HOST` 환경변수 또는 `login --host <host>` 옵션으로 지정.
   (지정하지 않으면 소스 코드의 컴파일 시 기본값이 사용됨.)

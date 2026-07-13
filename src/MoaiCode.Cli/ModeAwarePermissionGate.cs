@@ -16,6 +16,7 @@ public sealed class ModeAwarePermissionGate : IPermissionGate
     private readonly bool _confine;
     private readonly IPermissionGate? _confirmer;
     private readonly IRiskClassifier? _classifier;
+    private readonly IPermissionRuleStore? _rules;
 
     public ModeAwarePermissionGate(
         AgentRuntimeState state,
@@ -23,7 +24,8 @@ public sealed class ModeAwarePermissionGate : IPermissionGate
         string? workspace = null,
         bool confine = false,
         IPermissionGate? confirmer = null,
-        IRiskClassifier? classifier = null)
+        IRiskClassifier? classifier = null,
+        IPermissionRuleStore? rules = null)
     {
         _state = state;
         _inner = inner;
@@ -31,6 +33,7 @@ public sealed class ModeAwarePermissionGate : IPermissionGate
         _confine = confine;
         _confirmer = confirmer;
         _classifier = classifier;
+        _rules = rules;
     }
 
     public async ValueTask<bool> AllowAsync(ITool tool, ToolUseBlock call, CancellationToken ct)
@@ -39,6 +42,18 @@ public sealed class ModeAwarePermissionGate : IPermissionGate
         if (_state.Mode == AgentMode.Plan && !tool.IsReadOnly)
         {
             return false;
+        }
+
+        // 영속 규칙(Claude Code permissions.allow/deny). deny 는 하드 차단, allow 는 확인/분류기 모두 건너뛴다.
+        // allow 가 확인 티어보다 먼저 오는 것이 핵심 — 신뢰한 ssh moai-ec2 를 매번 묻지 않게 한다.
+        // (단 rm -rf / 류의 파괴적 하드 차단은 BashTool.BashSecurity.Check 가 실행 시점에 여전히 막는다.)
+        switch (_rules?.Evaluate(tool, call))
+        {
+            case RuleMatch.Deny:
+                Console.Error.WriteLine("moai: 거부됨 — 권한 규칙(deny)");
+                return false;
+            case RuleMatch.Allow:
+                return true;
         }
 
         // 워크스페이스 밖 절대경로 Write/Edit: 권한 모드(auto/auto-act)·기본 게이트와 무관하게 반드시 확인.
