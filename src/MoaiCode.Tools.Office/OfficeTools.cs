@@ -16,8 +16,13 @@ public static class OfficeTools
             return Array.Empty<ITool>();
         }
 
-        // TODO(Phase 1): PowerPoint/Excel Inspect/Edit 툴 등록.
-        //   COM 연결 실패(Office 미설치/GPO 차단)는 여기서 잡아 빈 목록 반환.
-        return Array.Empty<ITool>();
+        // COM 은 전용 STA 스레드에서 직렬화한다. 디스패처는 세션 수명 동안 유지한다.
+        // 실제 COM 연결은 툴 실행 시점에 시도하고, 실패(Office 미설치/GPO 차단)는 툴이 처리한다.
+        var sta = new StaDispatcher();
+        return new ITool[]
+        {
+            new PowerPointInspectTool(sta),
+            // TODO(Phase 2): PowerPointEdit/Image/Slide, Excel Inspect/Edit/Chart/…
+        };
     }
 }
