@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    닫힌 Office 문서(DOCX/XLSX/PPTX) 생성·검증. Open XML SDK 기반, 전 플랫폼(net10.0).
+    COM(열린 문서 실시간)과 역할 분리 — 설계: PLAN_OFFICE_TOOLS.md §3, docu_work_interaction.md.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\MoaiCode.Core\MoaiCode.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="DocumentFormat.OpenXml" />
+    <PackageReference Include="System.IO.Packaging" />
+  </ItemGroup>
+</Project>

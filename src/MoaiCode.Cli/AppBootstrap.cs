@@ -53,6 +53,12 @@ public static class AppBootstrap
 
         var toolList = new List<ITool>(ToolRegistry.BuiltIn) { new BashTool() };
 
+        // 닫힌 Office 문서 생성/검증(Open XML) — 전 플랫폼.
+        toolList.Add(new MoaiCode.Tools.OpenXml.DocxCreateTool());
+        toolList.Add(new MoaiCode.Tools.OpenXml.XlsxCreateTool());
+        toolList.Add(new MoaiCode.Tools.OpenXml.PptxCreateTool());
+        toolList.Add(new MoaiCode.Tools.OpenXml.OfficeDocInspectTool());
+
 #if WINDOWS
         // Windows 빌드(net10.0-windows)에서만 Office COM 툴 등록. Office 미설치/GPO 차단 시 빈 목록.
         toolList.AddRange(MoaiCode.Tools.Office.OfficeTools.CreateIfAvailable());

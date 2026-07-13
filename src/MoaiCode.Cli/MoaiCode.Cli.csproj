@@ -2,7 +2,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <AssemblyName>moai</AssemblyName>
-    <Version>1.4.1</Version>
+    <Version>1.5.0</Version>
     <!-- 멀티타깃: win-* RID 는 net10.0-windows(Office COM 툴 포함), 나머지는 net10.0. -->
     <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
     <!-- 크로스 게시 대상 (Linux에서 win-x64 self-contained exe 생성 가능) -->
@@ -24,6 +24,8 @@
     <ProjectReference Include="..\MoaiCode.Providers\MoaiCode.Providers.csproj" />
     <ProjectReference Include="..\MoaiCode.Tools\MoaiCode.Tools.csproj" />
     <ProjectReference Include="..\MoaiCode.Tools.Bash\MoaiCode.Tools.Bash.csproj" />
+    <!-- 닫힌 Office 문서 생성/검증(Open XML) — 전 플랫폼. -->
+    <ProjectReference Include="..\MoaiCode.Tools.OpenXml\MoaiCode.Tools.OpenXml.csproj" />
     <ProjectReference Include="..\MoaiCode.Mcp\MoaiCode.Mcp.csproj" />
     <ProjectReference Include="..\MoaiCode.Config\MoaiCode.Config.csproj" />
     <ProjectReference Include="..\MoaiCode.Persistence\MoaiCode.Persistence.csproj" />
