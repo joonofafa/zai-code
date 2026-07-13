@@ -53,6 +53,11 @@ public static class AppBootstrap
 
         var toolList = new List<ITool>(ToolRegistry.BuiltIn) { new BashTool() };
 
+#if WINDOWS
+        // Windows 빌드(net10.0-windows)에서만 Office COM 툴 등록. Office 미설치/GPO 차단 시 빈 목록.
+        toolList.AddRange(MoaiCode.Tools.Office.OfficeTools.CreateIfAvailable());
+#endif
+
         // 3) MCP 서버
         var mcpConfigs = McpConfigLoader.Discover(cwd);
         var mcp = new McpManager();

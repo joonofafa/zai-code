@@ -3,9 +3,15 @@
     <OutputType>Exe</OutputType>
     <AssemblyName>moai</AssemblyName>
     <Version>1.4.1</Version>
+    <!-- 멀티타깃: win-* RID 는 net10.0-windows(Office COM 툴 포함), 나머지는 net10.0. -->
+    <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
     <!-- 크로스 게시 대상 (Linux에서 win-x64 self-contained exe 생성 가능) -->
     <RuntimeIdentifiers>win-x64;win-x86;win-arm64;linux-x64;linux-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
   </PropertyGroup>
+  <!-- Office COM 툴은 Windows 타깃일 때만 참조 (linux/osx 게시가 깨지지 않도록). -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
+    <ProjectReference Include="..\MoaiCode.Tools.Office\MoaiCode.Tools.Office.csproj" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="System.CommandLine" />
   </ItemGroup>

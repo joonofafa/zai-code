@@ -25,9 +25,11 @@ fail=0
 for RID in "${RIDS[@]}"; do
   OUT="dist/${RID}"
   BIN="moai"; [[ "$RID" == win-* ]] && BIN="moai.exe"
-  echo "──── ${RID} 게시 중… ────"
+  # Cli 는 멀티타깃(net10.0;net10.0-windows) — win-* 는 Windows 타깃(Office COM 툴 포함), 나머지는 net10.0.
+  TFM="net10.0"; [[ "$RID" == win-* ]] && TFM="net10.0-windows"
+  echo "──── ${RID} (${TFM}) 게시 중… ────"
   rm -rf "${OUT}"
-  if dotnet publish src/MoaiCode.Cli/MoaiCode.Cli.csproj -r "${RID}" "${COMMON[@]}" -o "${OUT}" -v q; then
+  if dotnet publish src/MoaiCode.Cli/MoaiCode.Cli.csproj -r "${RID}" -f "${TFM}" "${COMMON[@]}" -o "${OUT}" -v q; then
     ( cd "${OUT}" && sha256sum "${BIN}" > "${BIN}.sha256" )
     echo "  ✅ ${OUT}/${BIN}  ($(du -h "${OUT}/${BIN}" | cut -f1))  sha256=$(cut -c1-16 "${OUT}/${BIN}.sha256")…"
   else

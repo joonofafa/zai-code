@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Windows 전용 Office COM 툴(PowerPoint/Excel 실시간 편집). net10.0-windows 타깃.
+    MoaiCode.Cli 는 net10.0-windows 타깃일 때만 이 프로젝트를 참조한다(크로스 게시 격리).
+    현재는 골격 — COM Interop 참조/구현은 Phase 0 스파이크(Windows) 이후 추가.
+    설계: PLAN_OFFICE_TOOLS.md
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MoaiCode.Core\MoaiCode.Core.csproj" />
+  </ItemGroup>
+</Project>
