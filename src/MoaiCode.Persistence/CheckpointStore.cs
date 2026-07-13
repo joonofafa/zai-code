@@ -76,14 +76,30 @@ public sealed class CheckpointStore
         return true;
     }
 
+    private static TimeSpan ResolveTimeout()
+    {
+        var v = Environment.GetEnvironmentVariable("MOAI_CHECKPOINT_TIMEOUT");
+        return int.TryParse(v, out var s) && s > 0
+            ? TimeSpan.FromSeconds(s)
+            : TimeSpan.FromSeconds(20);
+    }
+
     private readonly string _workingDirectory;
     private readonly string _gitDir;
     private readonly bool _enabled;
+    // git 체크포인트 작업 상한. 거대한 워크스페이스에서 `git add -A`가 hang 되어 턴이 멈추는 것을 막는다.
+    private readonly TimeSpan _gitTimeout;
+    private readonly string _gitPath;
+    private bool _timedOut; // 한 번 타임아웃되면 이후 체크포인트를 건너뛴다(매 툴마다 20초 대기 방지).
 
-    public CheckpointStore(string workingDirectory, string? baseDir = null)
+    // gitTimeout/gitPath 는 테스트 주입용(기본: env MOAI_CHECKPOINT_TIMEOUT 또는 20초, "git").
+    public CheckpointStore(string workingDirectory, string? baseDir = null,
+        TimeSpan? gitTimeout = null, string? gitPath = null)
     {
         _workingDirectory = Path.GetFullPath(workingDirectory);
         _enabled = IsCheckpointable(_workingDirectory);
+        _gitTimeout = gitTimeout ?? ResolveTimeout();
+        _gitPath = gitPath ?? "git";
         var root = baseDir ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             ".moai", "checkpoints");
@@ -95,24 +111,36 @@ public sealed class CheckpointStore
 
     public async Task<string> CreateAsync(string subject, CancellationToken ct = default)
     {
-        // 홈/루트 등 위험한 워크스페이스에서는 체크포인트를 만들지 않는다(디스크 폭주 방지).
-        if (!_enabled)
+        // 홈/루트 등 위험한 워크스페이스거나(디스크 폭주 방지), 이미 타임아웃돼 비활성이면 만들지 않는다.
+        if (!_enabled || _timedOut)
         {
             return string.Empty;
         }
 
-        await EnsureInitializedAsync(ct).ConfigureAwait(false);
-        await GitAsync("add -A .", ct).ConfigureAwait(false);
-
-        var status = await GitAsync("status --porcelain", ct).ConfigureAwait(false);
-        if (string.IsNullOrWhiteSpace(status.Output))
+        try
         {
+            await EnsureInitializedAsync(ct).ConfigureAwait(false);
+            await GitAsync("add -A .", ct).ConfigureAwait(false);
+
+            var status = await GitAsync("status --porcelain", ct).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(status.Output))
+            {
+                return await HeadAsync(ct).ConfigureAwait(false);
+            }
+
+            var msg = SanitizeSubject(subject);
+            await RunGitAsync(new[] { "commit", "-m", msg }, ct).ConfigureAwait(false);
             return await HeadAsync(ct).ConfigureAwait(false);
         }
-
-        var msg = SanitizeSubject(subject);
-        await RunGitAsync(new[] { "commit", "-m", msg }, ct).ConfigureAwait(false);
-        return await HeadAsync(ct).ConfigureAwait(false);
+        catch (TimeoutException)
+        {
+            // 워크스페이스가 너무 커서 git 이 상한을 넘겼다 → 이 세션에서 체크포인트를 끈다.
+            _timedOut = true;
+            Console.Error.WriteLine(
+                $"moai: 체크포인트가 {_gitTimeout.TotalSeconds:0}초를 초과해 이 세션에서 비활성화합니다 " +
+                "(워크스페이스가 매우 큼). 끄려면 MOAI_CHECKPOINTS=0.");
+            return string.Empty;
+        }
     }
 
     public async Task<IReadOnlyList<CheckpointInfo>> ListAsync(CancellationToken ct = default)
@@ -215,7 +243,7 @@ public sealed class CheckpointStore
 
     private async Task<(int ExitCode, string Output)> RunGitAsync(IReadOnlyList<string> argv, CancellationToken ct)
     {
-        var psi = new ProcessStartInfo("git")
+        var psi = new ProcessStartInfo(_gitPath)
         {
             WorkingDirectory = _workingDirectory,
             RedirectStandardOutput = true,
@@ -231,10 +259,26 @@ public sealed class CheckpointStore
 
         using var p = Process.Start(psi) ?? throw new InvalidOperationException("failed to start git");
 
-        // stdout/stderr를 동시에 읽어 파이프 버퍼가 차서 생기는 교착을 막는다.
-        var stdoutTask = p.StandardOutput.ReadToEndAsync(ct);
-        var stderrTask = p.StandardError.ReadToEndAsync(ct);
-        await p.WaitForExitAsync(ct).ConfigureAwait(false);
+        // 상한을 건다: 거대한 워크스페이스에서 git 이 hang 되어 턴이 무한 정지하는 것을 막는다.
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(_gitTimeout);
+
+        // stdout/stderr를 동시에 읽어 파이프 버퍼가 차서 생기는 교착을 막는다. 읽기는 취소 토큰에
+        // 묶지 않는다 — 프로세스를 죽이면 스트림이 닫혀 자연히 완료된다(버려진 읽기가 faults 되지 않도록).
+        var stdoutTask = p.StandardOutput.ReadToEndAsync(CancellationToken.None);
+        var stderrTask = p.StandardError.ReadToEndAsync(CancellationToken.None);
+
+        try
+        {
+            await p.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            TryKill(p);
+            throw new TimeoutException(
+                $"git checkpoint 작업이 {_gitTimeout.TotalSeconds:0}초를 초과했습니다: git {string.Join(' ', argv)}");
+        }
+
         var stdout = await stdoutTask.ConfigureAwait(false);
         var stderr = await stderrTask.ConfigureAwait(false);
         var output = string.IsNullOrWhiteSpace(stdout) ? stderr : stdout;
@@ -244,6 +288,21 @@ public sealed class CheckpointStore
         }
 
         return (p.ExitCode, output);
+    }
+
+    private static void TryKill(Process p)
+    {
+        try
+        {
+            if (!p.HasExited)
+            {
+                p.Kill(entireProcessTree: true);
+            }
+        }
+        catch
+        {
+            // best-effort — 이미 종료됐거나 권한 문제. 방치해도 상한 후 OS가 정리.
+        }
     }
 
     private static CheckpointInfo? ParseLogLine(string line)

@@ -152,13 +152,22 @@ public sealed class WebSearchTool : ITool
         client.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key);
 
-        var payload = new
+        // language/country 는 사용자가 명시했을 때만 보낸다. 예전엔 ko/KR 를 강제해 영어 기술 질의가
+        // 한국 소스(namu.wiki, ko.wikipedia)로 쏠렸다 → 미지정 시 서버(SearXNG)가 관련성으로 판단.
+        var payload = new Dictionary<string, object>(StringComparer.Ordinal)
         {
-            query = inp.Query,
-            limit = inp.Limit ?? 10,
-            language = string.IsNullOrWhiteSpace(inp.Language) ? "ko" : inp.Language,
-            country = string.IsNullOrWhiteSpace(inp.Country) ? "KR" : inp.Country,
+            ["query"] = inp.Query!,
+            ["limit"] = inp.Limit ?? 10,
         };
+        if (!string.IsNullOrWhiteSpace(inp.Language))
+        {
+            payload["language"] = inp.Language;
+        }
+
+        if (!string.IsNullOrWhiteSpace(inp.Country))
+        {
+            payload["country"] = inp.Country;
+        }
 
         using var resp = await client.PostAsJsonAsync(url, payload, ct).ConfigureAwait(false);
         if (resp.StatusCode == HttpStatusCode.NotFound)
