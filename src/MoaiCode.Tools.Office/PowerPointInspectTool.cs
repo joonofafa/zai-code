@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using System.Runtime.Versioning;
 using System.Text.Json;
 using MoaiCode.Core.Tools;
 
@@ -9,7 +8,6 @@ namespace MoaiCode.Tools.Office;
 /// 실행 중인 PowerPoint 의 활성 프레젠테이션·슬라이드·도형을 조회한다(읽기 전용).
 /// LLM 이 편집 전에 현재 상태를 읽도록 조회와 수정을 분리한다(원본 설계 §툴 설계).
 /// </summary>
-[SupportedOSPlatform("windows")]
 public sealed class PowerPointInspectTool : ITool
 {
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -48,6 +46,12 @@ public sealed class PowerPointInspectTool : ITool
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            yield return new ToolOutput("PowerPointInspect: Windows 전용 기능입니다.", IsError: true);
+            yield break;
+        }
+
         var maxSlides = input.ValueKind == JsonValueKind.Object
                         && input.TryGetProperty("max_slides", out var m)
                         && m.ValueKind == JsonValueKind.Number
