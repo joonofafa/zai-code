@@ -88,6 +88,24 @@ public static class BashSecurity
         (Rx(@"\btruncate\b[^|;&]*-s\s*0\b"), "파일 내용 비우기(truncate -s 0)"),
         // `zellij delete-all-sessions`, `docker container prune-all` 등 일괄 파괴 서브커맨드.
         (Rx(@"\b(delete|destroy|purge|prune|wipe|remove)[-_]?all\b"), "일괄 삭제 서브커맨드"),
+
+        // 워크스페이스 밖 상태를 바꾸는 글로벌/시스템 설치 — 로컬 프로젝트 설치(npm install 등)는 제외.
+        (Rx(@"\bnpm\s+(install|i|add|update|up)\b[^|;&]*\s(-g|--global)\b"), "npm 글로벌 설치(-g)"),
+        (Rx(@"\bpnpm\s+(add|install|update|up)\b[^|;&]*\s(-g|--global)\b"), "pnpm 글로벌 설치(-g)"),
+        (Rx(@"\byarn\s+global\s+(add|upgrade)\b"), "yarn 글로벌 설치"),
+        (Rx(@"\bdotnet\s+tool\s+(install|update)\b[^|;&]*\s(-g|--global)\b"), "dotnet 글로벌 툴 설치"),
+        (Rx(@"\bpipx\s+install\b"), "pipx 글로벌 설치"),
+        (Rx(@"\bpip3?\s+install\b[^|;&]*\s--user\b"), "pip --user 설치(사용자 전역)"),
+        (Rx(@"\b(cargo|gem)\s+install\b"), "cargo/gem 글로벌 설치"),
+        (Rx(@"\bgo\s+install\b"), "go install(글로벌 바이너리)"),
+        // 시스템 패키지 관리자(대개 sudo 필요, 시스템 전역 변경).
+        (Rx(@"\bapt(-get)?\s+(install|remove|purge|upgrade|full-upgrade)\b"), "apt 시스템 패키지 변경"),
+        (Rx(@"\b(dnf|yum|zypper)\s+(install|remove|erase|update|upgrade)\b"), "시스템 패키지 관리자 변경"),
+        (Rx(@"\bpacman\s+-S\b"), "pacman 시스템 패키지 설치"),
+        (Rx(@"\bapk\s+(add|del)\b"), "apk 시스템 패키지 변경"),
+        (Rx(@"\bbrew\s+(install|uninstall|upgrade)\b"), "brew 패키지 변경"),
+        (Rx(@"\bsnap\s+(install|remove)\b"), "snap 패키지 변경"),
+        (Rx(@"\b(choco|winget|scoop)\s+(install|uninstall|upgrade)\b"), "Windows 패키지 관리자 변경"),
     };
 
     /// <summary>
