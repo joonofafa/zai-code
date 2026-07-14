@@ -135,5 +135,5 @@ top-1(그리고 흔히 top-2)이 항상 정확히 `1.00`. 스코어가 **변별�
 
 ## 참고
 - 이 트레이스는 moai-code CLI 가 프로덕션(`vip.bccard.ai`)에 보낸 실제 요청을 기록한 것.
-- 요청/응답 계약은 `PLAN_OPENMOAI_DOCS.md` / `SERVER_TASK_KNOWLEDGE_SEARCH.md` 참고.
+- 요청/응답 계약은 `SERVER_TASK_KNOWLEDGE_SEARCH.md` 참고.
 - 클라이언트(CLI)는 서버가 준 순위를 그대로 렌더할 뿐, 랭킹에 개입하지 않음 — 순수 서버측 문제.

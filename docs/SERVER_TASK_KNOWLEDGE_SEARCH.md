@@ -77,5 +77,3 @@ Content-Type: application/json
 - [ ] `scope=organization` 은 요청자가 소속된 조직 문서만, `scope=personal` 은 요청자 본인 private
       문서만 반환(서버측 접근 제어).
 - [ ] 응답이 위 계약 형식과 일치.
-
-상세 설계는 `PLAN_OPENMOAI_DOCS.md` 참고.

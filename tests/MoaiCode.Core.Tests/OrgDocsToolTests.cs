@@ -7,7 +7,7 @@ using Xunit;
 
 namespace MoaiCode.Core.Tests;
 
-// OrgDocs(조직 문서함 검색) 툴: docs/PLAN_OPENMOAI_DOCS.md §3/§4 계약 준수 검증.
+// OrgDocs(조직 문서함 검색) 툴: docs/SERVER_TASK_KNOWLEDGE_SEARCH.md 요청/응답 계약 준수 검증.
 // 전역 env(OPENAI_BASE_URL/KEY)를 건드리므로 WebSearch 테스트와 직렬화한다(포트 덮어쓰기 경쟁 방지).
 [Collection("EnvMutating")]
 public class OrgDocsToolTests
