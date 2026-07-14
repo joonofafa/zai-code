@@ -15,8 +15,10 @@ public sealed class XlsxCreateTool : ITool
     public string Name => "XlsxCreate";
 
     public string Description => """
-        Creates a new Excel workbook (.xlsx) with one or more sheets of rows. Cell values that
-        parse as numbers are written as numbers; others as text. No Excel install needed (Open XML).
+        Creates a new Excel workbook (.xlsx) with one or more sheets of rows, using the built-in
+        Open XML writer — no dependencies, no Excel install. Cell values that parse as numbers are
+        written as numbers; others as text. ALWAYS use this to produce an .xlsx file. Do NOT install
+        packages (npm 'exceljs', openpyxl, etc.) or write scripts to build spreadsheets.
         """;
 
     public bool IsReadOnly => false;

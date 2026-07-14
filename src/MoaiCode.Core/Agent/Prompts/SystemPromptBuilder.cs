@@ -143,6 +143,10 @@ public static class SystemPromptBuilder
         if (has.Contains("Write")) dedicated.Add("To create files use Write instead of cat heredoc or echo redirection");
         if (has.Contains("Glob")) dedicated.Add("To search for files use Glob instead of find or ls");
         if (has.Contains("Grep")) dedicated.Add("To search file contents use Grep instead of grep or rg");
+        if (has.Contains("DocxCreate") || has.Contains("XlsxCreate") || has.Contains("PptxCreate"))
+        {
+            dedicated.Add("To CREATE an Office document (.docx/.xlsx/.pptx) use DocxCreate/XlsxCreate/PptxCreate — never install packages (python-docx, npm docx, exceljs, python-pptx, pptxgenjs) or write scripts to generate the file, even if the user mentions such a library. Exception: if the user explicitly asks you to WRITE CODE or a script that generates documents (not to produce the document itself), write the code instead.");
+        }
 
         var lines = new List<string> { "# Using your tools" };
         if (has.Contains("Bash") && dedicated.Count > 0)

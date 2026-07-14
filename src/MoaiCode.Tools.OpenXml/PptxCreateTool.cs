@@ -19,9 +19,10 @@ public sealed class PptxCreateTool : ITool
     public string Name => "PptxCreate";
 
     public string Description => """
-        Creates a new PowerPoint presentation (.pptx) from slides (each a title + bullet lines).
-        No PowerPoint install needed (Open XML). For editing an OPEN presentation on Windows use
-        the PowerPointEdit COM tool instead.
+        Creates a new PowerPoint presentation (.pptx) from slides (each a title + bullet lines)
+        using the built-in Open XML writer — no dependencies, no PowerPoint install. ALWAYS use this
+        to produce a .pptx file. Do NOT install packages (npm 'pptxgenjs', python-pptx, etc.) or
+        write scripts to build presentations. For editing an OPEN presentation on Windows, use PowerPointEdit.
         """;
 
     public bool IsReadOnly => false;

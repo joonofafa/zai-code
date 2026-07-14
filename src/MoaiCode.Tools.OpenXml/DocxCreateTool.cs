@@ -14,9 +14,10 @@ public sealed class DocxCreateTool : ITool
     public string Name => "DocxCreate";
 
     public string Description => """
-        Creates a new Word document (.docx) with a title and paragraphs. No Word install needed
-        (Open XML). Use for generating closed documents; for editing an OPEN document on Windows
-        use the PowerPoint/Excel COM tools instead.
+        Creates a new Word document (.docx) with a title and paragraphs using the built-in Open XML
+        writer — no dependencies, no Word install. ALWAYS use this to produce a .docx file. Do NOT
+        install packages (npm 'docx', python-docx, etc.) or write Bash/Node/Python scripts to build
+        Word files — this tool already does it. For editing an OPEN document on Windows, use the COM tools.
         """;
 
     public bool IsReadOnly => false;
