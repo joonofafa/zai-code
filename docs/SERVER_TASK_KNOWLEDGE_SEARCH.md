@@ -1,5 +1,13 @@
 # 서버 작업 요청: `/api/v1/knowledge/search` 를 API-키 인증 체인으로 이동
 
+> **상태: ✅ 해결됨 (2026-07-14 확인).** 서버팀이 이 라우트를 `validateApiKey` 체인으로 이동
+> (세션/CSRF 겹 제거 + endpoint-policy `/v1/knowledge`=chat 매핑). 실측 확인:
+> - 미인증 요청 → `/api/v1/search` 와 동일한 401 Bearer 응답 (CSRF 아님).
+> - moai-code `OrgDocs` 툴 엔드투엔드 성공: API 키로 개인(`personal`)·조직(`organization`)
+>   문서가 계약대로(`results[]`: title/snippet/scope/score) 반환됨.
+>
+> 아래는 수정 전 진단 기록(참고용 보존).
+
 ## 한 줄 요약
 `POST /api/v1/knowledge/search` 가 **브라우저용(세션 쿠키 + CSRF) 미들웨어 스택**에 얹혀 있어,
 moai-code CLI(Bearer API-키)로는 접근이 불가능합니다. `/api/v1/chat/completions`,

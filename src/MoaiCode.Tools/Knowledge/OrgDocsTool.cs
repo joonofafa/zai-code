@@ -13,7 +13,7 @@ namespace MoaiCode.Tools.Knowledge;
 /// open-moai 조직 문서함(개인 private + 소속 조직 문서) 하이브리드 RAG 검색.
 /// 로그인 시 저장된 baseUrl(OPENAI_BASE_URL) + API 키(OPENAI_API_KEY)로
 /// POST {baseUrl}/knowledge/search 를 호출한다(별도 키 불필요 — 채팅과 동일 키).
-/// 계약: PLAN_OPENMOAI_DOCS.md §3/§4. 서버 엔드포인트 미배포(404) 시 친절히 안내.
+/// 계약: docs/PLAN_OPENMOAI_DOCS.md §3/§4. 서버 엔드포인트가 없을 때(404) 친절히 안내.
 /// 결과는 외부 데이터라 UntrustedToolOutput 경계로 감싸 주입(프롬프트 인젝션 방어).
 /// </summary>
 public sealed class OrgDocsTool : ITool
@@ -109,7 +109,7 @@ public sealed class OrgDocsTool : ITool
         catch (EndpointMissingException)
         {
             error = "OrgDocs: 이 서버에 문서함 검색 엔드포인트(/api/v1/knowledge/search)가 없습니다. " +
-                    "open-moai 측에 배포가 필요합니다 (PLAN_OPENMOAI_DOCS.md 참고).";
+                    "open-moai 측에 배포가 필요합니다 (docs/PLAN_OPENMOAI_DOCS.md 참고).";
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
