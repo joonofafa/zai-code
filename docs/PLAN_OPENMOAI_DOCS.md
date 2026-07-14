@@ -1,7 +1,11 @@
 # 작업지시서 — open-moai 조직 문서함(Knowledge/RAG) 검색을 moai-code에서 사용
 
+> **상태: ✅ 완료 (2026-07-14).** 서버가 `/api/v1/knowledge/search` 를 API-키 체인으로 배포했고
+> (`SERVER_TASK_KNOWLEDGE_SEARCH.md`), RAG 스코어링도 수정됨(`SERVER_TASK_RAG_QUALITY.md`).
+> moai-code `OrgDocs` 툴 엔드투엔드 동작 확인. **이 문서는 구현 완료된 설계 기록(참고용 보존).**
+
 > 목표: moai-code(외부 코딩 에이전트)가 **로그인한 사용자의 개인 문서 + 소속 조직 문서함**을
-> API 키로 검색해 코딩 컨텍스트로 활용한다. 로그인·모델선택은 이미 연동됨(`PLAN_OPENMOAI_LOGIN.md`).
+> API 키로 검색해 코딩 컨텍스트로 활용한다. 로그인·모델선택은 이미 연동됨(`moai login`).
 >
 > 대상: **open-moai 서버 팀**. 클라이언트(moai-code)의 `OrgDocs` 툴과 계약 테스트는 구현 완료됐으며,
 > 서버는 아래 §3~§4 계약에 맞는 `/api/v1/knowledge/search` 배포가 필요하다.
@@ -41,7 +45,7 @@
 
 #### 2-2. 권한 매핑 (`lib/openai-api/endpoint-policy.ts`)
 `/v1/search`와 동일하게 **`chat` 권한**으로 매핑한다. CLI 키의 기본 권한이 `['chat','models']`
-(→ `PLAN_OPENMOAI_LOGIN.md`)이므로 별도 권한 부여 없이 그대로 통과한다.
+(로그인 시 발급)이므로 별도 권한 부여 없이 그대로 통과한다.
 
 ```ts
 // endpoint-policy.ts 규칙 배열에 추가 (fallback 앞, '/v1/chat'보다 구체적 패턴 우선)
