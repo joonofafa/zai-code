@@ -75,6 +75,34 @@ public class SettingsLoaderTests
         var baseline = Settings.Default with { Model = "x" };
         Assert.Equal("x", SettingsLoader.ApplyJson(baseline, "{ not json").Model);
     }
+
+    [Fact]
+    public void Default_max_turns_is_25()
+    {
+        // 다단계 작업(검색 많은 모델)이 완주하도록 상향. 12는 마지막 쓰기 단계 전에 소진됐다.
+        Assert.Equal(25, Settings.Default.MaxTurns);
+    }
+
+    [Fact]
+    public void Env_MOAI_MAX_TURNS_overrides()
+    {
+        var prev = Environment.GetEnvironmentVariable("MOAI_MAX_TURNS");
+        try
+        {
+            Environment.SetEnvironmentVariable("MOAI_MAX_TURNS", "40");
+            Assert.Equal(40, SettingsLoader.ApplyEnv(Settings.Default).MaxTurns);
+
+            Environment.SetEnvironmentVariable("MOAI_MAX_TURNS", "0"); // 무효 → 기본 유지
+            Assert.Equal(25, SettingsLoader.ApplyEnv(Settings.Default).MaxTurns);
+
+            Environment.SetEnvironmentVariable("MOAI_MAX_TURNS", "abc"); // 파싱 실패 → 기본 유지
+            Assert.Equal(25, SettingsLoader.ApplyEnv(Settings.Default).MaxTurns);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("MOAI_MAX_TURNS", prev);
+        }
+    }
 }
 
 public class CredentialStoreTests : IDisposable

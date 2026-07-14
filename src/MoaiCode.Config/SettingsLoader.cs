@@ -108,6 +108,7 @@ public static class SettingsLoader
         var autoTest = ParseBool(Environment.GetEnvironmentVariable("MOAI_AUTO_TEST"));
         var checkpoints = ParseBool(Environment.GetEnvironmentVariable("MOAI_CHECKPOINTS"));
         var confine = ParseBool(Environment.GetEnvironmentVariable("MOAI_CONFINE_WORKSPACE"));
+        var maxTurns = ParseInt(Environment.GetEnvironmentVariable("MOAI_MAX_TURNS"));
 
         return baseline with
         {
@@ -121,6 +122,7 @@ public static class SettingsLoader
             AutoTest = autoTest ?? baseline.AutoTest,
             Checkpoints = checkpoints ?? baseline.Checkpoints,
             ConfineToWorkspace = confine ?? baseline.ConfineToWorkspace,
+            MaxTurns = maxTurns ?? baseline.MaxTurns,
         };
     }
 
@@ -245,4 +247,7 @@ public static class SettingsLoader
         "0" or "false" or "no" or "off" => false,
         _ => null,
     };
+
+    private static int? ParseInt(string? value) =>
+        int.TryParse(value, out var n) && n > 0 ? n : null;
 }

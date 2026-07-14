@@ -37,7 +37,9 @@ public sealed record Settings
     /// <summary>영속 권한 거부 규칙(permissions.deny). deny 가 allow 를 이긴다.</summary>
     public IReadOnlyList<string> DenyRules { get; init; } = Array.Empty<string>();
 
-    public int MaxTurns { get; init; } = 12;
+    // 다단계 에이전트 작업(문서 검색→요약→생성 등)을 완주하기 충분한 기본값. 검색이 많은 모델은
+    // 12로는 툴턴 예산이 모자라 마지막 쓰기 단계 전에 소진된다. MOAI_MAX_TURNS 로 조정 가능.
+    public int MaxTurns { get; init; } = 25;
     public string? OutputStyle { get; init; }
     public string? LintCommand { get; init; }
     public string? TestCommand { get; init; }
