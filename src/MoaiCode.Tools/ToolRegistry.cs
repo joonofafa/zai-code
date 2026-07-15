@@ -22,5 +22,7 @@ public static class ToolRegistry
         new WebFetchTool(),
         new WebSearchTool(),
         new OrgDocsTool(),
+        new OrgDatasListTool(),
+        new OrgDatasTool(),
     };
 }
