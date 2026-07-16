@@ -1,0 +1,184 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Runtime.CompilerServices;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Web;
+using MoaiCode.Core.Agent.Prompts;
+using MoaiCode.Core.Tools;
+
+namespace MoaiCode.Tools.Knowledge;
+
+/// <summary>
+/// 조직 문서함의 업로드 문서 목록을 조회한다(브라우징). 의미검색은 OrgDocs, 목록은 이 툴.
+/// 서버 계약상 orgId 가 필수다(open-moai/docs/moai-code-knowledge-api.md §2).
+/// 계약: GET {baseUrl}/knowledge?orgId=&lt;id&gt;&amp;search=&lt;term&gt;.
+/// </summary>
+public sealed class OrgDocsListTool : ITool
+{
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
+
+    public string Name => "OrgDocsList";
+
+    public string Description => """
+        Lists the uploaded documents in an organization's 문서함 (title, filename, type, size,
+        visibility, processing status). This is BROWSING, not search — for semantic search use OrgDocs.
+        Requires orgId (the organization id). If you don't know the orgId, run an OrgDocs search first:
+        each result's `source` looks like `org_docs_<orgId>`. Optional `search` filters by title/filename.
+        """;
+
+    public bool IsReadOnly => true;
+    public bool IsConcurrencySafe => true;
+
+    public JsonElement InputSchema { get; } = ToolSchema.Parse(
+        """
+        {
+          "type": "object",
+          "properties": {
+            "orgId": { "type": "string", "description": "Organization id (required)" },
+            "search": { "type": "string", "description": "Filter by title/filename substring (optional)" }
+          },
+          "required": ["orgId"]
+        }
+        """);
+
+    private sealed record Input(
+        [property: JsonPropertyName("orgId")] string? OrgId,
+        [property: JsonPropertyName("search")] string? Search);
+
+    private sealed record DocItem(
+        [property: JsonPropertyName("id")] JsonElement Id,
+        [property: JsonPropertyName("title")] string? Title,
+        [property: JsonPropertyName("filename")] string? Filename,
+        [property: JsonPropertyName("fileType")] string? FileType,
+        [property: JsonPropertyName("fileSize")] long? FileSize,
+        [property: JsonPropertyName("visibility")] string? Visibility,
+        [property: JsonPropertyName("processingStatus")] string? ProcessingStatus,
+        [property: JsonPropertyName("ragEnabled")] bool? RagEnabled);
+
+    private sealed record ListResponse(
+        [property: JsonPropertyName("organizationId")] string? OrganizationId,
+        [property: JsonPropertyName("items")] List<DocItem>? Items,
+        [property: JsonPropertyName("count")] int? Count);
+
+    public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
+        JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
+    {
+        var inp = input.Deserialize<Input>();
+        if (inp is null || string.IsNullOrWhiteSpace(inp.OrgId))
+        {
+            yield return new ToolOutput(
+                "OrgDocsList: 'orgId' 가 필요합니다. 모르면 OrgDocs 로 먼저 검색해 결과의 " +
+                "source(org_docs_<id>)에서 얻거나 사용자에게 조직 ID 를 확인하세요.", IsError: true);
+            yield break;
+        }
+
+        var baseUrl = Environment.GetEnvironmentVariable("OPENAI_BASE_URL");
+        var key = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+        if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(key))
+        {
+            yield return new ToolOutput(
+                "OrgDocsList: open-moai 연결 정보가 없습니다. `moai login` 으로 로그인하세요.", IsError: true);
+            yield break;
+        }
+
+        var qs = "?orgId=" + HttpUtility.UrlEncode(inp.OrgId);
+        if (!string.IsNullOrWhiteSpace(inp.Search))
+        {
+            qs += "&search=" + HttpUtility.UrlEncode(inp.Search);
+        }
+
+        var url = baseUrl.TrimEnd('/') + "/knowledge" + qs;
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(Timeout);
+
+        string? error = null;
+        ListResponse? data = null;
+        try
+        {
+            data = await CallAsync(url, key, timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (EndpointMissingException)
+        {
+            error = "OrgDocsList: 이 서버에 문서 목록 엔드포인트(/api/v1/knowledge)가 없습니다. " +
+                    "open-moai 측 배포가 필요합니다.";
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            error = $"OrgDocsList: {Timeout.TotalSeconds:0}초 타임아웃";
+        }
+        catch (HttpRequestException ex)
+        {
+            error = $"OrgDocsList: 요청 실패 — {ex.Message}";
+        }
+
+        if (error is not null)
+        {
+            yield return new ToolOutput(error, IsError: true);
+            yield break;
+        }
+
+        var items = data?.Items ?? new List<DocItem>();
+        if (items.Count == 0)
+        {
+            yield return new ToolOutput("(조직 문서함에 문서가 없습니다)");
+            yield break;
+        }
+
+        var sb = new StringBuilder();
+        sb.Append("조직 문서 ").Append(items.Count).AppendLine("건");
+        sb.AppendLine();
+        foreach (var d in items)
+        {
+            sb.Append("• [").Append(d.Id.ValueKind == JsonValueKind.Undefined ? "?" : d.Id.ToString()).Append("] ")
+              .Append(d.Title ?? d.Filename ?? "(untitled)");
+            var meta = new List<string>();
+            if (!string.IsNullOrWhiteSpace(d.Filename) && d.Filename != d.Title) meta.Add(d.Filename!);
+            if (!string.IsNullOrWhiteSpace(d.Visibility)) meta.Add(d.Visibility!);
+            if (d.FileSize is { } s) meta.Add(FormatSize(s));
+            if (!string.IsNullOrWhiteSpace(d.ProcessingStatus) && d.ProcessingStatus != "completed")
+                meta.Add("처리:" + d.ProcessingStatus);
+            if (d.RagEnabled == false) meta.Add("RAG off");
+            if (meta.Count > 0) sb.Append("  (").Append(string.Join(" · ", meta)).Append(')');
+            sb.AppendLine();
+        }
+
+        // 외부 데이터(제목/파일명) — 신뢰불가 경계로 감싼다.
+        yield return new ToolOutput(Reminders.UntrustedToolOutput + sb.ToString().TrimEnd());
+    }
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        >= 1 << 20 => $"{bytes / (double)(1 << 20):0.#}MB",
+        >= 1 << 10 => $"{bytes / (double)(1 << 10):0.#}KB",
+        _ => $"{bytes}B",
+    };
+
+    private static async Task<ListResponse?> CallAsync(string url, string key, CancellationToken ct)
+    {
+        using var handler = new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.All };
+        using var client = new HttpClient(handler);
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key);
+
+        using var resp = await client.GetAsync(url, ct).ConfigureAwait(false);
+        if (resp.StatusCode == HttpStatusCode.NotFound)
+        {
+            throw new EndpointMissingException();
+        }
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            throw new HttpRequestException($"HTTP {(int)resp.StatusCode}: {body.Trim()}");
+        }
+
+        return await resp.Content.ReadFromJsonAsync<ListResponse>(cancellationToken: ct).ConfigureAwait(false);
+    }
+
+    private sealed class EndpointMissingException : Exception
+    {
+    }
+}
