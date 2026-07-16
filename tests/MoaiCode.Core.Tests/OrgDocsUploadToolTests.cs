@@ -100,10 +100,12 @@ public sealed class OrgDocsUploadToolTests : IDisposable
             Assert.Contains("orgId=org1", gotQuery);
             Assert.Equal("Bearer sk-test-key", gotAuth);
             Assert.StartsWith("multipart/form-data", gotContentType);
-            Assert.Contains("name=files", gotBody);          // .NET 은 따옴표 없이 출력(표준 허용)
-            Assert.Contains("filename=report.docx", gotBody);
-            Assert.Contains("name=visibility", gotBody);
+            Assert.Contains("name=\"files\"", gotBody);          // undici 호환 위해 따옴표 강제
+            Assert.Contains("filename=\"report.docx\"", gotBody);
+            Assert.DoesNotContain("filename*", gotBody);         // 확장 파라미터 없어야(undici 파싱)
+            Assert.Contains("name=\"visibility\"", gotBody);
             Assert.Contains("organization", gotBody);
+            Assert.Contains("boundary=MoaiBoundary", gotContentType); // 무따옴표 boundary
             // 결과 렌더
             Assert.Contains("업로드됨", text);
             Assert.Contains("id=123", text);

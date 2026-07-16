@@ -195,22 +195,37 @@ public sealed class OrgDocsUploadTool : ITool
         using var client = new HttpClient(handler) { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
 
-        using var form = new MultipartFormDataContent();
+        // undici(Next.js request.formData())는 RFC 7578 대로 파싱한다:
+        //  - 파트 name/filename 은 따옴표로 감싸야 한다(.NET 기본은 무따옴표 → 파싱 실패).
+        //  - Content-Type 의 boundary 에 따옴표가 있어도 실패 → 특수문자 없는 boundary 를 직접 지정.
+        // 그래서 파트 ContentDisposition 을 직접 설정해 따옴표를 강제하고 filename* 확장은 생략한다.
+        var boundary = "MoaiBoundary" + Guid.NewGuid().ToString("N");
+        using var form = new MultipartFormDataContent(boundary);
+
         var bytes = await File.ReadAllBytesAsync(filePath, ct).ConfigureAwait(false);
         var fileContent = new ByteArrayContent(bytes);
         fileContent.Headers.ContentType = new MediaTypeHeaderValue(ContentTypeFor(filePath));
-        form.Add(fileContent, "files", System.IO.Path.GetFileName(filePath));
+        fileContent.Headers.ContentDisposition = new ContentDispositionHeaderValue("form-data")
+        {
+            Name = "\"files\"",  // 서버는 getAll('files')
+            FileName = "\"" + System.IO.Path.GetFileName(filePath) + "\"",
+        };
+        form.Add(fileContent);
 
         var vis = inp.Visibility?.Trim().ToLowerInvariant();
         if (vis is "private" or "organization" or "company")
         {
-            form.Add(new StringContent(vis), "visibility");
+            AddField(form, "visibility", vis);
         }
 
         if (inp.CategoryId is { } cat && cat > 0)
         {
-            form.Add(new StringContent(cat.ToString()), "categoryId");
+            AddField(form, "categoryId", cat.ToString());
         }
+
+        // 따옴표 없는 boundary 로 Content-Type 재설정.
+        form.Headers.Remove("Content-Type");
+        form.Headers.TryAddWithoutValidation("Content-Type", $"multipart/form-data; boundary={boundary}");
 
         using var resp = await client.PostAsync(url, form, ct).ConfigureAwait(false);
         if (resp.StatusCode == HttpStatusCode.NotFound)
@@ -225,6 +240,17 @@ public sealed class OrgDocsUploadTool : ITool
         }
 
         return await resp.Content.ReadFromJsonAsync<UploadResponse>(cancellationToken: ct).ConfigureAwait(false);
+    }
+
+    // 파트 name 을 따옴표로 감싼 form-data 필드 추가(undici 파싱 호환).
+    private static void AddField(MultipartFormDataContent form, string name, string value)
+    {
+        var sc = new StringContent(value);
+        sc.Headers.ContentDisposition = new ContentDispositionHeaderValue("form-data")
+        {
+            Name = "\"" + name + "\"",
+        };
+        form.Add(sc);
     }
 
     private static string ContentTypeFor(string path) =>

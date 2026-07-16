@@ -24,6 +24,7 @@ public static class ToolRegistry
         new OrgDocsTool(),
         new OrgDocsListTool(),
         new OrgDocsUploadTool(),
+        new OrgDocsDeleteTool(),
         new OrgDatasListTool(),
         new OrgDatasTool(),
     };
