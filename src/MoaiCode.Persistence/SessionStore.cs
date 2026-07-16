@@ -87,7 +87,8 @@ public sealed class SessionStore
             .ToList();
     }
 
-    /// <summary>세션 목록 + 메타데이터(수정시각·메시지수·첫 질문 제목), 최근 순.</summary>
+    /// <summary>세션 목록 + 메타데이터(수정시각·메시지수·제목), 최근 순 최대 99개.
+    /// 제목은 첫 질문, 없으면 마지막 사용자 프롬프트로 대체.</summary>
     public async Task<IReadOnlyList<SessionInfo>> ListInfosAsync(CancellationToken ct = default)
     {
         if (!Directory.Exists(_baseDir))
@@ -101,7 +102,9 @@ public sealed class SessionStore
             var id = Path.GetFileNameWithoutExtension(path);
             var modified = File.GetLastWriteTime(path);
             var count = 0;
-            var title = "";
+            var lastPrompt = "";
+            var originalRequest = "";
+            string? lastSummary = null;
             try
             {
                 var lines = await File.ReadAllLinesAsync(path, ct).ConfigureAwait(false);
@@ -113,24 +116,44 @@ public sealed class SessionStore
                     }
 
                     count++;
-                    if (title.Length == 0)
+                    Message? msg;
+                    try
                     {
-                        Message? msg;
-                        try
-                        {
-                            msg = JsonSerializer.Deserialize<Message>(line, Json);
-                        }
-                        catch (JsonException)
-                        {
-                            continue;
-                        }
+                        msg = JsonSerializer.Deserialize<Message>(line, Json);
+                    }
+                    catch (JsonException)
+                    {
+                        continue;
+                    }
 
-                        if (msg is UserMessage u
-                            && !u.Text.StartsWith("<system-reminder>", StringComparison.Ordinal)
-                            && !u.Text.StartsWith("[Summary of earlier conversation]", StringComparison.Ordinal))
-                        {
-                            title = u.Text.ReplaceLineEndings(" ").Trim();
-                        }
+                    if (msg is not UserMessage u)
+                    {
+                        continue;
+                    }
+
+                    // 압축 세션 폴백: 리마인더/요약에 박힌 'Original request:' 앵커를 잡아둔다.
+                    var anchor = OriginalRequestAnchor(u.Text);
+                    if (anchor.Length > 0)
+                    {
+                        originalRequest = anchor;
+                    }
+
+                    // 요약(컨텍스트 압축)은 별도 보관 — 일반 프롬프트가 하나도 없을 때 폴백으로만 쓴다.
+                    if (u.Text.StartsWith("[Summary of earlier conversation]", StringComparison.Ordinal))
+                    {
+                        lastSummary = u.Text;
+                        continue;
+                    }
+
+                    if (u.Text.StartsWith("<system-reminder>", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    var t = u.Text.ReplaceLineEndings(" ").Trim();
+                    if (t.Length > 0)
+                    {
+                        lastPrompt = t;
                     }
                 }
             }
@@ -139,10 +162,57 @@ public sealed class SessionStore
                 // skip unreadable
             }
 
+            // 제목 우선순위: 마지막 프롬프트 → Original request 앵커 → 요약 인용문.
+            // (모두 없으면 표시 계층에서 일반 라벨로 대체 — '(제목 없음)' 노출 안 함.)
+            var title = lastPrompt.Length > 0 ? lastPrompt
+                : originalRequest.Length > 0 ? originalRequest
+                : lastSummary is not null ? ExtractRequestFromSummary(lastSummary) : "";
             infos.Add(new SessionInfo(id, modified, count, title));
         }
 
-        return infos.OrderByDescending(i => i.ModifiedAt).ToList();
+        // 최근 순, 최대 99개까지만 노출(2자리 번호로 표기).
+        return infos.OrderByDescending(i => i.ModifiedAt).Take(99).ToList();
+    }
+
+    // 압축 세션의 리마인더/요약에 박힌 'Original request: <원문>' 한 줄에서 원 요청을 뽑는다.
+    private static string OriginalRequestAnchor(string text)
+    {
+        const string marker = "Original request:";
+        var idx = text.IndexOf(marker, StringComparison.Ordinal);
+        if (idx < 0)
+        {
+            return "";
+        }
+
+        var rest = text[(idx + marker.Length)..];
+        var nl = rest.IndexOf('\n');
+        if (nl >= 0)
+        {
+            rest = rest[..nl];
+        }
+
+        return rest.Trim().Trim('`').Trim();
+    }
+
+    // 컨텍스트 요약문에서 원 사용자 요청을 추출한다. 요약은 원 요청을 첫 인용문(> `...`)으로 담는다.
+    private static string ExtractRequestFromSummary(string summary)
+    {
+        foreach (var raw in summary.Split('\n'))
+        {
+            var line = raw.TrimStart();
+            if (line.Length == 0 || line[0] != '>')
+            {
+                continue;
+            }
+
+            var quote = line[1..].Trim().Trim('`').Trim();
+            if (quote.Length > 0)
+            {
+                return quote.ReplaceLineEndings(" ");
+            }
+        }
+
+        return "";
     }
 }
 

@@ -79,4 +79,63 @@ public class SessionStoreTests : IDisposable
         Assert.Contains("a", sessions);
         Assert.Contains("b", sessions);
     }
+
+    [Fact]
+    public async Task Title_is_the_last_user_prompt()
+    {
+        await _store.SaveAsync("s", new List<Message>
+        {
+            new SystemMessage("sys"),
+            new UserMessage("첫 질문"),
+            new AssistantMessage(System.Collections.Immutable.ImmutableList.Create<ContentBlock>(new TextBlock("ok"))),
+            new UserMessage("<system-reminder>noise</system-reminder>"),
+            new UserMessage("마지막 질문"),
+        });
+
+        var info = Assert.Single(await _store.ListInfosAsync());
+        Assert.Equal("마지막 질문", info.Title); // 첫 질문/리마인더가 아니라 마지막 프롬프트
+    }
+
+    [Fact]
+    public async Task Title_falls_back_to_original_request_from_summary_when_no_plain_prompt()
+    {
+        // 압축 세션: 일반 프롬프트 없이 요약 + 리마인더만.
+        var summary = "[Summary of earlier conversation]\n최초 사용자 요청:\n\n> `USB 외장하드 확인해줘`\n\n중략...";
+        await _store.SaveAsync("compacted", new List<Message>
+        {
+            new SystemMessage("sys"),
+            new UserMessage(summary),
+            new UserMessage("<system-reminder>focus</system-reminder>"),
+        });
+
+        var info = Assert.Single(await _store.ListInfosAsync());
+        Assert.Equal("USB 외장하드 확인해줘", info.Title); // 요약서 첫 인용문에서 추출, (제목 없음) 아님
+    }
+
+    [Fact]
+    public async Task Title_falls_back_to_original_request_anchor_in_reminder()
+    {
+        // 요약에 인용문이 없고, 리마인더의 'Original request:' 앵커만 있는 압축 세션.
+        await _store.SaveAsync("anchored", new List<Message>
+        {
+            new SystemMessage("sys"),
+            new UserMessage("[Summary of earlier conversation]\n1. Primary Request and Intent\n- 코드베이스 분석 진행."),
+            new UserMessage("<system-reminder>\nStay focused.\n\nOriginal request: 커밋된 내용 3개 코드 리뷰해봐\n</system-reminder>"),
+        });
+
+        var info = Assert.Single(await _store.ListInfosAsync());
+        Assert.Equal("커밋된 내용 3개 코드 리뷰해봐", info.Title);
+    }
+
+    [Fact]
+    public async Task ListInfos_caps_at_99_most_recent()
+    {
+        for (var i = 0; i < 105; i++)
+        {
+            await _store.SaveAsync($"s{i:000}", new List<Message> { new UserMessage($"q{i}") });
+        }
+
+        var infos = await _store.ListInfosAsync();
+        Assert.Equal(99, infos.Count); // 최대 99개만 노출
+    }
 }

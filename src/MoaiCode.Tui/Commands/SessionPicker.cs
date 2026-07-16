@@ -13,6 +13,9 @@ internal static class SessionPicker
             return new SlashResult("저장된 세션이 없습니다.");
         }
 
+        // 메시지 수 자리수를 목록 최대값에 맞춰 정렬.
+        var countWidth = infos.Max(i => i.MessageCount).ToString().Length;
+
         // 비대화형(파이프/테스트): 텍스트 목록만 보여주고 /resume <번호|id> 안내.
         if (Console.IsInputRedirected)
         {
@@ -20,14 +23,14 @@ internal static class SessionPicker
             sb.AppendLine("저장된 세션 (최근 순) — /resume <번호> 또는 /resume <id>:");
             for (var i = 0; i < infos.Count; i++)
             {
-                sb.AppendLine($"  {i + 1,2}. {Label(infos[i])}");
+                sb.AppendLine($"  {i + 1:00}. {Label(infos[i], countWidth)}");
                 sb.AppendLine($"      {infos[i].Id}");
             }
 
             return new SlashResult(sb.ToString().TrimEnd());
         }
 
-        var labels = infos.Select(Label).ToList();
+        var labels = infos.Select(s => Label(s, countWidth)).ToList();
         var pick = SelectList.Prompt("저장된 세션 — 복원할 세션을 고르세요:", labels);
         if (pick < 0)
         {
@@ -56,14 +59,15 @@ internal static class SessionPicker
         return new SlashResult($"복원됨: {id} ({loaded.Count} messages) — 위 대화에서 이어집니다");
     }
 
-    private static string Label(MoaiCode.Persistence.SessionInfo s)
+    private static string Label(MoaiCode.Persistence.SessionInfo s, int countWidth)
     {
-        var title = string.IsNullOrWhiteSpace(s.Title) ? "(제목 없음)" : s.Title;
+        var title = string.IsNullOrWhiteSpace(s.Title) ? "요약된 이전 세션" : s.Title;
         if (title.Length > 50)
         {
             title = title[..50] + "…";
         }
 
-        return $"{s.ModifiedAt:MM-dd HH:mm}  {s.MessageCount,3}개  {title}";
+        var count = s.MessageCount.ToString().PadLeft(countWidth);
+        return $"{s.ModifiedAt:MM-dd HH:mm}  {count}개  {title}";
     }
 }
