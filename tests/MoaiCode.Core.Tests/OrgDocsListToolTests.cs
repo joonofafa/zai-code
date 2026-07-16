@@ -26,23 +26,88 @@ public sealed class OrgDocsListToolTests
     }
 
     [Fact]
-    public async Task Missing_orgId_reports_how_to_get_it()
+    public async Task Auto_resolves_orgId_from_login_when_single_org()
     {
+        // orgId 생략 → GET /organizations 로 자동 해소(조직 1개) → 그 orgId 로 /knowledge 조회.
+        var orgsJson = """{"organizations":[{"id":"solo-org","name":"AI본부","isPrimary":true}],"count":1}""";
+        var knowledgeJson = """{"organizationId":"solo-org","items":[{"id":1,"title":"보고서","visibility":"organization"}],"count":1}""";
+        var paths = new List<string>();
+        var queries = new List<string>();
+
+        await WithRoutingServer(
+            route: path => path.Contains("organizations") ? orgsJson : knowledgeJson,
+            record: (path, query) => { paths.Add(path); queries.Add(query); },
+            requests: 2,
+            body: async () =>
+            {
+                var (text, err) = await RunAsync(new { });   // orgId 없음
+                Assert.False(err, text);
+                Assert.Contains("보고서", text);
+            });
+
+        Assert.Contains("/organizations", paths);
+        Assert.Contains("/knowledge", paths);
+        Assert.Contains(queries, q => q.Contains("orgId=solo-org")); // 자동 해소된 id 사용
+    }
+
+    [Fact]
+    public async Task Multiple_orgs_ask_user_to_pick()
+    {
+        // 조직이 여러 개면 자동 단정하지 않고 목록과 함께 orgId 지정을 요구.
+        var orgsJson = """{"organizations":[{"id":"a","name":"본부A"},{"id":"b","name":"본부B"}],"count":2}""";
+
+        await WithRoutingServer(
+            route: _ => orgsJson,
+            record: (_, _) => { },
+            requests: 1,
+            body: async () =>
+            {
+                var (text, err) = await RunAsync(new { });   // orgId 없음
+                Assert.True(err);
+                Assert.Contains("여러 조직", text);
+                Assert.Contains("[a]", text);
+                Assert.Contains("[b]", text);
+            });
+    }
+
+    // 경로별 응답을 돌려주는 라우팅 HttpListener 로 지정 횟수만큼 요청을 처리한다.
+    private static async Task WithRoutingServer(
+        Func<string, string> route, Action<string, string> record, int requests, Func<Task> body)
+    {
+        var port = FreePort();
+        using var listener = new HttpListener();
+        listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+        listener.Start();
+
+        var serverTask = Task.Run(async () =>
+        {
+            for (var n = 0; n < requests; n++)
+            {
+                var ctx = await listener.GetContextAsync();
+                var path = ctx.Request.Url?.AbsolutePath ?? "";
+                record(path, ctx.Request.Url?.Query ?? "");
+                var bytes = Encoding.UTF8.GetBytes(route(path));
+                ctx.Response.ContentType = "application/json";
+                ctx.Response.ContentLength64 = bytes.Length;
+                await ctx.Response.OutputStream.WriteAsync(bytes);
+                ctx.Response.Close();
+            }
+        });
+
         var (baseUrl, key) = (Environment.GetEnvironmentVariable("OPENAI_BASE_URL"),
                               Environment.GetEnvironmentVariable("OPENAI_API_KEY"));
         try
         {
-            Environment.SetEnvironmentVariable("OPENAI_BASE_URL", "http://127.0.0.1:1");
-            Environment.SetEnvironmentVariable("OPENAI_API_KEY", "sk-x");
-            var (text, err) = await RunAsync(new { });
-            Assert.True(err);
-            Assert.Contains("orgId", text);
-            Assert.Contains("org_docs_", text); // orgId 얻는 방법 안내
+            Environment.SetEnvironmentVariable("OPENAI_BASE_URL", $"http://127.0.0.1:{port}");
+            Environment.SetEnvironmentVariable("OPENAI_API_KEY", "sk-test-key");
+            await body();
+            await serverTask;
         }
         finally
         {
             Environment.SetEnvironmentVariable("OPENAI_BASE_URL", baseUrl);
             Environment.SetEnvironmentVariable("OPENAI_API_KEY", key);
+            listener.Stop();
         }
     }
 

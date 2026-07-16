@@ -25,7 +25,9 @@ public sealed class OrgDocsUploadTool : ITool
     public string Description => """
         Uploads a local file (e.g. a document made with DocxCreate/XlsxCreate/PptxCreate, or a pdf)
         to the organization's 문서함, where it is embedded for later search. Write action — asks for
-        confirmation. Requires orgId (see OrgDocsList/OrgDocs for how to obtain it) and a local file path.
+        confirmation. Requires a local file path. orgId is optional: if omitted it is auto-resolved from
+        your login (used automatically when you belong to exactly one organization; if several, you'll be
+        asked to pick — see OrgList). Do NOT ask the user for orgId first.
         Optional visibility (private|organization|company, default private) and categoryId.
         """;
 
@@ -37,12 +39,12 @@ public sealed class OrgDocsUploadTool : ITool
         {
           "type": "object",
           "properties": {
-            "orgId": { "type": "string", "description": "Organization id (required)" },
+            "orgId": { "type": "string", "description": "Organization id (optional — auto-resolved from your login if omitted)" },
             "path": { "type": "string", "description": "Local file path (relative to workspace)" },
             "visibility": { "type": "string", "enum": ["private", "organization", "company"], "description": "Default private" },
             "categoryId": { "type": "integer", "description": "Organization category id (optional)" }
           },
-          "required": ["orgId", "path"]
+          "required": ["path"]
         }
         """);
 
@@ -71,9 +73,9 @@ public sealed class OrgDocsUploadTool : ITool
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
     {
         var inp = input.Deserialize<Input>();
-        if (inp is null || string.IsNullOrWhiteSpace(inp.OrgId) || string.IsNullOrWhiteSpace(inp.Path))
+        if (inp is null || string.IsNullOrWhiteSpace(inp.Path))
         {
-            yield return new ToolOutput("OrgDocsUpload: 'orgId' 와 'path' 가 필요합니다.", IsError: true);
+            yield return new ToolOutput("OrgDocsUpload: 'path'(업로드할 파일 경로)가 필요합니다.", IsError: true);
             yield break;
         }
 
@@ -119,7 +121,15 @@ public sealed class OrgDocsUploadTool : ITool
             yield break;
         }
 
-        var url = baseUrl.TrimEnd('/') + "/knowledge?orgId=" + HttpUtility.UrlEncode(inp.OrgId);
+        var (orgId, orgErr) = await OrgResolver.ResolveAsync("OrgDocsUpload", baseUrl, key, inp.OrgId, ct)
+            .ConfigureAwait(false);
+        if (orgErr is not null)
+        {
+            yield return new ToolOutput(orgErr, IsError: true);
+            yield break;
+        }
+
+        var url = baseUrl.TrimEnd('/') + "/knowledge?orgId=" + HttpUtility.UrlEncode(orgId);
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(Timeout);

@@ -24,8 +24,9 @@ public sealed class OrgDocsListTool : ITool
     public string Description => """
         Lists the uploaded documents in an organization's 문서함 (title, filename, type, size,
         visibility, processing status). This is BROWSING, not search — for semantic search use OrgDocs.
-        Requires orgId (the organization id). If you don't know the orgId, run an OrgDocs search first:
-        each result's `source` looks like `org_docs_<orgId>`. Optional `search` filters by title/filename.
+        orgId is optional: if omitted it is auto-resolved from your login (used automatically when you
+        belong to exactly one organization; if several, you'll be asked to pick — see OrgList).
+        Do NOT ask the user for orgId first. Optional `search` filters by title/filename.
         """;
 
     public bool IsReadOnly => true;
@@ -36,10 +37,9 @@ public sealed class OrgDocsListTool : ITool
         {
           "type": "object",
           "properties": {
-            "orgId": { "type": "string", "description": "Organization id (required)" },
+            "orgId": { "type": "string", "description": "Organization id (optional — auto-resolved from your login if omitted)" },
             "search": { "type": "string", "description": "Filter by title/filename substring (optional)" }
-          },
-          "required": ["orgId"]
+          }
         }
         """);
 
@@ -66,13 +66,6 @@ public sealed class OrgDocsListTool : ITool
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
     {
         var inp = input.Deserialize<Input>();
-        if (inp is null || string.IsNullOrWhiteSpace(inp.OrgId))
-        {
-            yield return new ToolOutput(
-                "OrgDocsList: 'orgId' 가 필요합니다. 모르면 OrgDocs 로 먼저 검색해 결과의 " +
-                "source(org_docs_<id>)에서 얻거나 사용자에게 조직 ID 를 확인하세요.", IsError: true);
-            yield break;
-        }
 
         var baseUrl = Environment.GetEnvironmentVariable("OPENAI_BASE_URL");
         var key = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
@@ -83,10 +76,18 @@ public sealed class OrgDocsListTool : ITool
             yield break;
         }
 
-        var qs = "?orgId=" + HttpUtility.UrlEncode(inp.OrgId);
-        if (!string.IsNullOrWhiteSpace(inp.Search))
+        var (orgId, orgErr) = await OrgResolver.ResolveAsync("OrgDocsList", baseUrl, key, inp?.OrgId, ct)
+            .ConfigureAwait(false);
+        if (orgErr is not null)
         {
-            qs += "&search=" + HttpUtility.UrlEncode(inp.Search);
+            yield return new ToolOutput(orgErr, IsError: true);
+            yield break;
+        }
+
+        var qs = "?orgId=" + HttpUtility.UrlEncode(orgId);
+        if (!string.IsNullOrWhiteSpace(inp?.Search))
+        {
+            qs += "&search=" + HttpUtility.UrlEncode(inp!.Search);
         }
 
         var url = baseUrl.TrimEnd('/') + "/knowledge" + qs;

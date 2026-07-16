@@ -104,11 +104,11 @@ public sealed class OrgDocsDeleteToolTests
     }
 
     [Fact]
-    public async Task Requires_documentId_and_orgId()
+    public async Task Requires_documentId()
     {
-        var (text, err) = await RunAsync(new { documentId = "1" }); // orgId 없음
+        var (text, err) = await RunAsync(new { orgId = "org1" }); // documentId 없음
         Assert.True(err);
-        Assert.Contains("orgId", text);
+        Assert.Contains("documentId", text);
     }
 
     private static int FreePort()

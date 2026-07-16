@@ -22,7 +22,9 @@ public sealed class OrgDocsDeleteTool : ITool
     public string Description => """
         Permanently deletes a document from the organization's 문서함 (removes the file, its chunks and
         vectors). Irreversible write action — asks for confirmation. Requires the documentId (from
-        OrgDocsList) and orgId. Only the uploader, an org manager, or a system admin may delete.
+        OrgDocsList). orgId is optional: if omitted it is auto-resolved from your login (used automatically
+        when you belong to exactly one organization; if several, you'll be asked to pick — see OrgList).
+        Only the uploader, an org manager, or a system admin may delete (enforced by the server).
         """;
 
     public bool IsReadOnly => false;
@@ -34,9 +36,9 @@ public sealed class OrgDocsDeleteTool : ITool
           "type": "object",
           "properties": {
             "documentId": { "type": "string", "description": "Document id (from OrgDocsList)" },
-            "orgId": { "type": "string", "description": "Organization id (required)" }
+            "orgId": { "type": "string", "description": "Organization id (optional — auto-resolved from your login if omitted)" }
           },
-          "required": ["documentId", "orgId"]
+          "required": ["documentId"]
         }
         """);
 
@@ -52,9 +54,9 @@ public sealed class OrgDocsDeleteTool : ITool
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
     {
         var inp = input.Deserialize<Input>();
-        if (inp is null || string.IsNullOrWhiteSpace(inp.DocumentId) || string.IsNullOrWhiteSpace(inp.OrgId))
+        if (inp is null || string.IsNullOrWhiteSpace(inp.DocumentId))
         {
-            yield return new ToolOutput("OrgDocsDelete: 'documentId' 와 'orgId' 가 필요합니다.", IsError: true);
+            yield return new ToolOutput("OrgDocsDelete: 'documentId' 가 필요합니다.", IsError: true);
             yield break;
         }
 
@@ -67,8 +69,16 @@ public sealed class OrgDocsDeleteTool : ITool
             yield break;
         }
 
+        var (orgId, orgErr) = await OrgResolver.ResolveAsync("OrgDocsDelete", baseUrl, key, inp.OrgId, ct)
+            .ConfigureAwait(false);
+        if (orgErr is not null)
+        {
+            yield return new ToolOutput(orgErr, IsError: true);
+            yield break;
+        }
+
         var url = baseUrl.TrimEnd('/') + "/knowledge/" + HttpUtility.UrlEncode(inp.DocumentId)
-                  + "?orgId=" + HttpUtility.UrlEncode(inp.OrgId);
+                  + "?orgId=" + HttpUtility.UrlEncode(orgId);
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(Timeout);
