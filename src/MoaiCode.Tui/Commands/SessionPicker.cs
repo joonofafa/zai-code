@@ -31,7 +31,9 @@ internal static class SessionPicker
         }
 
         var labels = infos.Select(s => Label(s, countWidth)).ToList();
-        var pick = SelectList.Prompt("저장된 세션 — 복원할 세션을 고르세요:", labels);
+        // 번호를 2자리(01.~99.)로 줄맞춤 — 목록은 최대 99개.
+        var numberWidth = Math.Max(2, infos.Count.ToString().Length);
+        var pick = SelectList.Prompt("저장된 세션 — 복원할 세션을 고르세요:", labels, numberWidth: numberWidth);
         if (pick < 0)
         {
             return new SlashResult("(취소됨)");

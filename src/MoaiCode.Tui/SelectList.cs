@@ -10,14 +10,19 @@ namespace MoaiCode.Tui;
 /// </summary>
 public static class SelectList
 {
+    // 항목 번호 자리폭(0채움). 세션 목록 등에서 2자리(01.)로 줄맞춤하려고 호출별로 설정.
+    // 위젯은 콘솔 입력을 단독·동기 점유하므로 한 번에 하나의 Prompt만 활성 → 필드로 충분.
+    private static int _numberWidth = 1;
+
     /// <summary>선택한 인덱스. 취소/비대화형이면 -1.</summary>
-    public static int Prompt(string title, IReadOnlyList<string> items, int defaultIndex = 0)
+    public static int Prompt(string title, IReadOnlyList<string> items, int defaultIndex = 0, int numberWidth = 1)
     {
         if (items.Count == 0 || Console.IsInputRedirected)
         {
             return -1;
         }
 
+        _numberWidth = Math.Max(1, numberWidth);
         var idx = Math.Clamp(defaultIndex, 0, items.Count - 1);
 
         if (!string.IsNullOrEmpty(title))
@@ -87,7 +92,7 @@ public static class SelectList
     // 선택 확정: 최종 강조 줄 아래에 무엇을 골랐는지 명확히 표시 (재그리기 글리치와 무관하게 분명).
     private static int Finish(IReadOnlyList<string> items, int idx)
     {
-        Console.WriteLine($"\x1b[36m  ✓ 선택: {idx + 1}. {items[idx]}\x1b[0m");
+        Console.WriteLine($"\x1b[36m  ✓ 선택: {(idx + 1).ToString().PadLeft(_numberWidth, '0')}. {items[idx]}\x1b[0m");
         return idx;
     }
 
@@ -110,7 +115,7 @@ public static class SelectList
         {
             var i = offset + row;
             var selected = i == idx;
-            var num = i + 1;
+            var num = (i + 1).ToString().PadLeft(_numberWidth, '0');
             // 위/아래 더 있으면 ↑/↓ 표식, 선택 항목은 ❯ + cyan.
             var scroll = (row == 0 && offset > 0) ? "↑" : (row == visible - 1 && offset + visible < items.Count) ? "↓" : " ";
             var marker = selected ? "❯" : scroll;
