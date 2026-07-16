@@ -12,6 +12,7 @@ rm -rf "${OUT}"
 dotnet publish src/MoaiCode.Cli/MoaiCode.Cli.csproj \
   -c Release \
   -r "${RID}" \
+  -f net10.0 \
   --self-contained true \
   -p:PublishSingleFile=true \
   -p:IncludeNativeLibrariesForSelfExtract=true \
