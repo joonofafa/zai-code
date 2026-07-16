@@ -23,6 +23,7 @@ public static class ToolRegistry
         new WebSearchTool(),
         new OrgDocsTool(),
         new OrgDocsListTool(),
+        new OrgDocsUploadTool(),
         new OrgDatasListTool(),
         new OrgDatasTool(),
     };
