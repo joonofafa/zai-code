@@ -107,8 +107,95 @@ public sealed class OrgDocsUploadToolTests : IDisposable
             Assert.Contains("organization", gotBody);
             Assert.Contains("boundary=MoaiBoundary", gotContentType); // 무따옴표 boundary
             // 결과 렌더
-            Assert.Contains("업로드됨", text);
+            Assert.Contains("업로드 완료", text);
             Assert.Contains("id=123", text);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OPENAI_BASE_URL", baseUrl);
+            Environment.SetEnvironmentVariable("OPENAI_API_KEY", key);
+            listener.Stop();
+        }
+    }
+
+    [Fact]
+    public async Task Directory_batch_filters_docs_and_shows_preview()
+    {
+        // 최상위: a.docx + b.txt(문서형) = 2개, c.png(비문서형)·sub/d.pdf(하위)는 제외 → 미리보기(업로드 없음).
+        await File.WriteAllTextAsync(Path.Combine(_dir, "a.docx"), "x");
+        await File.WriteAllTextAsync(Path.Combine(_dir, "b.txt"), "x");
+        await File.WriteAllTextAsync(Path.Combine(_dir, "c.png"), "x");
+        var sub = Directory.CreateDirectory(Path.Combine(_dir, "sub"));
+        await File.WriteAllTextAsync(Path.Combine(sub.FullName, "d.pdf"), "x");
+
+        var (text, err) = await RunAsync(new { path = "." }); // 서버/env 불필요 — 미리보기는 로컬
+        Assert.False(err, text);
+        Assert.Contains("업로드 미리보기", text);
+        Assert.Contains("2개", text);
+        Assert.Contains("a.docx", text);
+        Assert.Contains("b.txt", text);
+        Assert.DoesNotContain("c.png", text); // 비문서형 제외
+        Assert.DoesNotContain("d.pdf", text); // 하위폴더는 recursive 없이는 제외
+        Assert.Contains("confirm:true", text);
+    }
+
+    [Fact]
+    public async Task Recursive_includes_subdirectories_with_relative_paths()
+    {
+        await File.WriteAllTextAsync(Path.Combine(_dir, "a.docx"), "x");
+        await File.WriteAllTextAsync(Path.Combine(_dir, "b.txt"), "x");
+        var sub = Directory.CreateDirectory(Path.Combine(_dir, "sub"));
+        await File.WriteAllTextAsync(Path.Combine(sub.FullName, "d.pdf"), "x");
+
+        var (text, err) = await RunAsync(new { path = ".", recursive = true });
+        Assert.False(err, text);
+        Assert.Contains("3개", text);
+        Assert.Contains(Path.Combine("sub", "d.pdf"), text); // 상대경로로 서브폴더 노출
+    }
+
+    [Fact]
+    public async Task Confirmed_batch_uploads_all_files_in_one_request()
+    {
+        await File.WriteAllTextAsync(Path.Combine(_dir, "a.docx"), "aaa");
+        await File.WriteAllTextAsync(Path.Combine(_dir, "b.txt"), "bbb");
+
+        var port = FreePort();
+        using var listener = new HttpListener();
+        listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+        listener.Start();
+
+        var requestCount = 0;
+        var filesParts = -1;
+        var serverTask = Task.Run(async () =>
+        {
+            var ctx = await listener.GetContextAsync();
+            requestCount++;
+            string body;
+            using (var sr = new StreamReader(ctx.Request.InputStream)) { body = await sr.ReadToEndAsync(); }
+            filesParts = System.Text.RegularExpressions.Regex.Matches(body, "name=\"files\"").Count;
+            var bytes = Encoding.UTF8.GetBytes(
+                """{"success":true,"visibility":"private","documents":[{"id":1,"filename":"a.docx","status":"uploaded"},{"id":2,"filename":"b.txt","status":"uploaded"}],"skipped":[]}""");
+            ctx.Response.ContentType = "application/json";
+            ctx.Response.ContentLength64 = bytes.Length;
+            await ctx.Response.OutputStream.WriteAsync(bytes);
+            ctx.Response.Close();
+        });
+
+        var (baseUrl, key) = (Environment.GetEnvironmentVariable("OPENAI_BASE_URL"),
+                              Environment.GetEnvironmentVariable("OPENAI_API_KEY"));
+        try
+        {
+            Environment.SetEnvironmentVariable("OPENAI_BASE_URL", $"http://127.0.0.1:{port}");
+            Environment.SetEnvironmentVariable("OPENAI_API_KEY", "sk-test-key");
+
+            // orgId 지정 → /organizations 안 거침. confirm:true → 미리보기 건너뛰고 바로 업로드.
+            var (text, err) = await RunAsync(new { orgId = "org1", path = ".", confirm = true });
+            await serverTask;
+
+            Assert.False(err, text);
+            Assert.Equal(1, requestCount);   // 한 요청에 전부
+            Assert.Equal(2, filesParts);     // files 파트 2개(다중)
+            Assert.Contains("업로드 완료 — 2/2", text);
         }
         finally
         {

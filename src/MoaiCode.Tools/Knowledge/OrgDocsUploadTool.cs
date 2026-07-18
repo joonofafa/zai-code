@@ -11,24 +11,33 @@ using MoaiCode.Core.Tools;
 namespace MoaiCode.Tools.Knowledge;
 
 /// <summary>
-/// 로컬 파일을 조직 문서함에 업로드한다(쓰기 — 권한 게이트 통과). DocxCreate 등으로 만든 문서를
-/// 바로 문서함에 올리는 흐름. 계약: POST {baseUrl}/knowledge?orgId=&lt;id&gt; (multipart/form-data),
-/// open-moai/docs/moai-code-knowledge-api.md §4.
+/// 로컬 파일 또는 디렉토리를 조직 문서함에 업로드한다(쓰기 — 권한 게이트 통과). 파일 1개는 바로 올리고,
+/// 디렉토리/여러 파일(배치)은 먼저 미리보기를 돌려주고 confirm=true 로 재호출해야 실제 업로드한다.
+/// 계약: POST {baseUrl}/knowledge?orgId=&lt;id&gt; (multipart/form-data, files 다중), §4.
 /// </summary>
 public sealed class OrgDocsUploadTool : ITool
 {
     private const long MaxFileBytes = 100L * 1024 * 1024; // 서버 상한 100MB
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(5);
 
+    // 디렉토리 확장 시 올릴 문서형 확장자(지식베이스 임베딩 대상). 명시된 개별 파일은 이 필터를 적용하지 않는다.
+    private static readonly HashSet<string> DocExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".docx", ".xlsx", ".pptx", ".pdf", ".txt", ".md", ".csv",
+    };
+
     public string Name => "OrgDocsUpload";
 
     public string Description => """
-        Uploads a local file (e.g. a document made with DocxCreate/XlsxCreate/PptxCreate, or a pdf)
-        to the organization's 문서함, where it is embedded for later search. Write action — asks for
-        confirmation. Requires a local file path. orgId is optional: if omitted it is auto-resolved from
-        your login (used automatically when you belong to exactly one organization; if several, you'll be
-        asked to pick — see OrgList). Do NOT ask the user for orgId first.
-        Optional visibility (private|organization|company, default private) and categoryId.
+        Uploads local file(s) to the organization's 문서함, where they are embedded for later search.
+        `path` may be a single file OR a directory; `paths` may list several files/directories. When a
+        directory is given, only document-type files (.docx/.xlsx/.pptx/.pdf/.txt/.md/.csv) are picked up
+        — top-level only unless `recursive: true`. Write action — asks for confirmation.
+        Batch behaviour: when more than one file would be uploaded, the tool first returns a PREVIEW
+        (file list + sizes, nothing uploaded); re-call the SAME arguments plus `confirm: true` to actually
+        upload. A single file uploads directly. orgId is optional (auto-resolved from your login; see
+        OrgList) — do NOT ask the user for it. Optional visibility (private|organization|company, default
+        private) and categoryId.
         """;
 
     public bool IsReadOnly => false;
@@ -40,17 +49,22 @@ public sealed class OrgDocsUploadTool : ITool
           "type": "object",
           "properties": {
             "orgId": { "type": "string", "description": "Organization id (optional — auto-resolved from your login if omitted)" },
-            "path": { "type": "string", "description": "Local file path (relative to workspace)" },
+            "path": { "type": "string", "description": "Local file OR directory path (relative to workspace)" },
+            "paths": { "type": "array", "items": { "type": "string" }, "description": "Several file/directory paths (optional, alternative to path)" },
+            "recursive": { "type": "boolean", "description": "Recurse into subdirectories when a directory is given (default false)" },
+            "confirm": { "type": "boolean", "description": "Set true to actually upload a batch after reviewing the preview (default false)" },
             "visibility": { "type": "string", "enum": ["private", "organization", "company"], "description": "Default private" },
             "categoryId": { "type": "integer", "description": "Organization category id (optional)" }
-          },
-          "required": ["path"]
+          }
         }
         """);
 
     private sealed record Input(
         [property: JsonPropertyName("orgId")] string? OrgId,
         [property: JsonPropertyName("path")] string? Path,
+        [property: JsonPropertyName("paths")] List<string>? Paths,
+        [property: JsonPropertyName("recursive")] bool? Recursive,
+        [property: JsonPropertyName("confirm")] bool? Confirm,
         [property: JsonPropertyName("visibility")] string? Visibility,
         [property: JsonPropertyName("categoryId")] int? CategoryId);
 
@@ -73,42 +87,54 @@ public sealed class OrgDocsUploadTool : ITool
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
     {
         var inp = input.Deserialize<Input>();
-        if (inp is null || string.IsNullOrWhiteSpace(inp.Path))
+        var roots = new List<string>();
+        if (!string.IsNullOrWhiteSpace(inp?.Path))
         {
-            yield return new ToolOutput("OrgDocsUpload: 'path'(업로드할 파일 경로)가 필요합니다.", IsError: true);
-            yield break;
+            roots.Add(inp!.Path!);
         }
 
-        string? full = null;
-        string? pathError = null;
-        try
+        if (inp?.Paths is { Count: > 0 } ps)
         {
-            full = System.IO.Path.GetFullPath(System.IO.Path.IsPathRooted(inp.Path)
-                ? inp.Path
-                : System.IO.Path.Combine(context.WorkingDirectory, inp.Path));
-        }
-        catch (Exception ex)
-        {
-            pathError = ex.Message;
+            roots.AddRange(ps.Where(p => !string.IsNullOrWhiteSpace(p)));
         }
 
-        if (pathError is not null || full is null)
-        {
-            yield return new ToolOutput($"OrgDocsUpload: 잘못된 경로 — {pathError}", IsError: true);
-            yield break;
-        }
-
-        if (!File.Exists(full))
-        {
-            yield return new ToolOutput($"OrgDocsUpload: 파일이 없습니다: {inp.Path}", IsError: true);
-            yield break;
-        }
-
-        var size = new FileInfo(full).Length;
-        if (size > MaxFileBytes)
+        if (roots.Count == 0)
         {
             yield return new ToolOutput(
-                $"OrgDocsUpload: 파일이 너무 큽니다 ({size / (1024 * 1024)}MB > 100MB 상한).", IsError: true);
+                "OrgDocsUpload: 'path'(파일 또는 디렉토리) 또는 'paths'(여러 개)가 필요합니다.", IsError: true);
+            yield break;
+        }
+
+        // 로컬에서 대상 파일을 해소(디렉토리는 문서형만). 서버는 아직 건드리지 않는다.
+        var (sendable, oversized, notFound, resolveError) = ResolveTargets(roots, inp!.Recursive == true, context);
+        if (resolveError is not null)
+        {
+            yield return new ToolOutput(resolveError, IsError: true);
+            yield break;
+        }
+
+        if (sendable.Count == 0)
+        {
+            var sb = new StringBuilder("OrgDocsUpload: 업로드할 문서를 찾지 못했습니다.");
+            if (notFound.Count > 0)
+            {
+                sb.Append(" 파일이 없습니다: ").Append(string.Join(", ", notFound));
+            }
+
+            foreach (var (p, size) in oversized)
+            {
+                sb.Append(" (건너뜀: ").Append(RelativeTo(context, p)).Append(' ')
+                  .Append(FormatSize(size)).Append(" > 100MB)");
+            }
+
+            yield return new ToolOutput(sb.ToString(), IsError: true);
+            yield break;
+        }
+
+        // 배치(2개 이상)인데 아직 확인 전이면 미리보기만 돌려준다(업로드 없음).
+        if (sendable.Count > 1 && inp.Confirm != true)
+        {
+            yield return new ToolOutput(RenderPreview(sendable, oversized, notFound, inp.Visibility, context));
             yield break;
         }
 
@@ -138,7 +164,8 @@ public sealed class OrgDocsUploadTool : ITool
         UploadResponse? data = null;
         try
         {
-            data = await CallAsync(url, key, full, inp, timeoutCts.Token).ConfigureAwait(false);
+            data = await CallAsync(url, key, sendable, inp.Visibility, inp.CategoryId, timeoutCts.Token)
+                .ConfigureAwait(false);
         }
         catch (EndpointMissingException)
         {
@@ -160,26 +187,129 @@ public sealed class OrgDocsUploadTool : ITool
             yield break;
         }
 
-        yield return new ToolOutput(Render(data, System.IO.Path.GetFileName(full)));
+        yield return new ToolOutput(Render(data, sendable.Count, oversized, notFound, context));
     }
 
-    private static string Render(UploadResponse? data, string filename)
+    // roots 를 실제 업로드 대상 파일 목록으로 해소한다. 디렉토리는 문서형만, 개별 파일은 그대로.
+    private static (List<string> Sendable, List<(string Path, long Size)> Oversized, List<string> NotFound, string? Error)
+        ResolveTargets(List<string> roots, bool recursive, ToolContext context)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var sendable = new List<string>();
+        var oversized = new List<(string, long)>();
+        var notFound = new List<string>();
+
+        void Consider(string full)
+        {
+            if (!seen.Add(full))
+            {
+                return;
+            }
+
+            var size = new FileInfo(full).Length;
+            if (size > MaxFileBytes)
+            {
+                oversized.Add((full, size));
+            }
+            else
+            {
+                sendable.Add(full);
+            }
+        }
+
+        foreach (var root in roots)
+        {
+            string full;
+            try
+            {
+                full = System.IO.Path.GetFullPath(System.IO.Path.IsPathRooted(root)
+                    ? root
+                    : System.IO.Path.Combine(context.WorkingDirectory, root));
+            }
+            catch (Exception ex)
+            {
+                return (sendable, oversized, notFound, $"OrgDocsUpload: 잘못된 경로 '{root}' — {ex.Message}");
+            }
+
+            if (Directory.Exists(full))
+            {
+                var opt = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
+                foreach (var f in Directory.EnumerateFiles(full, "*", opt).OrderBy(f => f, StringComparer.Ordinal))
+                {
+                    var name = System.IO.Path.GetFileName(f);
+                    if (name.StartsWith('.') || !DocExtensions.Contains(System.IO.Path.GetExtension(f)))
+                    {
+                        continue; // 숨김 파일 · 비문서형 제외
+                    }
+
+                    Consider(f);
+                }
+            }
+            else if (File.Exists(full))
+            {
+                Consider(full); // 명시된 개별 파일은 확장자 필터 없이 업로드
+            }
+            else
+            {
+                notFound.Add(root);
+            }
+        }
+
+        return (sendable, oversized, notFound, null);
+    }
+
+    private static string RenderPreview(
+        List<string> sendable, List<(string Path, long Size)> oversized, List<string> notFound,
+        string? visibility, ToolContext context)
+    {
+        var total = sendable.Sum(p => new FileInfo(p).Length);
+        var vis = NormalizeVisibility(visibility) ?? "private";
+        var sb = new StringBuilder();
+        sb.Append("업로드 미리보기 — ").Append(sendable.Count).Append("개 문서 (총 ")
+          .Append(FormatSize(total)).Append("), 공개범위=").Append(vis).AppendLine();
+        var i = 1;
+        foreach (var p in sendable)
+        {
+            sb.Append("  ").Append(i++.ToString("00")).Append(". ").Append(RelativeTo(context, p))
+              .Append("  (").Append(FormatSize(new FileInfo(p).Length)).Append(')').AppendLine();
+        }
+
+        foreach (var (p, size) in oversized)
+        {
+            sb.Append("  건너뜀: ").Append(RelativeTo(context, p)).Append("  (")
+              .Append(FormatSize(size)).Append(" > 100MB)").AppendLine();
+        }
+
+        if (notFound.Count > 0)
+        {
+            sb.Append("  없음: ").Append(string.Join(", ", notFound)).AppendLine();
+        }
+
+        sb.Append("→ 이대로 올리려면 같은 호출에 confirm:true 를 추가해 다시 실행하세요.");
+        return sb.ToString();
+    }
+
+    private static string Render(
+        UploadResponse? data, int attempted, List<(string Path, long Size)> oversized,
+        List<string> notFound, ToolContext context)
     {
         var docs = data?.Documents ?? new List<UploadedDoc>();
         var skipped = data?.Skipped ?? new List<SkippedDoc>();
 
+        var sb = new StringBuilder();
         if (docs.Count == 0 && skipped.Count > 0)
         {
             var s = skipped[0];
-            return $"OrgDocsUpload: 업로드 거부됨 — {s.Filename}: {s.Reason}";
+            sb.Append("OrgDocsUpload: 업로드 거부됨 — ").Append(s.Filename).Append(": ").Append(s.Reason);
+            return sb.ToString();
         }
 
-        var sb = new StringBuilder();
+        sb.Append("업로드 완료 — ").Append(docs.Count).Append('/').Append(attempted).AppendLine("개");
         foreach (var d in docs)
         {
-            sb.Append("OK: '").Append(d.Filename ?? filename).Append("' 업로드됨 (id=")
+            sb.Append("  • '").Append(d.Filename).Append("' (id=")
               .Append(d.Id.ValueKind == JsonValueKind.Undefined ? "?" : d.Id.ToString())
-              .Append(", 상태=").Append(d.Status ?? "uploaded").Append(").");
+              .Append(", 상태=").Append(d.Status ?? "uploaded").Append(')');
             if (!string.IsNullOrWhiteSpace(data?.Visibility))
             {
                 sb.Append(" 공개범위=").Append(data!.Visibility);
@@ -188,18 +318,29 @@ public sealed class OrgDocsUploadTool : ITool
             sb.AppendLine();
         }
 
-        sb.Append("문서함 임베딩은 서버가 비동기 처리합니다(검색 반영까지 잠시 소요). ");
-        sb.Append("OrgDocsList 로 처리 상태를 확인할 수 있습니다.");
         foreach (var s in skipped)
         {
-            sb.AppendLine().Append("건너뜀: ").Append(s.Filename).Append(" — ").Append(s.Reason);
+            sb.Append("  건너뜀: ").Append(s.Filename).Append(" — ").Append(s.Reason).AppendLine();
         }
 
-        return sb.ToString().TrimEnd();
+        foreach (var (p, size) in oversized)
+        {
+            sb.Append("  건너뜀: ").Append(RelativeTo(context, p)).Append(" — 100MB 초과 (")
+              .Append(FormatSize(size)).Append(')').AppendLine();
+        }
+
+        if (notFound.Count > 0)
+        {
+            sb.Append("  없음: ").Append(string.Join(", ", notFound)).AppendLine();
+        }
+
+        sb.Append("문서함 임베딩은 서버가 비동기 처리합니다(검색 반영까지 잠시 소요). OrgDocsList 로 상태 확인.");
+        return sb.ToString();
     }
 
     private static async Task<UploadResponse?> CallAsync(
-        string url, string key, string filePath, Input inp, CancellationToken ct)
+        string url, string key, IReadOnlyList<string> filePaths, string? visibility, int? categoryId,
+        CancellationToken ct)
     {
         using var handler = new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.All };
         using var client = new HttpClient(handler) { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
@@ -212,23 +353,26 @@ public sealed class OrgDocsUploadTool : ITool
         var boundary = "MoaiBoundary" + Guid.NewGuid().ToString("N");
         using var form = new MultipartFormDataContent(boundary);
 
-        var bytes = await File.ReadAllBytesAsync(filePath, ct).ConfigureAwait(false);
-        var fileContent = new ByteArrayContent(bytes);
-        fileContent.Headers.ContentType = new MediaTypeHeaderValue(ContentTypeFor(filePath));
-        fileContent.Headers.ContentDisposition = new ContentDispositionHeaderValue("form-data")
+        foreach (var filePath in filePaths)
         {
-            Name = "\"files\"",  // 서버는 getAll('files')
-            FileName = "\"" + System.IO.Path.GetFileName(filePath) + "\"",
-        };
-        form.Add(fileContent);
+            var bytes = await File.ReadAllBytesAsync(filePath, ct).ConfigureAwait(false);
+            var fileContent = new ByteArrayContent(bytes);
+            fileContent.Headers.ContentType = new MediaTypeHeaderValue(ContentTypeFor(filePath));
+            fileContent.Headers.ContentDisposition = new ContentDispositionHeaderValue("form-data")
+            {
+                Name = "\"files\"",  // 서버는 getAll('files') — 다중 파일 동일 name
+                FileName = "\"" + System.IO.Path.GetFileName(filePath) + "\"",
+            };
+            form.Add(fileContent);
+        }
 
-        var vis = inp.Visibility?.Trim().ToLowerInvariant();
-        if (vis is "private" or "organization" or "company")
+        var vis = NormalizeVisibility(visibility);
+        if (vis is not null)
         {
             AddField(form, "visibility", vis);
         }
 
-        if (inp.CategoryId is { } cat && cat > 0)
+        if (categoryId is { } cat && cat > 0)
         {
             AddField(form, "categoryId", cat.ToString());
         }
@@ -262,6 +406,32 @@ public sealed class OrgDocsUploadTool : ITool
         };
         form.Add(sc);
     }
+
+    private static string? NormalizeVisibility(string? v)
+    {
+        var vis = v?.Trim().ToLowerInvariant();
+        return vis is "private" or "organization" or "company" ? vis : null;
+    }
+
+    private static string RelativeTo(ToolContext context, string full)
+    {
+        try
+        {
+            var rel = System.IO.Path.GetRelativePath(context.WorkingDirectory, full);
+            return rel.StartsWith("..", StringComparison.Ordinal) ? full : rel;
+        }
+        catch
+        {
+            return System.IO.Path.GetFileName(full);
+        }
+    }
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        >= 1 << 20 => $"{bytes / (double)(1 << 20):0.#}MB",
+        >= 1 << 10 => $"{bytes / (double)(1 << 10):0.#}KB",
+        _ => $"{bytes}B",
+    };
 
     private static string ContentTypeFor(string path) =>
         System.IO.Path.GetExtension(path).ToLowerInvariant() switch
