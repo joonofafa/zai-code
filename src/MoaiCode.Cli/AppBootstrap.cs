@@ -59,6 +59,10 @@ public static class AppBootstrap
         toolList.Add(new MoaiCode.Tools.OpenXml.PptxCreateTool());
         toolList.Add(new MoaiCode.Tools.OpenXml.OfficeDocInspectTool());
 
+        // 로컬 문서 청킹(오프라인, 서버무관) — 청크 생성/가져오기.
+        toolList.Add(new MoaiCode.Tools.OpenXml.ChunkBuildTool());
+        toolList.Add(new MoaiCode.Tools.OpenXml.ChunkFetchTool());
+
 #if WINDOWS
         // Windows 빌드(net10.0-windows)에서만 Office COM 툴 등록. Office 미설치/GPO 차단 시 빈 목록.
         toolList.AddRange(MoaiCode.Tools.Office.OfficeTools.CreateIfAvailable());

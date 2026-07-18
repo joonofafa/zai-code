@@ -9,5 +9,6 @@
   <ItemGroup>
     <PackageReference Include="DocumentFormat.OpenXml" />
     <PackageReference Include="System.IO.Packaging" />
+    <PackageReference Include="PdfPig" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,122 @@
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace MoaiCode.Tools.OpenXml;
+
+/// <summary>
+/// 대상 폴더 아래 <c>.moai-chunks/</c> 사이드카에 청크(jsonl)와 manifest 를 읽고 쓴다. 원본은 건드리지 않는다.
+/// 문서별 파일은 상대경로를 미러링(<c>.moai-chunks/sub/doc.docx.jsonl</c>)해 충돌을 피한다.
+/// </summary>
+public sealed class ChunkStore
+{
+    public const string DirName = ".moai-chunks";
+
+    private static readonly JsonSerializerOptions Json = new()
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        WriteIndented = false,
+    };
+
+    private readonly string _chunksDir;
+
+    public ChunkStore(string anchorDir)
+    {
+        _chunksDir = Path.Combine(anchorDir, DirName);
+    }
+
+    public string ChunksDir => _chunksDir;
+
+    public bool Exists => Directory.Exists(_chunksDir);
+
+    public string ManifestPath => Path.Combine(_chunksDir, "manifest.json");
+
+    public ChunkManifest LoadManifest()
+    {
+        if (!File.Exists(ManifestPath))
+        {
+            return new ChunkManifest(TextChunker.DefaultMaxChars, TextChunker.DefaultOverlapChars, new());
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<ChunkManifest>(File.ReadAllText(ManifestPath), Json)
+                   ?? new ChunkManifest(TextChunker.DefaultMaxChars, TextChunker.DefaultOverlapChars, new());
+        }
+        catch (JsonException)
+        {
+            return new ChunkManifest(TextChunker.DefaultMaxChars, TextChunker.DefaultOverlapChars, new());
+        }
+    }
+
+    public void SaveManifest(ChunkManifest manifest)
+    {
+        Directory.CreateDirectory(_chunksDir);
+        File.WriteAllText(ManifestPath, JsonSerializer.Serialize(manifest, Json));
+    }
+
+    // 문서(상대경로)의 청크를 jsonl 로 기록한다. 반환값은 manifest 에 저장할 상대 파일명.
+    public string WriteChunks(string relSource, IReadOnlyList<string> chunks)
+    {
+        var relFile = relSource + ".jsonl";
+        var full = Path.Combine(_chunksDir, relFile);
+        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+        var sb = new StringBuilder();
+        for (var i = 0; i < chunks.Count; i++)
+        {
+            sb.AppendLine(JsonSerializer.Serialize(new ChunkLine(i, chunks[i]), Json));
+        }
+
+        File.WriteAllText(full, sb.ToString());
+        return relFile;
+    }
+
+    public IReadOnlyList<ChunkLine> ReadChunks(string relFile)
+    {
+        var full = Path.Combine(_chunksDir, relFile);
+        if (!File.Exists(full))
+        {
+            return Array.Empty<ChunkLine>();
+        }
+
+        var result = new List<ChunkLine>();
+        foreach (var line in File.ReadLines(full))
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            try
+            {
+                var c = JsonSerializer.Deserialize<ChunkLine>(line, Json);
+                if (c is not null)
+                {
+                    result.Add(c);
+                }
+            }
+            catch (JsonException)
+            {
+                // skip corrupt line
+            }
+        }
+
+        return result;
+    }
+}
+
+public sealed record ChunkLine(
+    [property: JsonPropertyName("i")] int Index,
+    [property: JsonPropertyName("text")] string Text);
+
+public sealed record ChunkDocEntry(
+    [property: JsonPropertyName("source")] string Source,
+    [property: JsonPropertyName("size")] long Size,
+    [property: JsonPropertyName("mtime")] long MTimeUtcTicks,
+    [property: JsonPropertyName("chunks")] int Chunks,
+    [property: JsonPropertyName("file")] string File);
+
+public sealed record ChunkManifest(
+    [property: JsonPropertyName("chunkSize")] int ChunkSize,
+    [property: JsonPropertyName("overlap")] int Overlap,
+    [property: JsonPropertyName("documents")] List<ChunkDocEntry> Documents);
