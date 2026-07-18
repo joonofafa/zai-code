@@ -71,6 +71,54 @@ public sealed class ChunkStore
         return relFile;
     }
 
+    public string VectorManifestPath => Path.Combine(_chunksDir, "vectors.json");
+
+    // 파이프라인이 만든 벡터 메타(vectors.json). 없으면 null.
+    public VectorManifest? LoadVectorManifest()
+    {
+        if (!File.Exists(VectorManifestPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<VectorManifest>(File.ReadAllText(VectorManifestPath), Json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    // 문서의 벡터 파일(.vec)을 [청크수 × dim] float32 로 읽는다. 크기가 dim 배수가 아니면 예외.
+    public IReadOnlyList<float[]> ReadVectors(string vecRelFile, int dim)
+    {
+        var full = Path.Combine(_chunksDir, vecRelFile);
+        if (!File.Exists(full))
+        {
+            return Array.Empty<float[]>();
+        }
+
+        var bytes = File.ReadAllBytes(full);
+        if (dim <= 0 || bytes.Length % (dim * 4) != 0)
+        {
+            throw new InvalidDataException(
+                $"'{vecRelFile}' 크기({bytes.Length}B)가 dim={dim} float32 행에 맞지 않습니다.");
+        }
+
+        var rows = bytes.Length / (dim * 4);
+        var result = new List<float[]>(rows);
+        for (var r = 0; r < rows; r++)
+        {
+            var vec = new float[dim];
+            Buffer.BlockCopy(bytes, r * dim * 4, vec, 0, dim * 4);
+            result.Add(vec);
+        }
+
+        return result;
+    }
+
     public IReadOnlyList<ChunkLine> ReadChunks(string relFile)
     {
         var full = Path.Combine(_chunksDir, relFile);
@@ -120,3 +168,14 @@ public sealed record ChunkManifest(
     [property: JsonPropertyName("chunkSize")] int ChunkSize,
     [property: JsonPropertyName("overlap")] int Overlap,
     [property: JsonPropertyName("documents")] List<ChunkDocEntry> Documents);
+
+// 외부 임베딩 파이프라인이 소유하는 vectors.json (moai 는 읽기만). 스펙: docs/CHUNK_VEC_FORMAT.md.
+public sealed record VectorDocEntry(
+    [property: JsonPropertyName("source")] string Source,
+    [property: JsonPropertyName("vec")] string Vec,
+    [property: JsonPropertyName("chunks")] int Chunks);
+
+public sealed record VectorManifest(
+    [property: JsonPropertyName("embModel")] string? EmbModel,
+    [property: JsonPropertyName("dim")] int Dim,
+    [property: JsonPropertyName("documents")] List<VectorDocEntry> Documents);

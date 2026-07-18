@@ -110,4 +110,88 @@ public sealed class ChunkToolsTests : IDisposable
         var text = await Run(new ChunkFetchTool(), new { path = "empty" }, expectOk: false);
         Assert.Contains("ChunkBuild", text); // 먼저 청킹하라는 안내
     }
+
+    [Fact]
+    public async Task Search_ranks_nearest_chunk_by_cosine()
+    {
+        var src = await BuildTwoSingleChunkDocs();
+        var cdir = Path.Combine(src, ".moai-chunks");
+        WriteVec(Path.Combine(cdir, "a.txt.vec"), new[] { 1f, 0f, 0f });
+        WriteVec(Path.Combine(cdir, "b.txt.vec"), new[] { 0f, 1f, 0f });
+        WriteVectorsJson(cdir, dim: 3, ("a.txt", 1), ("b.txt", 1));
+
+        var text = await Run(new ChunkSearchTool(),
+            new { path = "src", queryVector = new[] { 0.9, 0.1, 0.0 }, topK = 2 });
+
+        var aIdx = text.IndexOf("a.txt", StringComparison.Ordinal);
+        var bIdx = text.IndexOf("b.txt", StringComparison.Ordinal);
+        Assert.True(aIdx >= 0, text);
+        Assert.True(bIdx < 0 || aIdx < bIdx, "a.txt(질의에 가까움)가 상위여야 함:\n" + text);
+        Assert.StartsWith("<system-reminder>", text); // 청크 본문 untrusted 경계
+    }
+
+    [Fact]
+    public async Task Search_skips_stale_documents()
+    {
+        var src = await BuildTwoSingleChunkDocs();
+        var cdir = Path.Combine(src, ".moai-chunks");
+        WriteVec(Path.Combine(cdir, "a.txt.vec"), new[] { 1f, 0f, 0f });
+        WriteVectorsJson(cdir, dim: 3, ("a.txt", 2)); // 실제 1청크인데 2로 기재 → stale
+
+        var text = await Run(new ChunkSearchTool(), new { path = "src", queryVector = new[] { 1.0, 0.0, 0.0 } });
+        Assert.Contains("stale", text);
+    }
+
+    [Fact]
+    public async Task Search_without_vectors_reports_missing()
+    {
+        var src = await BuildTwoSingleChunkDocs(); // 청크는 있으나 vectors.json 없음
+        var text = await Run(new ChunkSearchTool(),
+            new { path = "src", queryVector = new[] { 1.0, 0.0, 0.0 } }, expectOk: false);
+        Assert.Contains("vectors.json", text);
+    }
+
+    [Fact]
+    public async Task Search_rejects_dim_mismatch()
+    {
+        var src = await BuildTwoSingleChunkDocs();
+        var cdir = Path.Combine(src, ".moai-chunks");
+        WriteVec(Path.Combine(cdir, "a.txt.vec"), new[] { 1f, 0f, 0f });
+        WriteVectorsJson(cdir, dim: 3, ("a.txt", 1));
+
+        var text = await Run(new ChunkSearchTool(),
+            new { path = "src", queryVector = new[] { 1.0, 0.0 } }, expectOk: false); // 2차원
+        Assert.Contains("차원", text);
+    }
+
+    private async Task<string> BuildTwoSingleChunkDocs()
+    {
+        var src = Directory.CreateDirectory(Path.Combine(_dir, "src")).FullName;
+        await File.WriteAllTextAsync(Path.Combine(src, "a.txt"), "apple apple apple");
+        await File.WriteAllTextAsync(Path.Combine(src, "b.txt"), "banana banana banana");
+        await Run(new ChunkBuildTool(), new { path = "src" });
+        return src;
+    }
+
+    private static void WriteVec(string path, params float[][] rows)
+    {
+        var count = rows.Sum(r => r.Length);
+        var bytes = new byte[count * 4];
+        var off = 0;
+        foreach (var r in rows)
+        {
+            Buffer.BlockCopy(r, 0, bytes, off, r.Length * 4);
+            off += r.Length * 4;
+        }
+
+        File.WriteAllBytes(path, bytes);
+    }
+
+    private static void WriteVectorsJson(string chunksDir, int dim, params (string Source, int Chunks)[] docs)
+    {
+        var docsJson = string.Join(",", docs.Select(d =>
+            $$"""{"source":"{{d.Source}}","vec":"{{d.Source}}.vec","chunks":{{d.Chunks}}}"""));
+        File.WriteAllText(Path.Combine(chunksDir, "vectors.json"),
+            $$"""{"embModel":"test","dim":{{dim}},"documents":[{{docsJson}}]}""");
+    }
 }
