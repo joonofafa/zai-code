@@ -7,6 +7,9 @@ using MoaiCode.Tui.Commands;
 // 엔트리포인트 (TS의 bin/openclaude + src/entrypoints/cli.tsx 대응).
 // System.CommandLine 기반 서브커맨드 디스패치. 인자 없으면 대화형 REPL.
 
+// Windows 콘솔을 UTF-8 로 (기본 CP949 에서 ❯·✓·• 가 '?' 로 깨지는 문제). 어떤 출력보다 먼저.
+ConsoleSetup.EnsureUtf8();
+
 // 사내망 프록시 적용 (모든 HttpClient 생성보다 먼저 — DefaultProxy 세팅).
 ProxyConfig.Apply(Directory.GetCurrentDirectory());
 
