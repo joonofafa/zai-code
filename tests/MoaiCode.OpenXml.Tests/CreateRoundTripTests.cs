@@ -195,6 +195,9 @@ public sealed class CreateRoundTripTests : IDisposable
         var ws = doc.WorkbookPart!.WorksheetParts.First();
         Assert.NotNull(ws.DrawingsPart);
         Assert.NotEmpty(ws.DrawingsPart!.ChartParts);
+        // 시리즈/조각에 채우기(색)가 있어야 실제로 막대·조각이 보인다(무색이면 LibreOffice 등에서 안 보임).
+        Assert.NotEmpty(ws.DrawingsPart.ChartParts.First().ChartSpace
+            .Descendants<DocumentFormat.OpenXml.Drawing.SolidFill>());
     }
 
     [Fact]

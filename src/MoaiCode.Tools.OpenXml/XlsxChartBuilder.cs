@@ -56,7 +56,7 @@ internal static class XlsxChartBuilder
         {
             var pie = new C.PieChart(new C.VaryColors { Val = true });
             // 원형은 시리즈 1개만 사용.
-            pie.AppendChild(BuildSeries(spec, spec.Series[0], 0, sheetName, rows, pie: true));
+            pie.AppendChild(BuildSeries(spec, spec.Series[0], 0, sheetName, rows, "pie"));
             plotArea.AppendChild(pie);
         }
         else if (type == "line")
@@ -64,7 +64,7 @@ internal static class XlsxChartBuilder
             var line = new C.LineChart(new C.Grouping { Val = C.GroupingValues.Standard }, new C.VaryColors { Val = false });
             for (var i = 0; i < spec.Series.Count; i++)
             {
-                line.AppendChild(BuildSeries(spec, spec.Series[i], i, sheetName, rows, pie: false));
+                line.AppendChild(BuildSeries(spec, spec.Series[i], i, sheetName, rows, "line"));
             }
 
             line.AppendChild(new C.AxisId { Val = catAxisId });
@@ -80,7 +80,7 @@ internal static class XlsxChartBuilder
                 new C.VaryColors { Val = false });
             for (var i = 0; i < spec.Series.Count; i++)
             {
-                bar.AppendChild(BuildSeries(spec, spec.Series[i], i, sheetName, rows, pie: false));
+                bar.AppendChild(BuildSeries(spec, spec.Series[i], i, sheetName, rows, "bar"));
             }
 
             bar.AppendChild(new C.AxisId { Val = catAxisId });
@@ -129,9 +129,16 @@ internal static class XlsxChartBuilder
             new C.Overlay { Val = false });
     }
 
+    // 시리즈/데이터포인트 색상 팔레트(Office 유사). spPr 이 없으면 style 파트 없는 소비자(LibreOffice)가
+    // 막대를 무색으로 그려 안 보인다 → 명시적 채우기를 넣는다.
+    private static readonly string[] Palette =
+    {
+        "4472C4", "ED7D31", "A5A5A5", "FFC000", "5B9BD5", "70AD47", "264478", "9E480E",
+    };
+
     private static OpenXmlElement BuildSeries(
         ChartSpec spec, ChartSeries s, int index, string sheetName,
-        IReadOnlyList<IReadOnlyList<string>> rows, bool pie)
+        IReadOnlyList<IReadOnlyList<string>> rows, string kind)
     {
         var catFormula = RangeFormula(sheetName, spec.CategoriesRange);
         var valFormula = RangeFormula(sheetName, s.ValuesRange);
@@ -139,27 +146,58 @@ internal static class XlsxChartBuilder
         var numValues = ReadRange(rows, s.ValuesRange);
 
         var seriesText = BuildSeriesText(s, sheetName);
-
         var catAxisData = new C.CategoryAxisData(BuildStringReference(catFormula, catValues));
         var values = new C.Values(BuildNumberReference(valFormula, numValues));
+        var color = Palette[index % Palette.Length];
 
-        if (pie)
+        if (kind == "pie")
         {
-            return new C.PieChartSeries(
+            // 원형은 조각(포인트)마다 색을 줘야 구분된다.
+            var ser = new C.PieChartSeries(
+                new C.Index { Val = (uint)index },
+                new C.Order { Val = (uint)index },
+                seriesText);
+            for (var j = 0; j < numValues.Count; j++)
+            {
+                ser.AppendChild(new C.DataPoint(
+                    new C.Index { Val = (uint)j },
+                    new C.Bubble3D { Val = false },
+                    ShapeFill(Palette[j % Palette.Length])));
+            }
+
+            ser.AppendChild(catAxisData);
+            ser.AppendChild(values);
+            return ser;
+        }
+
+        if (kind == "line")
+        {
+            // 선은 LineChartSeries + 선 색(a:ln). 채우기 아님.
+            return new C.LineChartSeries(
                 new C.Index { Val = (uint)index },
                 new C.Order { Val = (uint)index },
                 seriesText,
+                ShapeLine(color),
+                new C.Marker(new C.Symbol { Val = C.MarkerStyleValues.None }),
                 catAxisData,
                 values);
         }
 
+        // 막대: BarChartSeries + 채우기(tx 뒤, cat 앞).
         return new C.BarChartSeries(
             new C.Index { Val = (uint)index },
             new C.Order { Val = (uint)index },
             seriesText,
+            ShapeFill(color),
             catAxisData,
             values);
     }
+
+    private static C.ChartShapeProperties ShapeFill(string hex)
+        => new(new A.SolidFill(new A.RgbColorModelHex { Val = hex }));
+
+    private static C.ChartShapeProperties ShapeLine(string hex)
+        => new(new A.Outline(new A.SolidFill(new A.RgbColorModelHex { Val = hex })) { Width = 28575 });
 
     private static C.SeriesText BuildSeriesText(ChartSeries s, string sheetName)
     {
