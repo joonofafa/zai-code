@@ -126,6 +126,9 @@ public sealed class PptxCreateTool : ITool
                 RelationshipId = masterPart.GetIdOfPart(layoutPart),
             }));
 
+        // 레이아웃 → 마스터 역관계(ECMA-376 필수). 없으면 검증은 통과해도 PowerPoint 가 '복구' 를 띄운다.
+        layoutPart.AddPart(masterPart);
+
         // 테마(마스터에 필수).
         var themePart = masterPart.AddNewPart<ThemePart>();
         themePart.Theme = MinimalTheme();

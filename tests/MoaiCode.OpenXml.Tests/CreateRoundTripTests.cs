@@ -73,6 +73,11 @@ public sealed class CreateRoundTripTests : IDisposable
         using var doc = PresentationDocument.Open(path, false);
         Assert.Equal(0, Validate(doc)); // ← PPTX 구조가 유효한지 판가름
         Assert.Equal(2, doc.PresentationPart!.SlideParts.Count());
+
+        // 레이아웃 → 마스터 역관계(ECMA-376 필수). 검증기는 강제 안 하지만 없으면 PowerPoint 가 '복구' 를 띄운다.
+        var master = doc.PresentationPart.SlideMasterParts.First();
+        var layout = master.SlideLayoutParts.First();
+        Assert.NotEmpty(layout.GetPartsOfType<SlideMasterPart>());
     }
 
     [Fact]
