@@ -158,34 +158,46 @@ public sealed class PptxCreateTool : ITool
             new NotesSize { Cx = 6858000, Cy = 9144000 });
     }
 
+    // 슬라이드 기하(EMU). 9144000×6858000 = 4:3 기본.
+    private const long MarginX = 685800;   // 0.75"
+    private const long ContentW = 7772400; // 슬라이드 폭 - 좌우 여백
+
     private static Slide BuildSlide(SlideIn s)
     {
         var tree = new ShapeTree(NvGroupShapeProps(), new GroupShapeProperties());
+        uint id = 2;
+        var hasTitle = !string.IsNullOrWhiteSpace(s.Title);
 
-        var lines = new List<string>();
-        if (!string.IsNullOrWhiteSpace(s.Title))
+        if (hasTitle)
         {
-            lines.Add(s.Title!);
+            tree.AppendChild(MakeShape(id++, "Title", MarginX, 381000, ContentW, 1000000,
+                new[] { TextParagraph(s.Title!, 3200, bold: true, bullet: false) }));
         }
 
-        lines.AddRange(s.Bullets ?? new List<string>());
-        if (lines.Count == 0)
+        var bullets = (s.Bullets ?? new List<string>()).Where(b => b is not null).ToList();
+        if (bullets.Count > 0)
         {
-            lines.Add(string.Empty);
+            var y = hasTitle ? 1600200L : 685800L;
+            tree.AppendChild(MakeShape(id++, "Body", MarginX, y, ContentW, 4800000,
+                bullets.Select(b => TextParagraph(b, 1800, bold: false, bullet: true))));
+        }
+        else if (!hasTitle)
+        {
+            tree.AppendChild(MakeShape(id, "Body", MarginX, 685800, ContentW, 4800000,
+                new[] { TextParagraph(string.Empty, 1800, bold: false, bullet: false) }));
         }
 
-        tree.AppendChild(TextBox(2U, "Content", lines));
         return new Slide(new CommonSlideData(tree), new ColorMapOverride(new D.MasterColorMapping()));
     }
 
-    private static P.Shape TextBox(uint id, string name, IReadOnlyList<string> lines)
+    // 위치·크기(xfrm)와 사각형 지오메트리를 갖춘 텍스트 도형. spPr 이 비면 PowerPoint 가 렌더하지 못한다.
+    private static P.Shape MakeShape(
+        uint id, string name, long x, long y, long cx, long cy, IEnumerable<D.Paragraph> paragraphs)
     {
         var body = new P.TextBody(new D.BodyProperties(), new D.ListStyle());
-        foreach (var line in lines)
+        foreach (var p in paragraphs)
         {
-            body.AppendChild(new D.Paragraph(new D.Run(
-                new D.RunProperties { Language = "en-US" },
-                new D.Text(line))));
+            body.AppendChild(p);
         }
 
         return new P.Shape(
@@ -193,8 +205,28 @@ public sealed class PptxCreateTool : ITool
                 new P.NonVisualDrawingProperties { Id = id, Name = name },
                 new P.NonVisualShapeDrawingProperties(new D.ShapeLocks { NoGrouping = true }),
                 new P.ApplicationNonVisualDrawingProperties()),
-            new P.ShapeProperties(),
+            new P.ShapeProperties(
+                new D.Transform2D(
+                    new D.Offset { X = x, Y = y },
+                    new D.Extents { Cx = cx, Cy = cy }),
+                new D.PresetGeometry(new D.AdjustValueList()) { Preset = D.ShapeTypeValues.Rectangle }),
             body);
+    }
+
+    private static D.Paragraph TextParagraph(string text, int fontSize, bool bold, bool bullet)
+    {
+        var runProps = new D.RunProperties { Language = "en-US", FontSize = fontSize };
+        if (bold)
+        {
+            runProps.Bold = true;
+        }
+
+        var para = new D.Paragraph();
+        para.AppendChild(bullet
+            ? new D.ParagraphProperties(new D.BulletFont { Typeface = "Arial" }, new D.CharacterBullet { Char = "•" })
+            : new D.ParagraphProperties(new D.NoBullet()));
+        para.AppendChild(new D.Run(runProps, new D.Text(text)));
+        return para;
     }
 
     private static P.NonVisualGroupShapeProperties NvGroupShapeProps() =>

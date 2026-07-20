@@ -78,6 +78,13 @@ public sealed class CreateRoundTripTests : IDisposable
         var master = doc.PresentationPart.SlideMasterParts.First();
         var layout = master.SlideLayoutParts.First();
         Assert.NotEmpty(layout.GetPartsOfType<SlideMasterPart>());
+
+        // 도형에 위치·크기(xfrm)가 있어야 실제로 렌더된다(빈 spPr → 공백 슬라이드 회귀 방지).
+        var slide = doc.PresentationPart.SlideParts.First().Slide;
+        var shapes = slide.Descendants<DocumentFormat.OpenXml.Presentation.Shape>().ToList();
+        Assert.NotEmpty(shapes);
+        Assert.All(shapes, sh => Assert.NotNull(sh.ShapeProperties?.Transform2D));
+        Assert.Contains("제목 슬라이드", slide.InnerText); // 텍스트가 실제로 들어있음
     }
 
     [Fact]
