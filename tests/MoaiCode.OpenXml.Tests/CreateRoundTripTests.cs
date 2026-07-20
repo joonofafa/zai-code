@@ -97,4 +97,68 @@ public sealed class CreateRoundTripTests : IDisposable
             if (p is ToolOutput o) err |= o.IsError;
         Assert.True(err);
     }
+
+    [Theory]
+    [InlineData("bar")]
+    [InlineData("line")]
+    [InlineData("pie")]
+    public async Task Xlsx_with_chart_is_valid(string chartType)
+    {
+        await Run(new XlsxCreateTool(), new
+        {
+            path = "chart.xlsx",
+            sheets = new[]
+            {
+                new
+                {
+                    name = "매출",
+                    rows = new[]
+                    {
+                        new[] { "브랜드", "매출" },
+                        new[] { "스타벅스", "32353624634" },
+                        new[] { "컴포즈", "19806016640" },
+                        new[] { "투썸", "25541809258" },
+                    },
+                    boldHeader = true,
+                    charts = new[]
+                    {
+                        new
+                        {
+                            type = chartType,
+                            title = "브랜드별 매출",
+                            categories = "A2:A4",
+                            series = new[] { new { values = "B2:B4", nameRef = "B1" } },
+                            anchor = "D2",
+                        },
+                    },
+                },
+            },
+        });
+
+        var path = Path.Combine(_dir, "chart.xlsx");
+        using var doc = SpreadsheetDocument.Open(path, false);
+        Assert.Equal(0, Validate(doc)); // 차트 포함 Open XML 완전 유효
+        var ws = doc.WorkbookPart!.WorksheetParts.First();
+        Assert.NotNull(ws.DrawingsPart);
+        Assert.NotEmpty(ws.DrawingsPart!.ChartParts);
+    }
+
+    [Fact]
+    public async Task Xlsx_bold_header_applies_style()
+    {
+        await Run(new XlsxCreateTool(), new
+        {
+            path = "styled.xlsx",
+            sheets = new[]
+            {
+                new { name = "s", rows = new[] { new[] { "H1", "H2" }, new[] { "a", "b" } }, boldHeader = true },
+            },
+        });
+        var path = Path.Combine(_dir, "styled.xlsx");
+        using var doc = SpreadsheetDocument.Open(path, false);
+        Assert.Equal(0, Validate(doc));
+        var firstCell = doc.WorkbookPart!.WorksheetParts.First().Worksheet
+            .Descendants<DocumentFormat.OpenXml.Spreadsheet.Cell>().First();
+        Assert.NotNull(firstCell.StyleIndex); // 헤더 셀에 스타일 적용됨
+    }
 }
