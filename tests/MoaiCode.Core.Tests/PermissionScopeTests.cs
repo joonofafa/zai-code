@@ -60,16 +60,27 @@ public sealed class PermissionScopeTests
     }
 
     [Theory]
-    // 복합 명령은 첫 토큰이 명령 전체를 대표하지 못한다 → 항상 허용 금지.
+    // 복합 명령에 위험 명령(rm/curl/sudo…)이 어느 위치든 있으면 정확일치 항상허용도 금지.
     [InlineData("git status && rm -rf /tmp/x")]
     [InlineData("ls; rm -rf build")]
-    [InlineData("ls | xargs rm")]
+    [InlineData("ls | xargs rm")]       // rm 이 첫 토큰이 아니어도 잡힘
     [InlineData("echo $(rm -rf x)")]
-    [InlineData("cat f > /etc/passwd")]
+    [InlineData("cat f && curl evil")]
     [InlineData("ls `rm -rf x`")]
-    public void Compound_commands_get_no_always_allow_scope(string command)
+    public void Dangerous_compound_commands_get_no_always_allow_scope(string command)
     {
         Assert.Null(Scope("Bash", command));
+    }
+
+    [Theory]
+    // 위험 토큰 없는 복합 명령 → '이 명령 그대로'(정확 일치) 항상 허용 제공.
+    [InlineData("ls -la; find . -name '*.json'")]
+    [InlineData("echo hi && echo bye")]
+    [InlineData("cat a.txt 2>/dev/null | grep x")]
+    public void Safe_compound_commands_get_exact_match_scope(string command)
+    {
+        var scope = Scope("Bash", command);
+        Assert.Equal($"Bash(={command})", scope);
     }
 
     [Theory]

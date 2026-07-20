@@ -26,11 +26,16 @@ public static class PermissionRule
         "ssh", "telnet", "mosh",
     };
 
-    // 프롬프트의 "항상 허용"으로는 절대 넓히지 않는 명령 (손으로 settings 에 넣는 건 사용자 자유).
-    private static readonly HashSet<string> NeverScope = new(StringComparer.Ordinal)
+    // 프롬프트의 "항상 허용"으로는 절대 넓히지 않는 파괴적/위험 명령 (손으로 settings 에 넣는 건 사용자 자유).
+    // 크로스플랫폼(Win/Linux/macOS) — 대소문자 무시(PowerShell/cmd 는 대소문자 구분 안 함).
+    private static readonly HashSet<string> NeverScope = new(StringComparer.OrdinalIgnoreCase)
     {
+        // Unix / macOS
         "rm", "rmdir", "dd", "mkfs", "chmod", "chown", "kill", "pkill", "killall",
-        "sudo", "su", "doas", "eval", "exec", "shutdown", "reboot", "curl", "wget",
+        "sudo", "su", "doas", "eval", "exec", "shutdown", "reboot", "curl", "wget", "diskutil",
+        // Windows / PowerShell (파괴적)
+        "del", "erase", "rd", "format", "diskpart", "cipher", "bcdedit", "fsutil",
+        "takeown", "remove-item", "ri", "clear-disk", "format-volume", "reg",
     };
 
     private static readonly char[] ShellOperators = { ';', '|', '&', '`', '\n', '\r', '>', '<', '(', ')' };
@@ -51,9 +56,16 @@ public static class PermissionRule
         }
 
         var command = ReadCommand(call);
-        if (string.IsNullOrWhiteSpace(command) || HasShellOperators(command))
+        if (string.IsNullOrWhiteSpace(command))
         {
-            return null; // 복합 명령은 prefix 로 대표할 수 없다
+            return null;
+        }
+
+        if (HasShellOperators(command))
+        {
+            // 복합 명령은 prefix 로 대표할 수 없다 → '이 명령 그대로'(정확 일치)로만 제공.
+            // 단 어느 세그먼트든 NeverScope(rm/curl/sudo…) 면 항상 허용을 주지 않는다.
+            return AnySegmentNeverScoped(command) ? null : "Bash(=" + command.Trim() + ")";
         }
 
         var tokens = Tokenize(command);
@@ -113,9 +125,16 @@ public static class PermissionRule
             return false;
         }
 
-        // 허용 매치: 복합 명령이면 첫 세그먼트가 명령 전체를 대표하지 못하므로 매치 금지.
+        // 허용 매치.
         if (allowMatch)
         {
+            // 정확 일치 규칙 Bash(=<cmd>): 복합 명령이라도 바이트 동일할 때만 매치.
+            if (patInner.StartsWith("=", StringComparison.Ordinal))
+            {
+                return string.Equals(command.Trim(), patInner[1..].Trim(), StringComparison.Ordinal);
+            }
+
+            // 그 외: 복합 명령이면 첫 세그먼트가 명령 전체를 대표하지 못하므로 매치 금지.
             return !HasShellOperators(command) && SegmentMatches(command, patTokens);
         }
 
@@ -179,6 +198,24 @@ public static class PermissionRule
         }
 
         return (tool, inner.Length == 0 ? null : inner);
+    }
+
+    // 복합 명령에 NeverScope(rm/curl/sudo…) 토큰이 하나라도 있으면 true → 정확일치 항상허용도 금지.
+    // (ls | xargs rm 처럼 첫 토큰이 아닌 위치의 위험 명령도 잡기 위해 세그먼트 내 전체 토큰을 본다.)
+    private static bool AnySegmentNeverScoped(string command)
+    {
+        foreach (var seg in SplitSegments(command))
+        {
+            foreach (var tok in Tokenize(seg))
+            {
+                if (NeverScope.Contains(Basename(tok)))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static IEnumerable<string> SplitSegments(string command)

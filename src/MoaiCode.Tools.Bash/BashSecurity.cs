@@ -89,6 +89,12 @@ public static class BashSecurity
         // `zellij delete-all-sessions`, `docker container prune-all` 등 일괄 파괴 서브커맨드.
         (Rx(@"\b(delete|destroy|purge|prune|wipe|remove)[-_]?all\b"), "일괄 삭제 서브커맨드"),
 
+        // Windows/PowerShell 재귀·강제 삭제 (시스템 경로가 아니어도 '파괴적'이면 확인 — rm -r 와 대칭).
+        (Rx(@"\b(del|erase)\b[^|;&]*\s/[a-z]*[sq]"), "Windows del/erase (/s|/q 재귀·강제 삭제)"),
+        (Rx(@"\b(rd|rmdir)\b[^|;&]*\s/s\b"), "Windows rd /s (디렉토리 재귀 삭제)"),
+        (Rx(@"\bRemove-Item\b[^|;&]*\s-(Recurse|Force)\b"), "PowerShell Remove-Item -Recurse/-Force"),
+        (Rx(@"\b(rm|ri|del|rmdir)\b[^|;&]*\s-Recurse\b"), "PowerShell 재귀 삭제(-Recurse)"),
+
         // 워크스페이스 밖 상태를 바꾸는 글로벌/시스템 설치 — 로컬 프로젝트 설치(npm install 등)는 제외.
         (Rx(@"\bnpm\s+(install|i|add|update|up)\b[^|;&]*\s(-g|--global)\b"), "npm 글로벌 설치(-g)"),
         (Rx(@"\bpnpm\s+(add|install|update|up)\b[^|;&]*\s(-g|--global)\b"), "pnpm 글로벌 설치(-g)"),

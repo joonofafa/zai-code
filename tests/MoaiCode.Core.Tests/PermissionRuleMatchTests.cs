@@ -79,6 +79,28 @@ public sealed class PermissionRuleMatchTests
     }
 
     [Fact]
+    public void Exact_match_rule_matches_only_the_identical_compound_command()
+    {
+        const string cmd = "ls -la; find . -name '*.json'";
+        var pattern = "Bash(=" + cmd + ")";
+        Assert.True(PermissionRule.Matches(pattern, new FakeTool("Bash"), Bash(cmd), allowMatch: true));
+        // 조금이라도 다르면 매치 안 됨(prefix 확장 아님).
+        Assert.False(PermissionRule.Matches(pattern, new FakeTool("Bash"),
+            Bash("ls -la; find . -name '*.json'; rm -rf x"), allowMatch: true));
+        Assert.False(PermissionRule.Matches(pattern, new FakeTool("Bash"), Bash("ls -la"), allowMatch: true));
+    }
+
+    [Theory]
+    // 크로스플랫폼 파괴적 명령은 '항상 허용' 스코프를 주지 않는다(Win/Linux/macOS).
+    [InlineData("del /s /q C:\\temp")]
+    [InlineData("rd /s /q build")]
+    [InlineData("Remove-Item -Recurse -Force .\\build")]
+    [InlineData("format C:")]
+    [InlineData("diskutil eraseDisk JHFS+ x disk2")]
+    public void No_always_allow_scope_for_cross_platform_destructive(string command) =>
+        Assert.Null(Scope(command));
+
+    [Fact]
     public void Tool_name_rule_matches_any_call_of_that_tool()
     {
         Assert.True(PermissionRule.Matches("Write", new FakeTool("Write"), Bash("irrelevant"), allowMatch: true));

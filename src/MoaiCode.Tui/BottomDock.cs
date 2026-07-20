@@ -35,16 +35,6 @@ public sealed class BottomDock
     /// <summary>하단 고정이 의미 있는 최소 높이(활동/라인/입력/라인/상태 = 최소 5줄 예약 + 스크롤 여유).</summary>
     public static bool Fits() => Height() >= 9;
 
-    // 입력창 위/아래 가로 라인. 입력창과 동일한 어두운 회색 배경 + dim 라인 문자.
-    private static string RuleContent(int w)
-    {
-        var line = new string('─', w < 1 ? 1 : w);
-        var bg = LineEditor.InputBg;
-        return bg.Length > 0
-            ? bg + "\x1b[38;5;245m" + line + "\x1b[0m"   // 어두운 회색 배경 + 밝은 회색 라인
-            : "\x1b[38;5;240m" + line + "\x1b[0m";
-    }
-
     /// <summary>스크롤 영역 해제 + 커서를 맨 아래로. REPL 종료/전환 시 반드시 호출.</summary>
     public void Teardown()
     {
@@ -69,8 +59,8 @@ public sealed class BottomDock
         // 프롬프트+버퍼를 폭 w 셀 단위로 직접 분할해 각 행을 절대 좌표로 그린다.
         var rows = SplitByCells(LineEditor.PromptText + buf.ToString(), w);
         var inputRows = rows.Count;
-        // 레이아웃(위→아래): 상단 라인 / 입력행 / 하단 라인 / 상태줄("act mode").
-        var reserved = 1 + inputRows + 1 + 1;
+        // 레이아웃(위→아래): 입력행(배경색으로 구분) / 상태줄("act mode"). 구분선 없음.
+        var reserved = inputRows + 1;
         var scrollBottom = h - reserved;              // 마지막 스크롤 행(1-기반)
         if (scrollBottom < 1)
         {
@@ -96,15 +86,10 @@ public sealed class BottomDock
             _reserved = reserved;
         }
 
-        var topRuleRow = scrollBottom + 1;
-        var inputRow0 = scrollBottom + 2;
-        var bottomRuleRow = inputRow0 + inputRows;
-        var statusRow = bottomRuleRow + 1;
+        var inputRow0 = scrollBottom + 1;
+        var statusRow = inputRow0 + inputRows;
 
-        // 상단 라인
-        sb.Append($"\x1b[{topRuleRow};1H\x1b[2K").Append(RuleContent(w));
-
-        // 입력행: 각 행을 clear 후 절대 좌표로 직접 출력(auto-wrap 미사용). 어두운 회색 배경.
+        // 입력행: 각 행을 clear 후 절대 좌표로 직접 출력(auto-wrap 미사용). 어두운 회색 배경(구분선 대체).
         var bg = LineEditor.InputBg;
         for (var i = 0; i < inputRows; i++)
         {
@@ -125,8 +110,7 @@ public sealed class BottomDock
             if (bg.Length > 0) sb.Append("\x1b[K\x1b[0m"); else sb.Append("\x1b[0m");
         }
 
-        // 하단 라인 + 상태줄(입력창 아래).
-        sb.Append($"\x1b[{bottomRuleRow};1H\x1b[2K").Append(RuleContent(w));
+        // 상태줄(입력창 아래). 구분선 없음.
         sb.Append($"\x1b[{statusRow};1H\x1b[2K").Append(statusOverride ?? _status());
 
         // 커서를 편집 위치로(절대 좌표) + 커서 표시(입력 차례). 처리 중엔 숨겨져 있다가 여기서 다시 보임.

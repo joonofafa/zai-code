@@ -38,8 +38,12 @@ public sealed class SpectrePermissionGate : IPermissionGate
 
         var scope = _offerAlways ? PermissionRule.TryScope(tool, call) : null;
         var canAlways = scope is not null;
+        // 정확 일치(Bash(=cmd))는 '이 명령 그대로'라고 표기, prefix 스코프는 그 패턴을 보여준다.
+        var alwaysLabel = scope is not null && scope.StartsWith("Bash(=", StringComparison.Ordinal)
+            ? "항상 허용 (이 명령 그대로 저장)"
+            : $"항상 허용 (저장) — {scope}";
         var choices = canAlways
-            ? new[] { "허용 (한 번)", $"항상 허용 (저장) — {scope}", "거부" }
+            ? new[] { "허용 (한 번)", alwaysLabel, "거부" }
             : new[] { "허용 (한 번)", "거부" };
 
         // 화살표 선택 위젯(SelectList). Spectre SelectionPrompt 는 단일 파일에서 크래시하므로 미사용.
