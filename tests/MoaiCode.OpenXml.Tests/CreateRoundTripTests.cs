@@ -88,6 +88,48 @@ public sealed class CreateRoundTripTests : IDisposable
     }
 
     [Fact]
+    public async Task Pptx_table_columns_shapes_are_valid()
+    {
+        await Run(new PptxCreateTool(), new
+        {
+            path = "rich.pptx",
+            slides = new object[]
+            {
+                new
+                {
+                    title = "메달리온",
+                    accent = "#B45309",
+                    columns = new object[]
+                    {
+                        new { heading = "Bronze", bullets = new[] { "Raw CSV", "무가공" } },
+                        new { heading = "Gold", bullets = new[] { "골든셋", "정제완료" } },
+                    },
+                    table = new
+                    {
+                        headers = new[] { "단계", "설명" },
+                        rows = new object[] { new[] { "Bronze", "원본" }, new[] { "Gold", "정제" } },
+                    },
+                    shapes = new object[]
+                    {
+                        new { type = "roundRect", x = 0.5, y = 6.0, w = 2.0, h = 0.8, fill = "#B45309", text = "Bronze", fontColor = "#FFFFFF", bold = true },
+                        new { type = "arrow", x = 2.6, y = 6.2, w = 0.6, h = 0.4, fill = "#999999" },
+                        new { type = "roundRect", x = 3.3, y = 6.0, w = 2.0, h = 0.8, fill = "#EAB308", text = "Gold", fontColor = "#000000", bold = true },
+                    },
+                },
+            },
+        });
+
+        var path = Path.Combine(_dir, "rich.pptx");
+        using var doc = PresentationDocument.Open(path, false);
+        Assert.Equal(0, Validate(doc)); // 표+2단+색상+도형 모두 포함 유효
+        var slide = doc.PresentationPart!.SlideParts.First().Slide;
+        Assert.NotEmpty(slide.Descendants<DocumentFormat.OpenXml.Drawing.Table>());              // 표
+        Assert.NotEmpty(slide.Descendants<DocumentFormat.OpenXml.Presentation.GraphicFrame>());  // 표 프레임
+        Assert.True(slide.Descendants<DocumentFormat.OpenXml.Presentation.Shape>().Count() >= 5); // 제목+2단+도형들
+        Assert.Contains("Bronze", slide.InnerText);
+    }
+
+    [Fact]
     public async Task Inspect_reports_structure_and_zero_validation_errors()
     {
         await Run(new DocxCreateTool(), new { path = "d.docx", title = "T", paragraphs = new[] { "p1", "p2", "p3" } });
