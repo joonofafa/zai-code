@@ -1,0 +1,46 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="MoaiCode.Gui.App"
+             RequestedThemeVariant="Dark">
+
+  <Application.Resources>
+    <!-- 모던 다크 팔레트 -->
+    <Color x:Key="BgWindow">#12131A</Color>
+    <Color x:Key="BgSidebar">#181922</Color>
+    <Color x:Key="BgCard">#1F2130</Color>
+    <Color x:Key="BgInput">#232637</Color>
+    <Color x:Key="BgChip">#242637</Color>
+    <Color x:Key="BorderSoft">#2C2F42</Color>
+    <Color x:Key="TextPrimary">#ECEDF6</Color>
+    <Color x:Key="TextSecondary">#9C9FB7</Color>
+    <Color x:Key="TextMuted">#6E7189</Color>
+    <Color x:Key="Accent">#6D5EF0</Color>
+    <Color x:Key="AccentHover">#8073F5</Color>
+    <Color x:Key="AccentSoft">#2A2748</Color>
+    <Color x:Key="Good">#3FB68B</Color>
+
+    <SolidColorBrush x:Key="BgWindowBrush" Color="{StaticResource BgWindow}" />
+    <SolidColorBrush x:Key="BgSidebarBrush" Color="{StaticResource BgSidebar}" />
+    <SolidColorBrush x:Key="BgCardBrush" Color="{StaticResource BgCard}" />
+    <SolidColorBrush x:Key="BgInputBrush" Color="{StaticResource BgInput}" />
+    <SolidColorBrush x:Key="BgChipBrush" Color="{StaticResource BgChip}" />
+    <SolidColorBrush x:Key="BorderSoftBrush" Color="{StaticResource BorderSoft}" />
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimary}" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondary}" />
+    <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMuted}" />
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource Accent}" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHover}" />
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="{StaticResource AccentSoft}" />
+    <SolidColorBrush x:Key="GoodBrush" Color="{StaticResource Good}" />
+
+    <LinearGradientBrush x:Key="UserBubbleBrush" StartPoint="0%,0%" EndPoint="100%,100%">
+      <GradientStop Color="#5C4FEA" Offset="0" />
+      <GradientStop Color="#7A5CF2" Offset="1" />
+    </LinearGradientBrush>
+  </Application.Resources>
+
+  <Application.Styles>
+    <FluentTheme />
+    <StyleInclude Source="avares://MoaiCode.Gui/Styles/AppStyles.axaml" />
+  </Application.Styles>
+</Application>
