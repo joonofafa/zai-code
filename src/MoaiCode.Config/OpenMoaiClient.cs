@@ -1,9 +1,9 @@
 using System.Text;
 using System.Text.Json;
 
-namespace MoaiCode.Cli;
+namespace MoaiCode.Config;
 
-/// <summary>CLI 로그인 응답 (open-moai /api/cli/login[/mfa]).</summary>
+/// <summary>CLI/GUI 로그인 응답 (open-moai /api/cli/login[/mfa]).</summary>
 public sealed record LoginResult(
     string Status,
     string? ApiKey,
@@ -14,7 +14,7 @@ public sealed record LoginResult(
     string? Error,
     string? OrgName);
 
-/// <summary>open-moai 사이트의 CLI 로그인 엔드포인트 클라이언트.</summary>
+/// <summary>open-moai 사이트의 CLI 로그인 엔드포인트 클라이언트. (CLI·GUI 공유)</summary>
 public sealed class OpenMoaiClient
 {
     private readonly HttpClient _http;

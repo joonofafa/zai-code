@@ -60,6 +60,9 @@ public static class LoginFlow
 
         var password = PasswordPrompt.Read("password: ");
 
+        // 사내망 프록시 (로그인 요청도 프록시를 경유해야 하므로 로그인 전에 적용).
+        MaybeConfigureProxy();
+
         var client = new OpenMoaiClient(host);
         var r = await client.LoginAsync(email, password, ct).ConfigureAwait(false);
 
@@ -106,6 +109,48 @@ public static class LoginFlow
 
         AnsiConsole.MarkupLine($"[green]✓ 로그인 완료[/] [grey70]· {Markup.Escape(model ?? "(모델 미선택)")} · {Markup.Escape(host)}[/]");
         return true;
+    }
+
+    // 로그인 전 사내 프록시 설정을 물어보고 적용·저장한다.
+    private static void MaybeConfigureProxy()
+    {
+        var existing = SettingsLoader.Load(Directory.GetCurrentDirectory()).ProxyUrl;
+        var prompt = string.IsNullOrWhiteSpace(existing)
+            ? "사내 프록시 설정이 필요합니까?"
+            : $"사내 프록시가 이미 설정돼 있습니다 ({Markup.Escape(existing!)}). 변경할까요?";
+        if (!AnsiConsole.Confirm(prompt, defaultValue: false))
+        {
+            return;
+        }
+
+        Console.Write("프록시 URL (예: http://proxy.corp:8080): ");
+        var url = (Console.ReadLine() ?? string.Empty).Trim();
+        if (url.Length == 0)
+        {
+            AnsiConsole.MarkupLine("[grey70]프록시 미설정[/]");
+            return;
+        }
+
+        Console.Write("프록시 사용자 (없으면 Enter): ");
+        var user = (Console.ReadLine() ?? string.Empty).Trim();
+        string? pass = user.Length > 0 ? PasswordPrompt.Read("프록시 비밀번호: ") : null;
+
+        var store = new FileCredentialStore();
+        if (!string.IsNullOrEmpty(pass))
+        {
+            store.Set("PROXY_PASSWORD", pass);
+        }
+
+        SettingsWriter.Set(new Dictionary<string, string?>
+        {
+            ["proxyUrl"] = url,
+            ["proxyUser"] = user.Length > 0 ? user : null,
+        });
+
+        var applied = ProxyConfig.Apply(url, user.Length > 0 ? user : null, store);
+        AnsiConsole.MarkupLine(applied is not null
+            ? $"[green]프록시 적용됨[/] [grey70]· {Markup.Escape(url)}[/]"
+            : "[yellow]프록시 URL 형식이 올바르지 않습니다[/]");
     }
 
     public static void Logout()

@@ -9,9 +9,10 @@ namespace MoaiCode.Config;
 /// (ProviderFactory.SharedHttp, OpenMoaiClient)가 이를 자동으로 따른다.
 /// → 시작 시 1회 호출(어떤 HttpClient 사용보다 먼저).
 ///
-/// **LLM 게이트웨이(BaseUrl 호스트)는 항상 프록시를 우회한다.** 사내 프록시가 장기 SSE
-/// 스트리밍 연결을 일정 시간(예: 60초)에 끊어 "응답 스트림이 완료 전에 끊겼습니다"를 유발하기
-/// 때문. 게이트웨이는 보통 내부 호스트라 직결 가능하다. NO_PROXY 환경변수·설정도 병합한다.
+/// 우회는 **명시적(opt-in)** 이다: NO_PROXY 환경변수 + settings.proxyBypass(쉼표구분)만
+/// 우회한다. 게이트웨이를 자동 우회하지 않는다 — 사내 프록시가 유일한 외부 경로인 환경에서
+/// 자동 우회는 오히려 접속을 끊기 때문. (게이트웨이를 직결할 수 있는 사용자는 proxyBypass 에
+/// 해당 호스트를 넣어 장기 SSE 프록시 타임아웃을 피할 수 있다.)
 /// </summary>
 public static class ProxyConfig
 {
@@ -19,7 +20,7 @@ public static class ProxyConfig
     public static string? Apply(string workingDirectory, ICredentialStore? credentials = null)
     {
         var settings = SettingsLoader.Load(workingDirectory);
-        return Apply(settings.ProxyUrl, settings.ProxyUser, credentials, BuildBypass(settings.BaseUrl, settings.ProxyBypass));
+        return Apply(settings.ProxyUrl, settings.ProxyUser, credentials, BuildBypass(settings.ProxyBypass));
     }
 
     /// <summary>명시적 값으로 적용 (테스트/직접 호출용).</summary>
@@ -56,18 +57,12 @@ public static class ProxyConfig
         return proxyUrl;
     }
 
-    /// <summary>우회할 호스트들을 WebProxy.BypassList 정규식으로 만든다(게이트웨이 + NO_PROXY + 설정).</summary>
-    public static string[] BuildBypass(string? baseUrl, string? proxyBypass)
+    /// <summary>우회할 호스트들을 WebProxy.BypassList 정규식으로 만든다(NO_PROXY + proxyBypass 설정).</summary>
+    public static string[] BuildBypass(string? proxyBypass)
     {
         var hosts = new List<string>();
 
-        // 1) LLM 게이트웨이(BaseUrl 호스트) — 항상 우회(사내 프록시의 SSE 타임아웃 회피).
-        if (Uri.TryCreate(baseUrl, UriKind.Absolute, out var b))
-        {
-            hosts.Add(b.Host);
-        }
-
-        // 2) 표준 NO_PROXY 환경변수.
+        // 표준 NO_PROXY 환경변수.
         var noProxy = Environment.GetEnvironmentVariable("NO_PROXY")
                       ?? Environment.GetEnvironmentVariable("no_proxy");
         if (!string.IsNullOrWhiteSpace(noProxy))
@@ -75,7 +70,7 @@ public static class ProxyConfig
             hosts.AddRange(noProxy.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
         }
 
-        // 3) 사용자 지정 proxyBypass.
+        // 사용자 지정 proxyBypass (쉼표구분).
         if (!string.IsNullOrWhiteSpace(proxyBypass))
         {
             hosts.AddRange(proxyBypass.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));

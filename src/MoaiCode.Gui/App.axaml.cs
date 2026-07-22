@@ -27,24 +27,73 @@ public partial class App : Application
             // 트레이 상주 — 창을 닫아도 프로세스가 종료되지 않는다(백그라운드 폴더 동기화 유지).
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
-            var theme = Environment.GetEnvironmentVariable("MOAI_GUI_THEME");
-            if (string.IsNullOrWhiteSpace(theme))
-            {
-                theme = GuiSettings.Load().Theme;
-            }
+            // 저장된 사내 프록시 적용 (어떤 HttpClient 사용보다 먼저).
+            MoaiCode.Config.ProxyConfig.Apply(System.IO.Directory.GetCurrentDirectory());
 
-            if (string.IsNullOrWhiteSpace(theme))
+            if (HasCredential())
             {
-                ShowThemeChooser(desktop);
+                ContinueAfterAuth(desktop);
             }
             else
             {
-                ApplyTheme(theme);
-                LaunchMain(desktop);
+                ShowLogin(desktop);
             }
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private static bool HasCredential()
+    {
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENAI_API_KEY")))
+        {
+            return true;
+        }
+
+        return !string.IsNullOrWhiteSpace(new MoaiCode.Config.FileCredentialStore().Get("OPENAI_API_KEY"));
+    }
+
+    // 로그인/프록시 화면 (미인증 시). 성공하면 테마/메인으로 진행.
+    private void ShowLogin(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var vm = new LoginViewModel();
+        var login = new LoginWindow { DataContext = vm, Icon = LoadIcon() };
+        var authed = false;
+        vm.LoggedIn += () => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            authed = true;
+            ContinueAfterAuth(desktop);
+            login.Close();
+        });
+        login.Closing += (_, _) =>
+        {
+            if (!authed)
+            {
+                desktop.Shutdown(); // 로그인 없이 창을 닫으면 앱 종료(트레이 상주 전이므로).
+            }
+        };
+        desktop.MainWindow = login;
+        login.Show();
+    }
+
+    // 인증 후: 테마 선택(최초) → 메인.
+    private void ContinueAfterAuth(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var theme = Environment.GetEnvironmentVariable("MOAI_GUI_THEME");
+        if (string.IsNullOrWhiteSpace(theme))
+        {
+            theme = GuiSettings.Load().Theme;
+        }
+
+        if (string.IsNullOrWhiteSpace(theme))
+        {
+            ShowThemeChooser(desktop);
+        }
+        else
+        {
+            ApplyTheme(theme);
+            LaunchMain(desktop);
+        }
     }
 
     private void ShowThemeChooser(IClassicDesktopStyleApplicationLifetime desktop)

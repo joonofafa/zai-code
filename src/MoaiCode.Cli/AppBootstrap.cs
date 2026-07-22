@@ -190,7 +190,13 @@ public static class AppBootstrap
             // /usage: 모델별 로컬 토큰 누적 + 로그인 계정/시각.
             new UsageStore(),
             new AccountInfo(settings.Account, settings.Host ?? settings.BaseUrl, settings.LoginAt, settings.OrgName),
-            rules);
+            rules,
+            settings.ReasoningEffort,
+            effort =>
+            {
+                SettingsWriter.Set(new Dictionary<string, string?> { ["reasoningEffort"] = effort });
+                Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", effort);
+            });
 
         return new AppRuntime(
             mcp, ctx, toolList, skills.Select(s => s.Name).ToList(), mcpConfigs, providerDesc, settings);
@@ -313,6 +319,14 @@ public static class AppBootstrap
             && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OPENAI_BASE_URL")))
         {
             Environment.SetEnvironmentVariable("OPENAI_BASE_URL", s.BaseUrl);
+        }
+
+        if (!string.IsNullOrEmpty(s.ReasoningEffort)
+            && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT"))
+            && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OPENAI_REASONING_EFFORT"))
+            && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MOAI_EFFORT")))
+        {
+            Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", s.ReasoningEffort);
         }
     }
 
