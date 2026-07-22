@@ -80,7 +80,7 @@
               <Border Background="{DynamicResource ActivityBgBrush}" CornerRadius="9"
                       Padding="10,5" Margin="0,0,7,7">
                 <StackPanel Orientation="Horizontal" Spacing="7">
-                  <TextBlock Text="📎" FontSize="12" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding Icon}" FontSize="12" VerticalAlignment="Center" />
                   <TextBlock Text="{Binding DisplayName}" FontSize="12.5" VerticalAlignment="Center" />
                   <Button Content="✕" Classes="ghost" Padding="4,0" MinWidth="0" FontSize="11"
                           Command="{Binding $parent[ItemsControl].DataContext.RemoveReferenceCommand}"
@@ -93,16 +93,18 @@
 
         <Border Background="{DynamicResource BgInputBrush}" CornerRadius="24"
                 BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1" Padding="8,6">
-          <Grid ColumnDefinitions="Auto,*,Auto">
+          <Grid ColumnDefinitions="Auto,Auto,*,Auto">
             <Button Grid.Column="0" Classes="ghost" Content="📎" FontSize="16"
-                    VerticalAlignment="Center" Click="OnAttachClick" ToolTip.Tip="참조 문서 첨부" />
-            <TextBox Grid.Column="1" Classes="composer" Margin="8,0,8,0"
+                    VerticalAlignment="Center" Click="OnAttachClick" ToolTip.Tip="로컬 참조 문서 첨부" />
+            <Button Grid.Column="1" Classes="ghost" Content="🗂" FontSize="16"
+                    VerticalAlignment="Center" Click="OnOrgClick" ToolTip.Tip="조직 문서함에서 검색·첨부" />
+            <TextBox Grid.Column="2" Classes="composer" Margin="8,0,8,0"
                      Watermark="무엇을 만들어 드릴까요?" Text="{Binding Input}">
               <TextBox.KeyBindings>
                 <KeyBinding Gesture="Enter" Command="{Binding SendCommand}" />
               </TextBox.KeyBindings>
             </TextBox>
-            <Button Grid.Column="2" Classes="send" Content="↑" Command="{Binding SendCommand}" />
+            <Button Grid.Column="3" Classes="send" Content="↑" Command="{Binding SendCommand}" />
           </Grid>
         </Border>
       </StackPanel>

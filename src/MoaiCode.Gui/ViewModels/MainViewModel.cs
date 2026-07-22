@@ -135,6 +135,24 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(HasReferences));
     }
 
+    /// <summary>조직 문서함 검색 결과(청크)를 참조로 첨부. View 의 검색 다이얼로그에서 호출.</summary>
+    public void AddOrgReference(OrgHit hit)
+    {
+        if (References.Any(r => r.Source == "org" && r.Path == hit.DocumentId && r.Text == hit.Snippet))
+        {
+            return;
+        }
+
+        References.Add(new ReferenceItem
+        {
+            DisplayName = hit.Title,
+            Source = "org",
+            Text = hit.Snippet,
+            Path = hit.DocumentId,
+        });
+        OnPropertyChanged(nameof(HasReferences));
+    }
+
     [RelayCommand]
     private void RemoveReference(ReferenceItem item)
     {
@@ -157,7 +175,8 @@ public sealed partial class MainViewModel : ObservableObject
         foreach (var r in References)
         {
             var body = r.Text.Length > PerRefCharCap ? r.Text[..PerRefCharCap] + "\n…(이하 생략)" : r.Text;
-            sb.AppendLine($"─── 참조문서 {i} · {r.DisplayName} ───");
+            var src = r.Source == "org" ? "조직 문서함" : "로컬 파일";
+            sb.AppendLine($"─── 참조 {i} · {r.DisplayName} ({src}) ───");
             sb.AppendLine(body);
             sb.AppendLine();
             i++;

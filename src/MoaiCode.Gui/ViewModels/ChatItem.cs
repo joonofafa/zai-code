@@ -45,5 +45,6 @@ public sealed class ReferenceItem
     public string DisplayName { get; init; } = string.Empty;
     public string Source { get; init; } = "local"; // local | org
     public string Text { get; init; } = string.Empty;
-    public string? Path { get; init; }
+    public string? Path { get; init; } // local: 파일경로 / org: documentId
+    public string Icon => Source == "org" ? "🗂" : "📎";
 }

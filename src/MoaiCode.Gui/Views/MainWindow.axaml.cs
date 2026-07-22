@@ -40,4 +40,24 @@ public partial class MainWindow : Window
             }
         }
     }
+
+    // 조직 문서함 검색(모드 B) — RAG 검색 다이얼로그 → 선택 스니펫을 참조로 첨부.
+    private async void OnOrgClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+        {
+            return;
+        }
+
+        var picked = await new OrgSearchWindow().PickAsync(this);
+        if (picked is null)
+        {
+            return;
+        }
+
+        foreach (var hit in picked)
+        {
+            vm.AddOrgReference(hit);
+        }
+    }
 }

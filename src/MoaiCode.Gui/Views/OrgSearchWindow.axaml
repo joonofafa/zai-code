@@ -1,0 +1,67 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:MoaiCode.Gui.ViewModels"
+        x:Class="MoaiCode.Gui.Views.OrgSearchWindow"
+        x:DataType="vm:OrgSearchViewModel"
+        Title="조직 문서함 검색" Width="660" Height="580"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource BgWindowBrush}">
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="20">
+
+    <!-- 검색 입력 -->
+    <Border Grid.Row="0" Background="{DynamicResource BgInputBrush}" CornerRadius="20"
+            BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1" Padding="8,6">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBox Grid.Column="0" Classes="composer" Margin="10,0,8,0"
+                 Watermark="문서함에서 찾을 내용을 입력하세요" Text="{Binding Query}">
+          <TextBox.KeyBindings>
+            <KeyBinding Gesture="Enter" Command="{Binding SearchCommand}" />
+          </TextBox.KeyBindings>
+        </TextBox>
+        <Button Grid.Column="1" Classes="accent" Content="검색" Command="{Binding SearchCommand}" />
+      </Grid>
+    </Border>
+
+    <TextBlock Grid.Row="1" Text="{Binding Status}" Margin="4,10,0,8"
+               Foreground="{DynamicResource TextMutedBrush}" FontSize="12.5" />
+
+    <!-- 결과 목록 -->
+    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+      <ItemsControl ItemsSource="{Binding Results}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:OrgHitVM">
+            <Border Background="{DynamicResource BgCardBrush}" CornerRadius="12"
+                    BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1"
+                    Padding="14,11" Margin="0,0,0,9">
+              <Grid ColumnDefinitions="Auto,*">
+                <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected}" VerticalAlignment="Top" Margin="0,1,10,0" />
+                <StackPanel Grid.Column="1" Spacing="4">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0" Text="{Binding Title}" FontWeight="SemiBold"
+                               FontSize="13.5" TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <Border Grid.Column="1" Background="{DynamicResource AccentSoftBrush}" CornerRadius="6" Padding="6,1">
+                      <TextBlock Text="{Binding ScoreText}" FontSize="11"
+                                 Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </Border>
+                  </Grid>
+                  <TextBlock Text="{Binding Snippet}" TextWrapping="Wrap" MaxLines="4"
+                             TextTrimming="CharacterEllipsis" FontSize="12.5"
+                             Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+
+    <!-- 하단 액션 -->
+    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right"
+                Spacing="10" Margin="0,14,0,0">
+      <Button Classes="ghost" Content="닫기" Click="OnCancel" />
+      <Button Classes="accent" Content="첨부" Click="OnAttach" />
+    </StackPanel>
+  </Grid>
+</Window>
