@@ -63,12 +63,15 @@ public static class SettingsLoader
                 Model = GetString(root, "model", "model_id") ?? baseline.Model,
                 Provider = GetString(root, "provider") ?? baseline.Provider,
                 BaseUrl = GetString(root, "baseUrl", "base_url") ?? baseline.BaseUrl,
+                ReasoningEffort = NormalizeEffort(GetString(root, "reasoningEffort", "reasoning_effort", "effort"))
+                                  ?? baseline.ReasoningEffort,
                 Host = GetString(root, "host") ?? baseline.Host,
                 Account = GetString(root, "account", "email") ?? baseline.Account,
                 LoginAt = GetString(root, "loginAt", "login_at") ?? baseline.LoginAt,
                 OrgName = GetString(root, "orgName", "org_name") ?? baseline.OrgName,
                 ProxyUrl = GetString(root, "proxyUrl", "proxy_url", "proxy") ?? baseline.ProxyUrl,
                 ProxyUser = GetString(root, "proxyUser", "proxy_user") ?? baseline.ProxyUser,
+                ProxyBypass = GetString(root, "proxyBypass", "proxy_bypass", "noProxy") ?? baseline.ProxyBypass,
                 Permission = ParsePermission(GetString(root, "permission", "permissionMode"))
                              ?? baseline.Permission,
                 MaxTurns = GetInt(root, "maxTurns", "max_turns") ?? baseline.MaxTurns,
@@ -96,6 +99,9 @@ public static class SettingsLoader
         var model = Environment.GetEnvironmentVariable("MOAI_MODEL")
                     ?? Environment.GetEnvironmentVariable("OPENAI_MODEL");
         var baseUrl = Environment.GetEnvironmentVariable("OPENAI_BASE_URL");
+        var effort = NormalizeEffort(Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT")
+                                     ?? Environment.GetEnvironmentVariable("OPENAI_REASONING_EFFORT")
+                                     ?? Environment.GetEnvironmentVariable("MOAI_EFFORT"));
         var proxy = Environment.GetEnvironmentVariable("MOAI_PROXY")
                     ?? Environment.GetEnvironmentVariable("HTTPS_PROXY")
                     ?? Environment.GetEnvironmentVariable("https_proxy")
@@ -114,6 +120,7 @@ public static class SettingsLoader
         {
             Model = model ?? baseline.Model,
             BaseUrl = baseUrl ?? baseline.BaseUrl,
+            ReasoningEffort = effort ?? baseline.ReasoningEffort,
             ProxyUrl = proxy ?? baseline.ProxyUrl,
             Permission = perm ?? baseline.Permission,
             LintCommand = lint ?? baseline.LintCommand,
@@ -250,4 +257,10 @@ public static class SettingsLoader
 
     private static int? ParseInt(string? value) =>
         int.TryParse(value, out var n) && n > 0 ? n : null;
+
+    private static string? NormalizeEffort(string? value)
+    {
+        var v = value?.Trim().ToLowerInvariant();
+        return v is "low" or "medium" or "high" ? v : null;
+    }
 }

@@ -13,6 +13,9 @@ public sealed record Settings
     public string? Model { get; init; }
     public string? BaseUrl { get; init; }
 
+    /// <summary>추론 강도 passthrough (예: low|medium|high). OpenAI 호환 chat/completions의 reasoning_effort로 전달.</summary>
+    public string? ReasoningEffort { get; init; }
+
     /// <summary>로그인 호스트 (예: https://vip.bccard.ai). /usage 표시용.</summary>
     public string? Host { get; init; }
 
@@ -30,6 +33,10 @@ public sealed record Settings
 
     /// <summary>프록시 인증 사용자 (선택). 비번은 credentials 저장소의 PROXY_PASSWORD.</summary>
     public string? ProxyUser { get; init; }
+
+    /// <summary>프록시 우회 호스트(쉼표구분). LLM 게이트웨이(BaseUrl 호스트)는 항상 자동 우회된다
+    /// — 사내 프록시의 장기 SSE 연결 타임아웃(예: 60초 컷)을 피하기 위함. NO_PROXY 환경변수도 병합.</summary>
+    public string? ProxyBypass { get; init; }
 
     /// <summary>영속 권한 규칙(Claude Code permissions.allow). 예: "Bash(ssh moai-ec2)".</summary>
     public IReadOnlyList<string> AllowRules { get; init; } = Array.Empty<string>();
