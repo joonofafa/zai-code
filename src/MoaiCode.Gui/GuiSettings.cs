@@ -1,0 +1,44 @@
+using System;
+using System.IO;
+using System.Text.Json;
+
+namespace MoaiCode.Gui;
+
+/// <summary>GUI 사용자 설정(~/.moai/gui-settings.json). 최초 실행 테마 선택 등.</summary>
+public sealed class GuiSettings
+{
+    public string? Theme { get; set; } // "light" | "dark" | null(미선택)
+
+    private static string FilePath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".moai", "gui-settings.json");
+
+    public static GuiSettings Load()
+    {
+        try
+        {
+            if (File.Exists(FilePath))
+            {
+                return JsonSerializer.Deserialize<GuiSettings>(File.ReadAllText(FilePath)) ?? new GuiSettings();
+            }
+        }
+        catch
+        {
+            // 손상/권한 문제 → 기본값
+        }
+
+        return new GuiSettings();
+    }
+
+    public void Save()
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
+            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch
+        {
+            // 저장 실패는 치명적 아님
+        }
+    }
+}
