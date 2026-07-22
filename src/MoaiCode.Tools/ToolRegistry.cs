@@ -1,6 +1,7 @@
 using MoaiCode.Core.Tools;
 using MoaiCode.Tools.Files;
 using MoaiCode.Tools.Knowledge;
+using MoaiCode.Tools.Media;
 using MoaiCode.Tools.Search;
 using MoaiCode.Tools.Web;
 
@@ -28,5 +29,6 @@ public static class ToolRegistry
         new OrgDocsDeleteTool(),
         new OrgDatasListTool(),
         new OrgDatasTool(),
+        new ImageCreateTool(),
     };
 }
