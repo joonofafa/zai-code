@@ -1,10 +1,13 @@
 using System.Collections.ObjectModel;
+using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MoaiCode.Core.Tools;
 using MoaiCode.Gui.Agent;
+using MoaiCode.Tools.OpenXml;
 
 namespace MoaiCode.Gui.ViewModels;
 
@@ -15,6 +18,10 @@ public sealed partial class MainViewModel : ObservableObject
 
     public ObservableCollection<ChatItem> Items { get; } = new();
     public ObservableCollection<SessionItem> Sessions { get; } = new();
+
+    /// <summary>모드 B: 이번 작업에 첨부된 참조 문서(로컬/조직).</summary>
+    public ObservableCollection<ReferenceItem> References { get; } = new();
+    public bool HasReferences => References.Count > 0;
     public ObservableCollection<string> QuickActions { get; } = new()
     {
         "📝 보고서 만들기", "📊 표·차트 엑셀", "📑 발표자료", "🔎 문서함 검색",
@@ -56,12 +63,13 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         Input = string.Empty;
-        Items.Add(new UserItem { Text = text });
+        Items.Add(new UserItem { Text = References.Count > 0 ? $"{text}\n\n📎 참조 {References.Count}개" : text });
         IsBusy = true;
 
+        var prompt = ComposePrompt(text);
         AssistantItem? assistant = null;
         ActivityItem? activity = null;
-        await foreach (var ev in _backend.SendAsync(text, CancellationToken.None))
+        await foreach (var ev in _backend.SendAsync(prompt, CancellationToken.None))
         {
             switch (ev)
             {
@@ -94,6 +102,70 @@ public sealed partial class MainViewModel : ObservableObject
         var a = new AssistantItem();
         Items.Add(a);
         return a;
+    }
+
+    // 문서당 컨텍스트 주입 상한(대형 단일 문서 방어; 초과분 축약은 TODO — 로컬 검색으로 대체 예정).
+    private const int PerRefCharCap = 30000;
+
+    /// <summary>로컬 파일을 참조로 첨부(원문 추출). View 의 파일 선택기에서 호출.</summary>
+    public void AddReference(string path)
+    {
+        if (References.Any(r => r.Path == path) || !DocumentTextExtractor.IsSupported(path))
+        {
+            return;
+        }
+
+        string text;
+        try
+        {
+            text = DocumentTextExtractor.Extract(path);
+        }
+        catch
+        {
+            return; // 파싱 실패 파일은 조용히 건너뜀
+        }
+
+        References.Add(new ReferenceItem
+        {
+            DisplayName = System.IO.Path.GetFileName(path),
+            Source = "local",
+            Text = text,
+            Path = path,
+        });
+        OnPropertyChanged(nameof(HasReferences));
+    }
+
+    [RelayCommand]
+    private void RemoveReference(ReferenceItem item)
+    {
+        References.Remove(item);
+        OnPropertyChanged(nameof(HasReferences));
+    }
+
+    // 첨부 참조가 있으면 원문을 프롬프트 앞에 붙여 넣는다(모드 B: 청킹 없이 통째로).
+    private string ComposePrompt(string userText)
+    {
+        if (References.Count == 0)
+        {
+            return userText;
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine("아래 참조 문서를 근거로 작업하세요. 관련 있는 내용만 활용하고, 문서에 없는 사실을 지어내지 마세요.");
+        sb.AppendLine();
+        var i = 1;
+        foreach (var r in References)
+        {
+            var body = r.Text.Length > PerRefCharCap ? r.Text[..PerRefCharCap] + "\n…(이하 생략)" : r.Text;
+            sb.AppendLine($"─── 참조문서 {i} · {r.DisplayName} ───");
+            sb.AppendLine(body);
+            sb.AppendLine();
+            i++;
+        }
+
+        sb.AppendLine("─── 요청 ───");
+        sb.Append(userText);
+        return sb.ToString();
     }
 
     [RelayCommand]

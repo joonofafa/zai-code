@@ -70,16 +70,39 @@
           </ItemsControl.ItemTemplate>
         </ItemsControl>
 
+        <!-- 참조 문서 칩(모드 B) -->
+        <ItemsControl ItemsSource="{Binding References}" IsVisible="{Binding HasReferences}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Border Background="{DynamicResource ActivityBgBrush}" CornerRadius="9"
+                      Padding="10,5" Margin="0,0,7,7">
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                  <TextBlock Text="📎" FontSize="12" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding DisplayName}" FontSize="12.5" VerticalAlignment="Center" />
+                  <Button Content="✕" Classes="ghost" Padding="4,0" MinWidth="0" FontSize="11"
+                          Command="{Binding $parent[ItemsControl].DataContext.RemoveReferenceCommand}"
+                          CommandParameter="{Binding}" />
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
         <Border Background="{DynamicResource BgInputBrush}" CornerRadius="24"
                 BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1" Padding="8,6">
-          <Grid ColumnDefinitions="*,Auto">
-            <TextBox Grid.Column="0" Classes="composer" Margin="10,0,8,0"
+          <Grid ColumnDefinitions="Auto,*,Auto">
+            <Button Grid.Column="0" Classes="ghost" Content="📎" FontSize="16"
+                    VerticalAlignment="Center" Click="OnAttachClick" ToolTip.Tip="참조 문서 첨부" />
+            <TextBox Grid.Column="1" Classes="composer" Margin="8,0,8,0"
                      Watermark="무엇을 만들어 드릴까요?" Text="{Binding Input}">
               <TextBox.KeyBindings>
                 <KeyBinding Gesture="Enter" Command="{Binding SendCommand}" />
               </TextBox.KeyBindings>
             </TextBox>
-            <Button Grid.Column="1" Classes="send" Content="↑" Command="{Binding SendCommand}" />
+            <Button Grid.Column="2" Classes="send" Content="↑" Command="{Binding SendCommand}" />
           </Grid>
         </Border>
       </StackPanel>

@@ -38,3 +38,12 @@ public sealed partial class SessionItem : ObservableObject
     [ObservableProperty] private string _title = string.Empty;
     [ObservableProperty] private string _when = string.Empty;
 }
+
+/// <summary>모드 B 참조 문서(로컬/조직). 추출한 원문을 생성 컨텍스트에 주입한다.</summary>
+public sealed class ReferenceItem
+{
+    public string DisplayName { get; init; } = string.Empty;
+    public string Source { get; init; } = "local"; // local | org
+    public string Text { get; init; } = string.Empty;
+    public string? Path { get; init; }
+}
