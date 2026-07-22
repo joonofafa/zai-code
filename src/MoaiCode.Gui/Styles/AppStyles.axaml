@@ -3,13 +3,13 @@
 
   <!-- 기본 텍스트 -->
   <Style Selector="TextBlock">
-    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     <Setter Property="TextWrapping" Value="Wrap" />
   </Style>
 
   <!-- 강조(accent) 버튼: 라운드·호버 -->
   <Style Selector="Button.accent">
-    <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+    <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
     <Setter Property="Foreground" Value="White" />
     <Setter Property="FontWeight" Value="SemiBold" />
     <Setter Property="Padding" Value="16,9" />
@@ -19,14 +19,14 @@
     <Setter Property="HorizontalContentAlignment" Value="Center" />
   </Style>
   <Style Selector="Button.accent:pointerover /template/ ContentPresenter">
-    <Setter Property="Background" Value="{StaticResource AccentHoverBrush}" />
+    <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}" />
   </Style>
 
   <!-- 고스트 버튼(카드 액션) -->
   <Style Selector="Button.ghost">
     <Setter Property="Background" Value="Transparent" />
-    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
-    <Setter Property="BorderBrush" Value="{StaticResource BorderSoftBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSoftBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="Padding" Value="12,7" />
     <Setter Property="CornerRadius" Value="8" />
@@ -34,15 +34,15 @@
     <Setter Property="Cursor" Value="Hand" />
   </Style>
   <Style Selector="Button.ghost:pointerover /template/ ContentPresenter">
-    <Setter Property="Background" Value="#20FFFFFF" />
-    <Setter Property="TextBlock.Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="Background" Value="{DynamicResource HoverOverlayBrush}" />
+    <Setter Property="TextBlock.Foreground" Value="{DynamicResource TextPrimaryBrush}" />
   </Style>
 
   <!-- 빠른작업 칩 -->
   <Style Selector="Button.chip">
-    <Setter Property="Background" Value="{StaticResource BgChipBrush}" />
-    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-    <Setter Property="BorderBrush" Value="{StaticResource BorderSoftBrush}" />
+    <Setter Property="Background" Value="{DynamicResource BgChipBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSoftBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="Padding" Value="14,8" />
     <Setter Property="CornerRadius" Value="18" />
@@ -50,12 +50,12 @@
     <Setter Property="Cursor" Value="Hand" />
   </Style>
   <Style Selector="Button.chip:pointerover /template/ ContentPresenter">
-    <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
+    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
   </Style>
 
   <!-- 원형 전송 버튼 -->
   <Style Selector="Button.send">
-    <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+    <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
     <Setter Property="Foreground" Value="White" />
     <Setter Property="Width" Value="40" />
     <Setter Property="Height" Value="40" />
@@ -67,13 +67,13 @@
     <Setter Property="Cursor" Value="Hand" />
   </Style>
   <Style Selector="Button.send:pointerover /template/ ContentPresenter">
-    <Setter Property="Background" Value="{StaticResource AccentHoverBrush}" />
+    <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}" />
   </Style>
 
   <!-- 사이드바 세션 아이템 -->
   <Style Selector="Button.sideitem">
     <Setter Property="Background" Value="Transparent" />
-    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="Padding" Value="12,10" />
     <Setter Property="CornerRadius" Value="9" />
@@ -83,15 +83,15 @@
     <Setter Property="Cursor" Value="Hand" />
   </Style>
   <Style Selector="Button.sideitem:pointerover /template/ ContentPresenter">
-    <Setter Property="Background" Value="#16FFFFFF" />
-    <Setter Property="TextBlock.Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="Background" Value="{DynamicResource HoverOverlayBrush}" />
+    <Setter Property="TextBlock.Foreground" Value="{DynamicResource TextPrimaryBrush}" />
   </Style>
 
   <!-- 입력 TextBox -->
   <Style Selector="TextBox.composer">
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderThickness" Value="0" />
-    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     <Setter Property="FontSize" Value="14" />
     <Setter Property="VerticalContentAlignment" Value="Center" />
   </Style>

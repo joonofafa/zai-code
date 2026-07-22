@@ -2,36 +2,36 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:MoaiCode.Gui.ViewModels"
         x:Class="MoaiCode.Gui.Views.MainWindow"
-        Title="MoAI Docs"
+        Title="MoAI Desktop"
         Width="1120" Height="760" MinWidth="900" MinHeight="580"
-        Background="{StaticResource BgWindowBrush}"
+        Background="{DynamicResource BgWindowBrush}"
         FontFamily="avares://Avalonia.Fonts.Inter/Assets#Inter"
         WindowStartupLocation="CenterScreen">
 
   <Grid ColumnDefinitions="270,*">
 
     <!-- ═══ 사이드바 ═══ -->
-    <Border Grid.Column="0" Background="{StaticResource BgSidebarBrush}"
-            BorderBrush="{StaticResource BorderSoftBrush}" BorderThickness="0,0,1,0">
+    <Border Grid.Column="0" Background="{DynamicResource BgSidebarBrush}"
+            BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="0,0,1,0">
       <DockPanel Margin="18,20,18,16">
 
         <StackPanel DockPanel.Dock="Top" Spacing="16">
           <!-- 로고 -->
           <StackPanel Orientation="Horizontal" Spacing="11">
-            <Border Width="34" Height="34" CornerRadius="10" Background="{StaticResource UserBubbleBrush}">
+            <Border Width="34" Height="34" CornerRadius="10" Background="{DynamicResource UserBubbleBrush}">
               <TextBlock Text="M" FontSize="18" FontWeight="Bold" Foreground="White"
                          HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Border>
             <StackPanel VerticalAlignment="Center">
-              <TextBlock Text="MoAI Docs" FontSize="15" FontWeight="SemiBold" />
-              <TextBlock Text="문서를 말로 만드세요" FontSize="11" Foreground="{StaticResource TextMutedBrush}" />
+              <TextBlock Text="MoAI Desktop" FontSize="15" FontWeight="SemiBold" />
+              <TextBlock Text="문서를 말로 만드세요" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" />
             </StackPanel>
           </StackPanel>
 
           <Button Classes="accent" HorizontalAlignment="Stretch" Content="+  새 작업" />
 
           <TextBlock Text="이전 작업" FontSize="11" FontWeight="SemiBold"
-                     Foreground="{StaticResource TextMutedBrush}" Margin="4,4,0,0" />
+                     Foreground="{DynamicResource TextMutedBrush}" Margin="4,4,0,0" />
         </StackPanel>
 
         <ScrollViewer>
@@ -42,7 +42,7 @@
                   <StackPanel>
                     <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
                     <TextBlock Text="{Binding When}" FontSize="11"
-                               Foreground="{StaticResource TextMutedBrush}" Margin="0,2,0,0" />
+                               Foreground="{DynamicResource TextMutedBrush}" Margin="0,2,0,0" />
                   </StackPanel>
                 </Button>
               </DataTemplate>
@@ -70,8 +70,8 @@
           </ItemsControl.ItemTemplate>
         </ItemsControl>
 
-        <Border Background="{StaticResource BgInputBrush}" CornerRadius="24"
-                BorderBrush="{StaticResource BorderSoftBrush}" BorderThickness="1" Padding="8,6">
+        <Border Background="{DynamicResource BgInputBrush}" CornerRadius="24"
+                BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1" Padding="8,6">
           <Grid ColumnDefinitions="*,Auto">
             <TextBox Grid.Column="0" Classes="composer" Margin="10,0,8,0"
                      Watermark="무엇을 만들어 드릴까요?" Text="{Binding Input}">
@@ -94,7 +94,7 @@
 
             <!-- 사용자 말풍선 -->
             <DataTemplate DataType="vm:UserItem">
-              <Border Background="{StaticResource UserBubbleBrush}" CornerRadius="16,16,4,16"
+              <Border Background="{DynamicResource UserBubbleBrush}" CornerRadius="16,16,4,16"
                       Padding="15,11" HorizontalAlignment="Right" MaxWidth="560">
                 <TextBlock Text="{Binding Text}" Foreground="White" FontSize="14" LineHeight="20" />
               </Border>
@@ -104,39 +104,39 @@
             <DataTemplate DataType="vm:AssistantItem">
               <StackPanel HorizontalAlignment="Left" MaxWidth="660" Spacing="5">
                 <TextBlock Text="MoAI" FontSize="11" FontWeight="SemiBold"
-                           Foreground="{StaticResource AccentHoverBrush}" />
+                           Foreground="{DynamicResource AccentHoverBrush}" />
                 <TextBlock Text="{Binding Text}" FontSize="14" LineHeight="21"
-                           Foreground="{StaticResource TextPrimaryBrush}" />
+                           Foreground="{DynamicResource TextPrimaryBrush}" />
               </StackPanel>
             </DataTemplate>
 
             <!-- 진행 배지 -->
             <DataTemplate DataType="vm:ActivityItem">
-              <Border Background="#14FFFFFF" CornerRadius="9" Padding="11,7" HorizontalAlignment="Left">
+              <Border Background="{DynamicResource ActivityBgBrush}" CornerRadius="9" Padding="11,7" HorizontalAlignment="Left">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                   <Ellipse Width="8" Height="8" VerticalAlignment="Center"
                            Fill="{Binding Done, Converter={x:Static vm:Converters.DoneToBrush}}" />
                   <TextBlock Text="{Binding Text}" FontSize="12.5"
-                             Foreground="{StaticResource TextSecondaryBrush}" />
+                             Foreground="{DynamicResource TextSecondaryBrush}" />
                 </StackPanel>
               </Border>
             </DataTemplate>
 
             <!-- 문서 카드 -->
             <DataTemplate DataType="vm:DocumentItem">
-              <Border Background="{StaticResource BgCardBrush}" CornerRadius="14"
-                      BorderBrush="{StaticResource BorderSoftBrush}" BorderThickness="1"
+              <Border Background="{DynamicResource BgCardBrush}" CornerRadius="14"
+                      BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1"
                       Padding="16" HorizontalAlignment="Left" MaxWidth="520">
                 <StackPanel Spacing="14">
                   <StackPanel Orientation="Horizontal" Spacing="13">
-                    <Border Width="46" Height="46" CornerRadius="12" Background="{StaticResource AccentSoftBrush}">
+                    <Border Width="46" Height="46" CornerRadius="12" Background="{DynamicResource AccentSoftBrush}">
                       <TextBlock Text="{Binding Icon}" FontSize="22"
                                  HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <StackPanel VerticalAlignment="Center" Spacing="2">
                       <TextBlock Text="{Binding FileName}" FontSize="14.5" FontWeight="SemiBold" />
                       <TextBlock Text="{Binding Path}" FontSize="11.5"
-                                 Foreground="{StaticResource TextMutedBrush}" />
+                                 Foreground="{DynamicResource TextMutedBrush}" />
                     </StackPanel>
                   </StackPanel>
                   <StackPanel Orientation="Horizontal" Spacing="8">

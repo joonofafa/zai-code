@@ -4,39 +4,57 @@
              RequestedThemeVariant="Dark">
 
   <Application.Resources>
-    <!-- 모던 다크 팔레트 -->
-    <Color x:Key="BgWindow">#12131A</Color>
-    <Color x:Key="BgSidebar">#181922</Color>
-    <Color x:Key="BgCard">#1F2130</Color>
-    <Color x:Key="BgInput">#232637</Color>
-    <Color x:Key="BgChip">#242637</Color>
-    <Color x:Key="BorderSoft">#2C2F42</Color>
-    <Color x:Key="TextPrimary">#ECEDF6</Color>
-    <Color x:Key="TextSecondary">#9C9FB7</Color>
-    <Color x:Key="TextMuted">#6E7189</Color>
-    <Color x:Key="Accent">#6D5EF0</Color>
-    <Color x:Key="AccentHover">#8073F5</Color>
-    <Color x:Key="AccentSoft">#2A2748</Color>
-    <Color x:Key="Good">#3FB68B</Color>
+    <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
 
-    <SolidColorBrush x:Key="BgWindowBrush" Color="{StaticResource BgWindow}" />
-    <SolidColorBrush x:Key="BgSidebarBrush" Color="{StaticResource BgSidebar}" />
-    <SolidColorBrush x:Key="BgCardBrush" Color="{StaticResource BgCard}" />
-    <SolidColorBrush x:Key="BgInputBrush" Color="{StaticResource BgInput}" />
-    <SolidColorBrush x:Key="BgChipBrush" Color="{StaticResource BgChip}" />
-    <SolidColorBrush x:Key="BorderSoftBrush" Color="{StaticResource BorderSoft}" />
-    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimary}" />
-    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondary}" />
-    <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMuted}" />
-    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource Accent}" />
-    <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHover}" />
-    <SolidColorBrush x:Key="AccentSoftBrush" Color="{StaticResource AccentSoft}" />
-    <SolidColorBrush x:Key="GoodBrush" Color="{StaticResource Good}" />
+        <!-- ═══ 다크 ═══ -->
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="BgWindowBrush" Color="#12131A" />
+          <SolidColorBrush x:Key="BgSidebarBrush" Color="#181922" />
+          <SolidColorBrush x:Key="BgCardBrush" Color="#1F2130" />
+          <SolidColorBrush x:Key="BgInputBrush" Color="#232637" />
+          <SolidColorBrush x:Key="BgChipBrush" Color="#242637" />
+          <SolidColorBrush x:Key="BorderSoftBrush" Color="#2C2F42" />
+          <SolidColorBrush x:Key="TextPrimaryBrush" Color="#ECEDF6" />
+          <SolidColorBrush x:Key="TextSecondaryBrush" Color="#9C9FB7" />
+          <SolidColorBrush x:Key="TextMutedBrush" Color="#6E7189" />
+          <SolidColorBrush x:Key="AccentBrush" Color="#6D5EF0" />
+          <SolidColorBrush x:Key="AccentHoverBrush" Color="#8073F5" />
+          <SolidColorBrush x:Key="AccentSoftBrush" Color="#2A2748" />
+          <SolidColorBrush x:Key="GoodBrush" Color="#3FB68B" />
+          <SolidColorBrush x:Key="HoverOverlayBrush" Color="#1EFFFFFF" />
+          <SolidColorBrush x:Key="ActivityBgBrush" Color="#14FFFFFF" />
+          <LinearGradientBrush x:Key="UserBubbleBrush" StartPoint="0%,0%" EndPoint="100%,100%">
+            <GradientStop Color="#5C4FEA" Offset="0" />
+            <GradientStop Color="#7A5CF2" Offset="1" />
+          </LinearGradientBrush>
+        </ResourceDictionary>
 
-    <LinearGradientBrush x:Key="UserBubbleBrush" StartPoint="0%,0%" EndPoint="100%,100%">
-      <GradientStop Color="#5C4FEA" Offset="0" />
-      <GradientStop Color="#7A5CF2" Offset="1" />
-    </LinearGradientBrush>
+        <!-- ═══ 라이트 ═══ -->
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="BgWindowBrush" Color="#F5F6FB" />
+          <SolidColorBrush x:Key="BgSidebarBrush" Color="#ECEEF6" />
+          <SolidColorBrush x:Key="BgCardBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="BgInputBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="BgChipBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="BorderSoftBrush" Color="#E2E5EF" />
+          <SolidColorBrush x:Key="TextPrimaryBrush" Color="#1B1D28" />
+          <SolidColorBrush x:Key="TextSecondaryBrush" Color="#585B70" />
+          <SolidColorBrush x:Key="TextMutedBrush" Color="#8A8DA1" />
+          <SolidColorBrush x:Key="AccentBrush" Color="#6D5EF0" />
+          <SolidColorBrush x:Key="AccentHoverBrush" Color="#5A4FE0" />
+          <SolidColorBrush x:Key="AccentSoftBrush" Color="#ECEAFB" />
+          <SolidColorBrush x:Key="GoodBrush" Color="#2FA37A" />
+          <SolidColorBrush x:Key="HoverOverlayBrush" Color="#0E000000" />
+          <SolidColorBrush x:Key="ActivityBgBrush" Color="#EEF0F7" />
+          <LinearGradientBrush x:Key="UserBubbleBrush" StartPoint="0%,0%" EndPoint="100%,100%">
+            <GradientStop Color="#5C4FEA" Offset="0" />
+            <GradientStop Color="#7A5CF2" Offset="1" />
+          </LinearGradientBrush>
+        </ResourceDictionary>
+
+      </ResourceDictionary.ThemeDictionaries>
+    </ResourceDictionary>
   </Application.Resources>
 
   <Application.Styles>
