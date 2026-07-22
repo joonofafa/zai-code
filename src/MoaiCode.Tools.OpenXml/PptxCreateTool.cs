@@ -85,6 +85,17 @@ public sealed class PptxCreateTool : ITool
                       },
                       "required": ["x", "y", "w", "h"]
                     }
+                  },
+                  "image": {
+                    "type": "object",
+                    "description": "An image to place on the slide (e.g. a figure from ImageCreate). Coordinates in INCHES on the 10 x 7.5 slide; drawn on top.",
+                    "properties": {
+                      "path": { "type": "string", "description": "Image path (.png/.jpg, relative to workspace)" },
+                      "x": { "type": "number", "description": "Left, inches (default centers horizontally)" },
+                      "y": { "type": "number", "description": "Top, inches (default 2.2)" },
+                      "widthInches": { "type": "number", "description": "Width, inches (default 4)" }
+                    },
+                    "required": ["path"]
                   }
                 }
               }
@@ -114,13 +125,20 @@ public sealed class PptxCreateTool : ITool
         [property: JsonPropertyName("fontSize")] int? FontSize,
         [property: JsonPropertyName("bold")] bool? Bold);
 
+    private sealed record ImageIn(
+        [property: JsonPropertyName("path")] string? Path,
+        [property: JsonPropertyName("x")] double? X,
+        [property: JsonPropertyName("y")] double? Y,
+        [property: JsonPropertyName("widthInches")] double? WidthInches);
+
     private sealed record SlideIn(
         [property: JsonPropertyName("title")] string? Title,
         [property: JsonPropertyName("accent")] string? Accent,
         [property: JsonPropertyName("bullets")] List<string>? Bullets,
         [property: JsonPropertyName("columns")] List<ColumnIn>? Columns,
         [property: JsonPropertyName("table")] TableIn? Table,
-        [property: JsonPropertyName("shapes")] List<ShapeIn>? Shapes);
+        [property: JsonPropertyName("shapes")] List<ShapeIn>? Shapes,
+        [property: JsonPropertyName("image")] ImageIn? Image);
 
     private sealed record Input(
         [property: JsonPropertyName("path")] string? Path,
@@ -142,7 +160,7 @@ public sealed class PptxCreateTool : ITool
         try
         {
             full = OpenXmlPaths.ResolveForWrite(context.WorkingDirectory, inp.Path, ".pptx");
-            Write(full, inp.Slides);
+            Write(full, inp.Slides, context.WorkingDirectory);
         }
         catch (Exception ex)
         {
@@ -155,7 +173,7 @@ public sealed class PptxCreateTool : ITool
             : new ToolOutput($"OK: {full} 생성 ({inp.Slides.Count} 슬라이드).");
     }
 
-    private static void Write(string path, List<SlideIn> slides)
+    private static void Write(string path, List<SlideIn> slides, string workingDir)
     {
         using var doc = PresentationDocument.Create(path, PresentationDocumentType.Presentation);
         var presPart = doc.AddPresentationPart();
@@ -209,6 +227,23 @@ public sealed class PptxCreateTool : ITool
             var slidePart = presPart.AddNewPart<SlidePart>();
             slidePart.Slide = BuildSlide(s);
             slidePart.AddPart(layoutPart);
+
+            if (s.Image is { Path: { } imgPath } && !string.IsNullOrWhiteSpace(imgPath))
+            {
+                var imgFull = OpenXmlPaths.ResolveForRead(workingDir, imgPath);
+                if (!File.Exists(imgFull))
+                {
+                    throw new FileNotFoundException($"이미지 없음: {imgPath}");
+                }
+
+                var width = s.Image.WidthInches is > 0 ? s.Image.WidthInches!.Value : 4.0;
+                var (cx, cy) = ImageEmbed.EmuSize(imgFull, width);
+                var x = s.Image.X is { } xv ? (long)(xv * ImageEmbed.EmuPerInch) : (9144000 - cx) / 2;
+                var y = s.Image.Y is { } yv ? (long)(yv * ImageEmbed.EmuPerInch) : (long)(2.2 * ImageEmbed.EmuPerInch);
+                var tree = slidePart.Slide.CommonSlideData!.ShapeTree!;
+                tree.AppendChild(ImageEmbed.PptxPicture(slidePart, imgFull, x, y, cx, cy, 900U + slideId));
+            }
+
             slideIdList.AppendChild(new SlideId
             {
                 Id = slideId++,
