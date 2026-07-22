@@ -31,13 +31,15 @@ public sealed class RetryingChatModel : IChatModel, IModelControl
 
     public RetryingChatModel(
         IChatModel inner,
-        int maxRetries = 3,
+        int maxRetries = 5,
         Func<int, TimeSpan>? backoff = null,
         Func<TimeSpan, CancellationToken, Task>? delay = null)
     {
         _inner = inner;
         _maxRetries = maxRetries;
-        _backoff = backoff ?? (attempt => TimeSpan.FromMilliseconds(500 * Math.Pow(2, attempt)));
+        // 지수 백오프(500ms→8s 상한). 5회면 ~0.5+1+2+4+8 ≈ 15.5초에 걸쳐 재시도 →
+        // 스트림이 시작 전에 끊기는 몇 초~십수 초짜리 네트워크/게이트웨이 블립을 넘긴다.
+        _backoff = backoff ?? (attempt => TimeSpan.FromMilliseconds(Math.Min(8000, 500 * Math.Pow(2, attempt))));
         _delay = delay ?? Task.Delay;
     }
 
