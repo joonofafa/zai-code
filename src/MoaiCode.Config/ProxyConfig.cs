@@ -57,6 +57,25 @@ public static class ProxyConfig
         return proxyUrl;
     }
 
+    /// <summary>프록시 설정을 저장(settings + PROXY_PASSWORD)하고 즉시 적용한다. 적용된 URL 반환(형식 오류면 null).</summary>
+    public static string? Save(string url, string? user, string? password)
+    {
+        var u = string.IsNullOrWhiteSpace(user) ? null : user.Trim();
+        var store = new FileCredentialStore();
+        if (!string.IsNullOrEmpty(password))
+        {
+            store.Set("PROXY_PASSWORD", password);
+        }
+
+        SettingsWriter.Set(new Dictionary<string, string?>
+        {
+            ["proxyUrl"] = url,
+            ["proxyUser"] = u,
+        });
+
+        return Apply(url, u, store);
+    }
+
     /// <summary>우회할 호스트들을 WebProxy.BypassList 정규식으로 만든다(NO_PROXY + proxyBypass 설정).</summary>
     public static string[] BuildBypass(string? proxyBypass)
     {

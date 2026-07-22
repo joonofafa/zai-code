@@ -13,7 +13,11 @@ namespace MoaiCode.Gui.ViewModels;
 public sealed partial class LoginViewModel : ObservableObject
 {
     private const string DefaultHost = "https://vip.bccard.ai";
+    private readonly CancellationTokenSource _cts = new();
     private string? _mfaToken;
+
+    /// <summary>진행 중인 로그인을 취소(창이 로그인 없이 닫힐 때).</summary>
+    public void Cancel() => _cts.Cancel();
 
     [ObservableProperty] private string _proxyUrl = string.Empty;
     [ObservableProperty] private string _proxyUser = string.Empty;
@@ -57,21 +61,27 @@ public sealed partial class LoginViewModel : ObservableObject
         Busy = true;
         try
         {
-            ApplyProxyIfAny();
+            var wasMfa = MfaRequired && _mfaToken is not null;
+
+            // 프록시는 최초 로그인 시도에서만 적용(MFA 재클릭 시 재적용 불필요).
+            if (!wasMfa)
+            {
+                ApplyProxyIfAny();
+            }
 
             var host = ResolveHost();
             var client = new OpenMoaiClient(host);
 
             LoginResult r;
-            if (MfaRequired && _mfaToken is not null)
+            if (wasMfa)
             {
                 Status = "MFA 확인 중…";
-                r = await client.LoginMfaAsync(_mfaToken, MfaCode.Trim(), CancellationToken.None);
+                r = await client.LoginMfaAsync(_mfaToken!, MfaCode.Trim(), _cts.Token);
             }
             else
             {
                 Status = "로그인 중…";
-                r = await client.LoginAsync(Email.Trim(), Password, CancellationToken.None);
+                r = await client.LoginAsync(Email.Trim(), Password, _cts.Token);
                 if (r.Status == "mfa_required" && !string.IsNullOrEmpty(r.MfaToken))
                 {
                     _mfaToken = r.MfaToken;
@@ -81,11 +91,21 @@ public sealed partial class LoginViewModel : ObservableObject
                 }
             }
 
+            if (_cts.IsCancellationRequested)
+            {
+                return; // 창이 닫혀 취소됨 — 저장/이벤트 없이 종료.
+            }
+
             if (r.Status != "ok" || string.IsNullOrEmpty(r.ApiKey))
             {
                 Status = "로그인 실패: " + (r.Error ?? "알 수 없는 오류");
-                MfaRequired = false;
-                _mfaToken = null;
+                if (!wasMfa)
+                {
+                    // 최초 로그인 실패만 초기화. MFA 코드 오류면 코드만 다시 입력하도록 유지.
+                    MfaRequired = false;
+                    _mfaToken = null;
+                }
+
                 return;
             }
 
@@ -102,41 +122,32 @@ public sealed partial class LoginViewModel : ObservableObject
     private void ApplyProxyIfAny()
     {
         var url = ProxyUrl.Trim();
-        if (url.Length == 0)
+        if (url.Length > 0)
         {
-            return;
+            ProxyConfig.Save(url, ProxyUser, ProxyPassword);
         }
-
-        var user = ProxyUser.Trim();
-        var store = new FileCredentialStore();
-        if (!string.IsNullOrEmpty(ProxyPassword))
-        {
-            store.Set("PROXY_PASSWORD", ProxyPassword);
-        }
-
-        SettingsWriter.Set(new Dictionary<string, string?>
-        {
-            ["proxyUrl"] = url,
-            ["proxyUser"] = user.Length > 0 ? user : null,
-        });
-
-        ProxyConfig.Apply(url, user.Length > 0 ? user : null, store);
     }
 
     private void Save(string host, LoginResult r)
     {
         new FileCredentialStore().Set("OPENAI_API_KEY", r.ApiKey!);
         var baseUrl = string.IsNullOrEmpty(r.BaseUrl) ? host + "/api/v1" : r.BaseUrl;
-        SettingsWriter.Set(new Dictionary<string, string?>
+        var values = new Dictionary<string, string?>
         {
             ["provider"] = "openai",
             ["host"] = host,
             ["baseUrl"] = baseUrl,
-            ["model"] = r.DefaultModel,
             ["account"] = Email.Trim(),
             ["loginAt"] = DateTimeOffset.Now.ToString("o"),
             ["orgName"] = r.OrgName,
-        });
+        };
+        // 서버가 defaultModel 을 줄 때만 반영 — null 로 기존 모델 설정을 지우지 않도록.
+        if (!string.IsNullOrEmpty(r.DefaultModel))
+        {
+            values["model"] = r.DefaultModel;
+        }
+
+        SettingsWriter.Set(values);
     }
 
     private static string ResolveHost()

@@ -135,19 +135,7 @@ public static class LoginFlow
         var user = (Console.ReadLine() ?? string.Empty).Trim();
         string? pass = user.Length > 0 ? PasswordPrompt.Read("프록시 비밀번호: ") : null;
 
-        var store = new FileCredentialStore();
-        if (!string.IsNullOrEmpty(pass))
-        {
-            store.Set("PROXY_PASSWORD", pass);
-        }
-
-        SettingsWriter.Set(new Dictionary<string, string?>
-        {
-            ["proxyUrl"] = url,
-            ["proxyUser"] = user.Length > 0 ? user : null,
-        });
-
-        var applied = ProxyConfig.Apply(url, user.Length > 0 ? user : null, store);
+        var applied = ProxyConfig.Save(url, user, pass);
         AnsiConsole.MarkupLine(applied is not null
             ? $"[green]프록시 적용됨[/] [grey70]· {Markup.Escape(url)}[/]"
             : "[yellow]프록시 URL 형식이 올바르지 않습니다[/]");

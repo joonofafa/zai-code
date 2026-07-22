@@ -69,6 +69,7 @@ public partial class App : Application
         {
             if (!authed)
             {
+                vm.Cancel();        // 진행 중이던 로그인 요청 취소(종료 후 저장/이벤트 방지).
                 desktop.Shutdown(); // 로그인 없이 창을 닫으면 앱 종료(트레이 상주 전이므로).
             }
         };
@@ -110,6 +111,7 @@ public partial class App : Application
             chooser.Close();
         };
         desktop.MainWindow = chooser;
+        chooser.Show(); // 로그인 이후(init 완료 후) 도달 시에도 반드시 표시(자동 표시 안 됨).
     }
 
     private void LaunchMain(IClassicDesktopStyleApplicationLifetime desktop)
