@@ -1,72 +1,170 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
+using MoaiCode.Core.Tools;
+using MoaiCode.Tools.Knowledge;
+using MoaiCode.Tools.OpenXml;
 
 namespace MoaiCode.Gui.Sync;
 
-/// <summary>연결된 공유 폴더 하나(→ 조직 문서함 매핑).</summary>
-public sealed record ConnectedFolder(string Path, string OrgId, string Visibility);
+/// <summary>연결된 공유 폴더 하나(→ 조직 문서함 매핑). orgId 비우면 서버가 로그인으로 자동 해소.</summary>
+public sealed record ConnectedFolder(string Path, string? OrgId, string Visibility);
 
 /// <summary>
-/// 공유 폴더를 감시해 변경 문서를 조직 문서함에 반영하는 백그라운드 서비스(뼈대).
-/// 실제 업로드(OrgDocsUpload)·디바운스·중복 매니페스트는 다음 단계에 채운다. 지금은 구조만.
+/// 공유 폴더를 감시해 변경 문서를 조직 문서함에 반영하는 백그라운드 서비스.
+/// 감시 → 디바운스 → 문서형 필터 → 매니페스트로 미변경 스킵 → OrgDocsUpload(서버가 임베딩) → 상태 알림.
 /// </summary>
 public sealed class FolderSyncService : IDisposable
 {
+    private static readonly Regex IdRx = new(@"id=(\d+)", RegexOptions.Compiled);
+
+    private readonly SyncManifest _manifest = SyncManifest.Load();
     private readonly List<FileSystemWatcher> _watchers = new();
     private readonly List<ConnectedFolder> _folders = new();
+    private readonly ConcurrentDictionary<string, (DateTime When, ConnectedFolder Folder)> _pending = new();
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private Timer? _timer;
+    private bool _disposed;
 
     /// <summary>트레이/UI 표시용 상태 메시지.</summary>
     public event Action<string>? Status;
 
     public IReadOnlyList<ConnectedFolder> Folders => _folders;
 
-    /// <summary>저장된 연결 폴더를 로드하고 감시를 시작한다(뼈대: 아직 감시 비활성).</summary>
-    public void Start()
+    public void Start(IEnumerable<ConnectedFolder> folders)
     {
-        // TODO: 설정에서 연결 폴더 목록 로드 → Connect 호출.
-        Status?.Invoke("동기화 대기 중 (연결된 폴더 없음)");
+        foreach (var f in folders)
+        {
+            Connect(f);
+        }
+
+        // 디바운스 처리 루프(1초마다, 마지막 이벤트 후 조용해진 파일만 업로드).
+        _timer = new Timer(_ => _ = ProcessPendingAsync(), null, 1000, 1000);
+        Status?.Invoke(_folders.Count == 0 ? "대기 중 (연결된 폴더 없음)" : $"{_folders.Count}개 폴더 감시 중");
     }
 
     public void Connect(ConnectedFolder folder)
     {
-        _folders.Add(folder);
-        Watch(folder);
-        Status?.Invoke($"폴더 연결됨: {folder.Path}");
-    }
-
-    private void Watch(ConnectedFolder folder)
-    {
         if (!Directory.Exists(folder.Path))
         {
+            Status?.Invoke($"폴더 없음: {folder.Path}");
             return;
         }
 
+        _folders.Add(folder);
         var watcher = new FileSystemWatcher(folder.Path)
         {
             IncludeSubdirectories = true,
             NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
-            EnableRaisingEvents = false, // 뼈대 — 아직 비활성(실사용 시 true + 디바운스)
+            EnableRaisingEvents = true,
         };
-        watcher.Created += (_, e) => OnChanged(folder, e.FullPath);
-        watcher.Changed += (_, e) => OnChanged(folder, e.FullPath);
+        watcher.Created += (_, e) => Enqueue(folder, e.FullPath);
+        watcher.Changed += (_, e) => Enqueue(folder, e.FullPath);
+        watcher.Renamed += (_, e) => Enqueue(folder, e.FullPath);
         _watchers.Add(watcher);
     }
 
-    private void OnChanged(ConnectedFolder folder, string fullPath)
+    private void Enqueue(ConnectedFolder folder, string path)
     {
-        // TODO: 문서형 필터 → 디바운스 → 업로드 매니페스트로 중복/미변경 스킵
-        //       → OrgDocsUpload(folder.OrgId, folder.Visibility) → 트레이 알림.
-        Status?.Invoke($"변경 감지: {Path.GetFileName(fullPath)} (업로드 예정)");
+        // 문서형만(지식베이스 임베딩 대상). 숨김/사이드카 제외.
+        var name = Path.GetFileName(path);
+        if (name.StartsWith('.') || !DocumentTextExtractor.IsSupported(path))
+        {
+            return;
+        }
+
+        _pending[path] = (DateTime.UtcNow, folder);
+    }
+
+    private async Task ProcessPendingAsync()
+    {
+        if (_disposed || !await _gate.WaitAsync(0).ConfigureAwait(false))
+        {
+            return; // 이전 사이클 진행 중 → 스킵
+        }
+
+        try
+        {
+            var now = DateTime.UtcNow;
+            var ready = _pending
+                .Where(kv => (now - kv.Value.When).TotalMilliseconds > 1500)
+                .Select(kv => kv.Key)
+                .ToList();
+
+            foreach (var path in ready)
+            {
+                _pending.TryRemove(path, out var entry);
+                if (!File.Exists(path) || _manifest.IsUnchanged(path))
+                {
+                    continue; // 삭제됐거나 미변경 → 스킵
+                }
+
+                await UploadAsync(path, entry.Folder).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            Status?.Invoke($"동기화 오류: {ex.Message}");
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task UploadAsync(string path, ConnectedFolder folder)
+    {
+        var name = Path.GetFileName(path);
+        Status?.Invoke($"올리는 중: {name}");
+
+        var input = JsonSerializer.SerializeToElement(new
+        {
+            orgId = folder.OrgId,
+            path,
+            visibility = folder.Visibility,
+        });
+        var ctx = new ToolContext(Path.GetDirectoryName(path) ?? path, PermissionMode.Auto);
+
+        var ok = false;
+        string? last = null;
+        await foreach (var p in new OrgDocsUploadTool().ExecuteAsync(input, ctx, CancellationToken.None).ConfigureAwait(false))
+        {
+            if (p is ToolOutput o)
+            {
+                last = o.Text;
+                ok = !o.IsError;
+            }
+        }
+
+        if (ok)
+        {
+            var docId = last is not null && IdRx.Match(last) is { Success: true } m ? m.Groups[1].Value : null;
+            _manifest.MarkUploaded(path, docId);
+            _manifest.Save();
+            Status?.Invoke($"문서함 반영됨: {name}");
+        }
+        else
+        {
+            Status?.Invoke($"실패: {name} — {last}");
+        }
     }
 
     public void Dispose()
     {
-        foreach (var watcher in _watchers)
+        _disposed = true;
+        _timer?.Dispose();
+        foreach (var w in _watchers)
         {
-            watcher.Dispose();
+            w.Dispose();
         }
 
         _watchers.Clear();
+        _gate.Dispose();
     }
 }

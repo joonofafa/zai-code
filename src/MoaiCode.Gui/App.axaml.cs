@@ -65,9 +65,9 @@ public partial class App : Application
 
     private void LaunchMain(IClassicDesktopStyleApplicationLifetime desktop)
     {
-        // 백그라운드 동기화(뼈대 — 아직 감시 비활성).
+        // 백그라운드 동기화 — 설정에 저장된 연결 폴더를 감시.
         _sync ??= new FolderSyncService();
-        _sync.Start();
+        _sync.Start(GuiSettings.Load().ConnectedFolders);
 
         _mainWindow = new MainWindow { DataContext = new MainViewModel(), Icon = LoadIcon() };
         _mainWindow.Closing += OnMainClosing;
@@ -99,10 +99,11 @@ public partial class App : Application
             var open = new NativeMenuItem("열기");
             open.Click += (_, _) => ShowMain();
 
-            var status = new NativeMenuItem("동기화 상태: 대기 중") { IsEnabled = false };
+            var status = new NativeMenuItem("동기화: 대기 중") { IsEnabled = false };
             if (_sync is not null)
             {
-                _sync.Status += msg => status.Header = $"동기화: {msg}";
+                // 동기화 상태는 백그라운드 스레드에서 오므로 UI 스레드로 마샬링.
+                _sync.Status += msg => Avalonia.Threading.Dispatcher.UIThread.Post(() => status.Header = $"동기화: {msg}");
             }
 
             var quit = new NativeMenuItem("종료");

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
@@ -8,6 +9,9 @@ namespace MoaiCode.Gui;
 public sealed class GuiSettings
 {
     public string? Theme { get; set; } // "light" | "dark" | null(미선택)
+
+    /// <summary>문서함과 연결된 공유 폴더 목록(동기화 대상).</summary>
+    public List<Sync.ConnectedFolder> ConnectedFolders { get; set; } = new();
 
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".moai", "gui-settings.json");
