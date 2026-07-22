@@ -122,6 +122,12 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl
             ["messages"] = BuildMessages(messages),
         };
 
+        var effort = ResolveReasoningEffort();
+        if (effort is not null)
+        {
+            body["reasoning_effort"] = effort;
+        }
+
         var toolsArr = BuildTools(tools);
         if (toolsArr is not null)
         {
@@ -132,9 +138,20 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl
         req.Headers.TryAddWithoutValidation("Authorization", $"Bearer {_apiKey}");
         req.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
 
-        using var resp = await _http
-            .SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct)
-            .ConfigureAwait(false);
+        HttpResponseMessage resp;
+        try
+        {
+            resp = await _http
+                .SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ProviderException.IsNetworkFailure(ex))
+        {
+            // 연결 자체 실패(끊김/타임아웃/소켓) → transient 로 변환해 재시도 계층이 처리.
+            throw new ProviderException($"게이트웨이 연결 실패: {ex.Message}", ErrorCategory.NetworkTransient, ex);
+        }
+
+        using var _resp = resp;
 
         if (!resp.IsSuccessStatusCode)
         {
@@ -483,6 +500,16 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl
         }
 
         return 8192;
+    }
+
+    private static string? ResolveReasoningEffort()
+    {
+        var effort = (Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT")
+                      ?? Environment.GetEnvironmentVariable("OPENAI_REASONING_EFFORT")
+                      ?? Environment.GetEnvironmentVariable("MOAI_EFFORT"))
+            ?.Trim().ToLowerInvariant();
+
+        return effort is "low" or "medium" or "high" ? effort : null;
     }
 
     private sealed class ToolCallBuilder
