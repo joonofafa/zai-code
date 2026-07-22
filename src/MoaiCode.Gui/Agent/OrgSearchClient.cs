@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -9,47 +10,38 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using MoaiCode.Tools.OpenXml;
 
 namespace MoaiCode.Gui.Agent;
 
 /// <summary>조직 문서함 RAG 검색 결과 한 건(관련 청크).</summary>
 public sealed record OrgHit(string Title, string Snippet, string DocumentId, double Score);
 
+/// <summary>첨부 확정된 참조(스니펫 또는 원문 통째).</summary>
+public sealed record PickedRef(string Title, string Text, string DocumentId, bool WholeDoc);
+
 /// <summary>
-/// 조직 문서함 의미검색(모드 B 조직 참조용). Bearer API 키로 /v1/knowledge/search 호출.
-/// 원문 다운로드는 웹세션 전용이라 불가 → RAG 스니펫을 참조로 가져온다.
+/// 조직 문서함 접근(모드 B). Bearer API 키로 검색(/v1/knowledge/search) 및
+/// 원문 다운로드(/v1/knowledge/{id}?download=1) → 텍스트 추출.
 /// </summary>
 public static class OrgSearchClient
 {
     public static async Task<(IReadOnlyList<OrgHit> Hits, string? Error)> SearchAsync(
         string query, CancellationToken ct)
     {
-        var baseUrl = Environment.GetEnvironmentVariable("OPENAI_BASE_URL");
-        var key = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
-        if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(key))
+        var (baseUrl, key, envErr) = Env();
+        if (envErr is not null)
         {
-            return (Array.Empty<OrgHit>(), "로그인이 필요합니다. `moai login` 후 이용하세요.");
+            return (Array.Empty<OrgHit>(), envErr);
         }
 
-        using var handler = new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.All };
-        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
-        var b = baseUrl.TrimEnd('/');
+        using var client = NewClient(key!);
+        var b = baseUrl!.TrimEnd('/');
 
-        string? orgId;
-        try
+        var (orgId, orgErr) = await ResolveOrgIdAsync(client, b, ct).ConfigureAwait(false);
+        if (orgErr is not null)
         {
-            var orgs = await client.GetFromJsonAsync<OrgListResp>(b + "/organizations", ct).ConfigureAwait(false);
-            orgId = (orgs?.Items ?? orgs?.Organizations)?.FirstOrDefault()?.Id;
-        }
-        catch (Exception ex)
-        {
-            return (Array.Empty<OrgHit>(), "조직 조회 실패: " + ex.Message);
-        }
-
-        if (string.IsNullOrEmpty(orgId))
-        {
-            return (Array.Empty<OrgHit>(), "소속 조직을 찾지 못했습니다.");
+            return (Array.Empty<OrgHit>(), orgErr);
         }
 
         try
@@ -76,6 +68,106 @@ public static class OrgSearchClient
         catch (Exception ex)
         {
             return (Array.Empty<OrgHit>(), "검색 오류: " + ex.Message);
+        }
+    }
+
+    /// <summary>문서 원문을 다운로드해 텍스트로 추출한다(원문 통째 첨부용).</summary>
+    public static async Task<(string? Text, string? Error)> DownloadDocTextAsync(
+        string documentId, CancellationToken ct)
+    {
+        var (baseUrl, key, envErr) = Env();
+        if (envErr is not null)
+        {
+            return (null, envErr);
+        }
+
+        using var client = NewClient(key!);
+        var b = baseUrl!.TrimEnd('/');
+
+        var (orgId, orgErr) = await ResolveOrgIdAsync(client, b, ct).ConfigureAwait(false);
+        if (orgErr is not null)
+        {
+            return (null, orgErr);
+        }
+
+        var url = $"{b}/knowledge/{Uri.EscapeDataString(documentId)}?download=1&orgId={Uri.EscapeDataString(orgId!)}";
+        string tmp;
+        try
+        {
+            using var resp = await client.GetAsync(url, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                return (null, $"다운로드 실패 HTTP {(int)resp.StatusCode}: {body.Trim()}");
+            }
+
+            var fileName = resp.Content.Headers.ContentDisposition?.FileNameStar
+                           ?? resp.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+                           ?? "doc.bin";
+            if (!DocumentTextExtractor.IsSupported(fileName))
+            {
+                return (null, $"지원하지 않는 형식: {Path.GetExtension(fileName)}");
+            }
+
+            var bytes = await resp.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
+            tmp = Path.Combine(Path.GetTempPath(), $"moai_org_{documentId}{Path.GetExtension(fileName)}");
+            await File.WriteAllBytesAsync(tmp, bytes, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            return (null, "다운로드 오류: " + ex.Message);
+        }
+
+        try
+        {
+            return (DocumentTextExtractor.Extract(tmp), null);
+        }
+        catch (Exception ex)
+        {
+            return (null, "텍스트 추출 실패: " + ex.Message);
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(tmp);
+            }
+            catch
+            {
+                // 임시파일 정리 실패는 무시
+            }
+        }
+    }
+
+    private static (string? BaseUrl, string? Key, string? Error) Env()
+    {
+        var baseUrl = Environment.GetEnvironmentVariable("OPENAI_BASE_URL");
+        var key = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+        return string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(key)
+            ? (null, null, "로그인이 필요합니다. `moai login` 후 이용하세요.")
+            : (baseUrl, key, null);
+    }
+
+    private static HttpClient NewClient(string key)
+    {
+        var handler = new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.All };
+        var client = new HttpClient(handler, disposeHandler: true) { Timeout = TimeSpan.FromSeconds(60) };
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
+        return client;
+    }
+
+    private static async Task<(string? OrgId, string? Error)> ResolveOrgIdAsync(
+        HttpClient client, string b, CancellationToken ct)
+    {
+        try
+        {
+            var orgs = await client.GetFromJsonAsync<OrgListResp>(b + "/organizations", ct).ConfigureAwait(false);
+            var id = (orgs?.Items ?? orgs?.Organizations)?.FirstOrDefault()?.Id;
+            return string.IsNullOrEmpty(id) ? (null, "소속 조직을 찾지 못했습니다.") : (id, null);
+        }
+        catch (Exception ex)
+        {
+            return (null, "조직 조회 실패: " + ex.Message);
         }
     }
 

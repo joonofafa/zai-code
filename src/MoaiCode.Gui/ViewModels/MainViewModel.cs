@@ -135,20 +135,20 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(HasReferences));
     }
 
-    /// <summary>조직 문서함 검색 결과(청크)를 참조로 첨부. View 의 검색 다이얼로그에서 호출.</summary>
-    public void AddOrgReference(OrgHit hit)
+    /// <summary>조직 문서함 참조(스니펫 또는 원문)를 첨부. View 의 검색 다이얼로그에서 호출.</summary>
+    public void AddOrgReference(PickedRef r)
     {
-        if (References.Any(r => r.Source == "org" && r.Path == hit.DocumentId && r.Text == hit.Snippet))
+        if (References.Any(x => x.Source == "org" && x.Path == r.DocumentId && x.Text == r.Text))
         {
             return;
         }
 
         References.Add(new ReferenceItem
         {
-            DisplayName = hit.Title,
+            DisplayName = r.WholeDoc ? r.Title + " (원문)" : r.Title,
             Source = "org",
-            Text = hit.Snippet,
-            Path = hit.DocumentId,
+            Text = r.Text,
+            Path = r.DocumentId,
         });
         OnPropertyChanged(nameof(HasReferences));
     }

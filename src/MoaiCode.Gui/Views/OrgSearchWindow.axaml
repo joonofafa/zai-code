@@ -58,10 +58,14 @@
     </ScrollViewer>
 
     <!-- 하단 액션 -->
-    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right"
-                Spacing="10" Margin="0,14,0,0">
-      <Button Classes="ghost" Content="닫기" Click="OnCancel" />
-      <Button Classes="accent" Content="첨부" Click="OnAttach" />
-    </StackPanel>
+    <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="0,14,0,0">
+      <CheckBox Grid.Column="0" Content="원문 통째로 가져오기" IsChecked="{Binding WholeDoc}"
+                VerticalAlignment="Center"
+                ToolTip.Tip="체크 시 스니펫이 아니라 선택한 문서의 원문 전체를 첨부합니다" />
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+        <Button Classes="ghost" Content="닫기" Click="OnCancel" />
+        <Button Classes="accent" Content="첨부" Click="OnAttach" />
+      </StackPanel>
+    </Grid>
   </Grid>
 </Window>

@@ -55,9 +55,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        foreach (var hit in picked)
+        foreach (var reference in picked)
         {
-            vm.AddOrgReference(hit);
+            vm.AddOrgReference(reference);
         }
     }
 }

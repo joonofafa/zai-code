@@ -18,6 +18,9 @@ public sealed partial class OrgSearchViewModel : ObservableObject
 
     [ObservableProperty] private string _status = "검색어를 입력하고 Enter.";
 
+    /// <summary>true 면 스니펫 대신 문서 원문 전체를 첨부.</summary>
+    [ObservableProperty] private bool _wholeDoc;
+
     public ObservableCollection<OrgHitVM> Results { get; } = new();
 
     private bool CanSearch() => !Busy;
