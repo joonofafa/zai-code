@@ -11,6 +11,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <AvaloniaResource Include="Assets/**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- 코어 in-process 임베드 (데몬·IPC 없음). Bash 어셈블리는 참조하지 않음(일반 사용자 안전). -->
     <ProjectReference Include="..\MoaiCode.Core\MoaiCode.Core.csproj" />
     <ProjectReference Include="..\MoaiCode.Config\MoaiCode.Config.csproj" />
