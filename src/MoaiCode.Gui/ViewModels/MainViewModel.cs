@@ -1,8 +1,10 @@
+using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MoaiCode.Core.Tools;
@@ -69,32 +71,51 @@ public sealed partial class MainViewModel : ObservableObject
         var prompt = ComposePrompt(text);
         AssistantItem? assistant = null;
         ActivityItem? activity = null;
-        await foreach (var ev in _backend.SendAsync(prompt, CancellationToken.None))
-        {
-            switch (ev)
-            {
-                case ActivityStarted s:
-                    assistant = null; // 이후 답변은 새 말풍선으로(순서 유지)
-                    activity = new ActivityItem { Text = s.Text };
-                    Items.Add(activity);
-                    break;
-                case ActivityDone d:
-                    if (activity is not null) { activity.Text = d.Text; activity.Done = true; }
-                    break;
-                case DocumentProduced doc:
-                    assistant = null;
-                    Items.Add(new DocumentItem { Icon = doc.Icon, Kind = doc.Kind, FileName = doc.FileName, Path = doc.Path });
-                    break;
-                case AssistantDelta a:
-                    assistant ??= AddAssistant();
-                    assistant.Text += a.Text;
-                    break;
-                case TurnDone:
-                    break;
-            }
-        }
 
-        IsBusy = false;
+        try
+        {
+            // 엔진(네트워크 + 도구 실행)은 백그라운드 스레드에서 — 차트/문서 생성 같은 무거운
+            // 동기 작업이 UI 스레드를 막지 않도록. UI 변경만 Dispatcher 로 마샬링.
+            await Task.Run(async () =>
+            {
+                await foreach (var ev in _backend.SendAsync(prompt, CancellationToken.None).ConfigureAwait(false))
+                {
+                    var current = ev;
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        switch (current)
+                        {
+                            case ActivityStarted s:
+                                assistant = null; // 이후 답변은 새 말풍선으로(순서 유지)
+                                activity = new ActivityItem { Text = s.Text };
+                                Items.Add(activity);
+                                break;
+                            case ActivityDone d:
+                                if (activity is not null) { activity.Text = d.Text; activity.Done = true; }
+                                break;
+                            case DocumentProduced doc:
+                                assistant = null;
+                                Items.Add(new DocumentItem { Icon = doc.Icon, Kind = doc.Kind, FileName = doc.FileName, Path = doc.Path });
+                                break;
+                            case AssistantDelta a:
+                                assistant ??= AddAssistant();
+                                assistant.Text += a.Text;
+                                break;
+                            case TurnDone:
+                                break;
+                        }
+                    });
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Items.Add(new AssistantItem { Text = "⚠️ 처리 중 오류가 발생했어요: " + ex.Message });
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     private AssistantItem AddAssistant()
