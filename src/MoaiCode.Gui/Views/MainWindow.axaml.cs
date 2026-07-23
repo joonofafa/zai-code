@@ -41,6 +41,29 @@ public partial class MainWindow : Window
         }
     }
 
+    // 로그인 / 계정 설정 — 로그인창을 띄우고 성공 시 엔진을 새 자격증명으로 재구성.
+    private async void OnLoginClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+        {
+            return;
+        }
+
+        var loginVm = new LoginViewModel();
+        var win = new LoginWindow { DataContext = loginVm };
+        var ok = false;
+        loginVm.LoggedIn += () =>
+        {
+            ok = true;
+            win.Close();
+        };
+        await win.ShowDialog(this);
+        if (ok)
+        {
+            vm.ReloadBackend();
+        }
+    }
+
     // 조직 문서함 검색(모드 B) — RAG 검색 다이얼로그 → 선택 스니펫을 참조로 첨부.
     private async void OnOrgClick(object? sender, RoutedEventArgs e)
     {

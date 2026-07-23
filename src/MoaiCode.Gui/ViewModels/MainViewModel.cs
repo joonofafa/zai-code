@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using MoaiCode.Config;
 using MoaiCode.Core.Tools;
 using MoaiCode.Gui.Agent;
 using MoaiCode.Tools.OpenXml;
@@ -15,8 +16,15 @@ namespace MoaiCode.Gui.ViewModels;
 
 public sealed partial class MainViewModel : ObservableObject
 {
-    private readonly IAgentBackend _backend;
-    private readonly bool _live;
+    private IAgentBackend _backend = null!;
+    private bool _live;
+    private string? _lastError;
+
+    /// <summary>사이드바 표시용 앱 버전(예: v0.4.0).</summary>
+    public string AppVersion { get; } =
+        "v" + (typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.4.0");
+
+    [ObservableProperty] private string _accountLabel = "로그인 필요";
 
     public ObservableCollection<ChatItem> Items { get; } = new();
     public ObservableCollection<SessionItem> Sessions { get; } = new();
@@ -37,8 +45,16 @@ public sealed partial class MainViewModel : ObservableObject
 
     public MainViewModel()
     {
-        // 실제 코어 임베드. 자격증명 없으면 데모(stub) 로 폴백.
+        BuildBackend();
+        RefreshAccount();
+        Seed(_lastError);
+    }
+
+    // 실제 코어 임베드. 자격증명 없으면 데모(stub) 로 폴백.
+    private void BuildBackend()
+    {
         var engine = GuiBootstrap.TryBuild(new AutoApproveGate(), out var ws, out var error);
+        _lastError = error;
         if (engine is not null)
         {
             _backend = new EngineAgentBackend(engine, ws);
@@ -49,8 +65,25 @@ public sealed partial class MainViewModel : ObservableObject
             _backend = new StubAgentBackend();
             _live = false;
         }
+    }
 
-        Seed(error);
+    /// <summary>로그인 후 호출 — 새 자격증명으로 엔진을 다시 만들고 상태를 갱신한다.</summary>
+    public void ReloadBackend()
+    {
+        BuildBackend();
+        RefreshAccount();
+        Items.Add(new AssistantItem
+        {
+            Text = _live
+                ? "✅ 로그인이 적용됐어요. 이제 문서를 만들어 드릴 수 있어요."
+                : "로그인 정보를 확인하지 못했어요. 사이드바의 '로그인 / 계정'에서 다시 시도해 주세요.",
+        });
+    }
+
+    private void RefreshAccount()
+    {
+        var acc = SettingsLoader.Load(System.IO.Directory.GetCurrentDirectory()).Account;
+        AccountLabel = string.IsNullOrWhiteSpace(acc) ? "로그인 필요" : "👤 " + acc;
     }
 
     private bool CanSend() => !IsBusy;
@@ -236,9 +269,9 @@ public sealed partial class MainViewModel : ObservableObject
         {
             Items.Add(new AssistantItem
             {
-                Text = "데모 모드입니다 — 아직 로그인되어 있지 않아 실제 생성은 안 돼요.\n" +
-                       (error ?? "`moai login` 으로 로그인하면 실제로 문서를 만들어 드립니다.") +
-                       "\n지금은 입력해 보시면 흐름만 재현합니다.",
+                Text = "아직 로그인되어 있지 않아요.\n" +
+                       "왼쪽 아래 **'로그인 / 계정 설정'** 을 눌러 로그인하면 실제로 문서를 만들어 드립니다." +
+                       (string.IsNullOrWhiteSpace(error) ? "" : "\n\n(참고: " + error + ")"),
             });
         }
     }
