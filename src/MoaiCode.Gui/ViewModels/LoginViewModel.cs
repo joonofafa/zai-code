@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -130,8 +131,20 @@ public sealed partial class LoginViewModel : ObservableObject
 
     private void Save(string host, LoginResult r)
     {
-        new FileCredentialStore().Set("OPENAI_API_KEY", r.ApiKey!);
         var baseUrl = string.IsNullOrEmpty(r.BaseUrl) ? host + "/api/v1" : r.BaseUrl;
+        var model = !string.IsNullOrEmpty(r.DefaultModel) ? r.DefaultModel : r.Models.FirstOrDefault();
+
+        new FileCredentialStore().Set("OPENAI_API_KEY", r.ApiKey!);
+
+        // 재로그인이 즉시 반영되도록 환경변수를 강제 갱신한다. GuiBootstrap 은 env 가 이미
+        // 설정돼 있으면 스킵하므로(첫 빌드 때 세팅됨), 강제로 덮어써야 새 키/URL/모델이 적용된다.
+        Environment.SetEnvironmentVariable("OPENAI_API_KEY", r.ApiKey);
+        Environment.SetEnvironmentVariable("OPENAI_BASE_URL", baseUrl);
+        if (!string.IsNullOrEmpty(model))
+        {
+            Environment.SetEnvironmentVariable("MOAI_MODEL", model);
+        }
+
         var values = new Dictionary<string, string?>
         {
             ["provider"] = "openai",
@@ -141,10 +154,9 @@ public sealed partial class LoginViewModel : ObservableObject
             ["loginAt"] = DateTimeOffset.Now.ToString("o"),
             ["orgName"] = r.OrgName,
         };
-        // 서버가 defaultModel 을 줄 때만 반영 — null 로 기존 모델 설정을 지우지 않도록.
-        if (!string.IsNullOrEmpty(r.DefaultModel))
+        if (!string.IsNullOrEmpty(model))
         {
-            values["model"] = r.DefaultModel;
+            values["model"] = model;
         }
 
         SettingsWriter.Set(values);

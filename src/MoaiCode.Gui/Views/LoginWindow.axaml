@@ -3,27 +3,66 @@
         xmlns:vm="using:MoaiCode.Gui.ViewModels"
         x:Class="MoaiCode.Gui.Views.LoginWindow"
         x:DataType="vm:LoginViewModel"
-        Title="MoAI Desktop 로그인" Width="440" Height="620"
+        Title="MoAI Desktop 로그인" Width="420" Height="640"
         WindowStartupLocation="CenterScreen" CanResize="False"
+        FontFamily="avares://Avalonia.Fonts.Inter/Assets#Inter"
         Background="{DynamicResource BgWindowBrush}">
 
+  <Window.Styles>
+    <!-- Desktop 톤앤매너에 맞춘 둥근 입력 필드 -->
+    <Style Selector="TextBox">
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Height" Value="46" />
+      <Setter Property="Padding" Value="14,0" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="Background" Value="{DynamicResource BgInputBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderSoftBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+  </Window.Styles>
+
   <ScrollViewer>
-    <StackPanel Margin="34,30" Spacing="18" MaxWidth="372">
+    <StackPanel Margin="0,36,0,28" Spacing="14" MaxWidth="332" HorizontalAlignment="Center">
 
       <!-- 로고 / 제목 -->
-      <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
-        <Image Source="avares://MoaiCode.Gui/Assets/moai.png" Width="44" Height="44" />
-        <StackPanel VerticalAlignment="Center">
-          <TextBlock Text="MoAI Desktop" FontWeight="SemiBold" FontSize="18"
-                     Foreground="{DynamicResource TextPrimaryBrush}" />
-          <TextBlock Text="로그인하고 시작하세요" FontSize="12"
-                     Foreground="{DynamicResource TextMutedBrush}" />
-        </StackPanel>
+      <StackPanel Spacing="10" HorizontalAlignment="Center" Margin="0,0,0,6">
+        <Image Source="avares://MoaiCode.Gui/Assets/moai-logo.png" Width="52" Height="52"
+               HorizontalAlignment="Center" />
+        <TextBlock Text="MoAI Desktop" FontWeight="SemiBold" FontSize="19"
+                   HorizontalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
+        <TextBlock Text="로그인하고 시작하세요" FontSize="12.5"
+                   HorizontalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" />
       </StackPanel>
 
-      <!-- 사내 프록시 설정 (접이식) -->
-      <Expander Header="사내 프록시 설정 (필요 시)" IsExpanded="{Binding ProxyExpanded}">
-        <StackPanel Spacing="9" Margin="0,10,0,2">
+      <!-- 로그인 폼 -->
+      <TextBox Watermark="이메일" Text="{Binding Email}" />
+      <TextBox Watermark="비밀번호" Text="{Binding Password}" PasswordChar="●">
+        <TextBox.KeyBindings>
+          <KeyBinding Gesture="Enter" Command="{Binding LoginCommand}" />
+        </TextBox.KeyBindings>
+      </TextBox>
+      <TextBox Watermark="MFA 코드" Text="{Binding MfaCode}" IsVisible="{Binding MfaRequired}">
+        <TextBox.KeyBindings>
+          <KeyBinding Gesture="Enter" Command="{Binding LoginCommand}" />
+        </TextBox.KeyBindings>
+      </TextBox>
+
+      <Button Classes="accent" Content="로그인" HorizontalAlignment="Stretch" Height="46"
+              CornerRadius="12" FontSize="14.5" Command="{Binding LoginCommand}"
+              IsEnabled="{Binding !Busy}" />
+
+      <TextBlock Text="{Binding Status}" FontSize="12.5" TextWrapping="Wrap" MinHeight="16"
+                 HorizontalAlignment="Center" TextAlignment="Center"
+                 Foreground="{DynamicResource TextSecondaryBrush}" />
+
+      <!-- 사내 프록시 설정 (로그인 아래 · 동일 폭 · 접이식) -->
+      <Expander Header="사내 프록시 설정 (필요 시)" IsExpanded="{Binding ProxyExpanded}"
+                HorizontalAlignment="Stretch" CornerRadius="12" Margin="0,4,0,0">
+        <StackPanel Spacing="10" Margin="2,10,2,4">
           <TextBlock Text="사내 프록시 뒤에서 접속하는 경우 입력하세요. 로그인 전에 적용됩니다."
                      FontSize="11.5" TextWrapping="Wrap"
                      Foreground="{DynamicResource TextMutedBrush}" />
@@ -32,30 +71,6 @@
           <TextBox Watermark="프록시 비밀번호 (선택)" Text="{Binding ProxyPassword}" PasswordChar="●" />
         </StackPanel>
       </Expander>
-
-      <Border Height="1" Background="{DynamicResource BorderSoftBrush}" />
-
-      <!-- 로그인 폼 -->
-      <StackPanel Spacing="11">
-        <TextBox Watermark="이메일" Text="{Binding Email}" />
-        <TextBox Watermark="비밀번호" Text="{Binding Password}" PasswordChar="●">
-          <TextBox.KeyBindings>
-            <KeyBinding Gesture="Enter" Command="{Binding LoginCommand}" />
-          </TextBox.KeyBindings>
-        </TextBox>
-        <TextBox Watermark="MFA 코드" Text="{Binding MfaCode}" IsVisible="{Binding MfaRequired}">
-          <TextBox.KeyBindings>
-            <KeyBinding Gesture="Enter" Command="{Binding LoginCommand}" />
-          </TextBox.KeyBindings>
-        </TextBox>
-      </StackPanel>
-
-      <Button Classes="accent" Content="로그인" HorizontalAlignment="Stretch" Height="40"
-              Command="{Binding LoginCommand}" IsEnabled="{Binding !Busy}" />
-
-      <TextBlock Text="{Binding Status}" FontSize="12" TextWrapping="Wrap" MinHeight="18"
-                 HorizontalAlignment="Center" TextAlignment="Center"
-                 Foreground="{DynamicResource TextSecondaryBrush}" />
     </StackPanel>
   </ScrollViewer>
 </Window>

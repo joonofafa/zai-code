@@ -27,6 +27,11 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty] private string _accountLabel = "로그인 필요";
 
+    /// <summary>채팅을 맨 아래로 스크롤하도록 View 에 요청(자동 스크롤).</summary>
+    public event Action? ScrollToEndRequested;
+
+    private void RequestScroll() => ScrollToEndRequested?.Invoke();
+
     public ObservableCollection<ChatItem> Items { get; } = new();
     public ObservableCollection<SessionItem> Sessions { get; } = new();
 
@@ -105,6 +110,7 @@ public sealed partial class MainViewModel : ObservableObject
         // 프롬프트 직후 즉시 '작업 중…' 표시(네트워크/추론 대기 동안 피드백 — 프리징 오해 방지).
         var thinking = new ActivityItem { Text = "작업 중…", Done = false };
         Items.Add(thinking);
+        RequestScroll();
         var thinkingRemoved = false;
         void RemoveThinking()
         {
@@ -141,6 +147,7 @@ public sealed partial class MainViewModel : ObservableObject
                     {
                         assistant ??= AddAssistant();
                         assistant.Text += chunk;
+                        RequestScroll();
                     });
                 }
 
@@ -167,6 +174,7 @@ public sealed partial class MainViewModel : ObservableObject
                                 assistant = null; // 이후 답변은 새 말풍선으로(순서 유지)
                                 activity = new ActivityItem { Text = s.Text };
                                 Items.Add(activity);
+                                RequestScroll();
                             });
                             break;
 
@@ -184,6 +192,7 @@ public sealed partial class MainViewModel : ObservableObject
                                 RemoveThinking();
                                 assistant = null;
                                 Items.Add(new DocumentItem { Icon = doc.Icon, Kind = doc.Kind, FileName = doc.FileName, Path = doc.Path });
+                                RequestScroll();
                             });
                             break;
 
@@ -306,12 +315,32 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
+    // '새 작업' — 현재 대화·첨부·입력을 비우고 새 세션을 시작한다.
+    [RelayCommand]
+    private void NewTask()
+    {
+        if (IsBusy)
+        {
+            return; // 진행 중이면 무시(응답 도중 초기화 방지).
+        }
+
+        Items.Clear();
+        References.Clear();
+        OnPropertyChanged(nameof(HasReferences));
+        Input = string.Empty;
+        WelcomeMessage();
+    }
+
     private void Seed(string? error)
     {
         Sessions.Add(new SessionItem { Title = "카페 매출 TOP10 엑셀", When = "오늘" });
         Sessions.Add(new SessionItem { Title = "금융권 AI 거버넌스 보고서", When = "어제" });
         Sessions.Add(new SessionItem { Title = "메달리온 발표자료", When = "7월 20일" });
+        WelcomeMessage(error);
+    }
 
+    private void WelcomeMessage(string? error = null)
+    {
         if (_live)
         {
             Items.Add(new AssistantItem

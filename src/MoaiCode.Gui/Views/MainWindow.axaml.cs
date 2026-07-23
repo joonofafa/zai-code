@@ -1,14 +1,45 @@
+using System;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using MoaiCode.Gui.ViewModels;
 
 namespace MoaiCode.Gui.Views;
 
 public partial class MainWindow : Window
 {
-    public MainWindow() => AvaloniaXamlLoader.Load(this);
+    private MainViewModel? _hooked;
+
+    public MainWindow()
+    {
+        AvaloniaXamlLoader.Load(this);
+        DataContextChanged += OnDataContextChanged;
+    }
+
+    // 자동 스크롤 — ViewModel 의 요청마다 채팅을 맨 아래로.
+    private void OnDataContextChanged(object? sender, EventArgs e)
+    {
+        if (_hooked is not null)
+        {
+            _hooked.ScrollToEndRequested -= ScrollChatToEnd;
+        }
+
+        _hooked = DataContext as MainViewModel;
+        if (_hooked is not null)
+        {
+            _hooked.ScrollToEndRequested += ScrollChatToEnd;
+        }
+    }
+
+    private void ScrollChatToEnd()
+    {
+        // 새 콘텐츠가 배치된 뒤 스크롤하도록 지연.
+        Dispatcher.UIThread.Post(
+            () => this.FindControl<ScrollViewer>("ChatScroll")?.ScrollToEnd(),
+            DispatcherPriority.Background);
+    }
 
     // 참조 문서 첨부(모드 B) — 로컬 파일 다중 선택 → ViewModel 에 원문 추출 위임.
     private async void OnAttachClick(object? sender, RoutedEventArgs e)

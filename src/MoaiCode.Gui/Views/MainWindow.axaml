@@ -18,7 +18,7 @@
         <StackPanel DockPanel.Dock="Top" Spacing="16">
           <!-- 로고 -->
           <StackPanel Orientation="Horizontal" Spacing="11">
-            <Image Source="avares://MoaiCode.Gui/Assets/moai.png" Width="34" Height="34" />
+            <Image Source="avares://MoaiCode.Gui/Assets/moai-logo.png" Width="34" Height="34" />
             <StackPanel VerticalAlignment="Center">
               <StackPanel Orientation="Horizontal" Spacing="6">
                 <TextBlock Text="MoAI Desktop" FontSize="15" FontWeight="SemiBold" />
@@ -29,7 +29,8 @@
             </StackPanel>
           </StackPanel>
 
-          <Button Classes="accent" HorizontalAlignment="Stretch" Content="+  새 작업" />
+          <Button Classes="accent" HorizontalAlignment="Stretch" Content="+  새 작업"
+                  Command="{Binding NewTaskCommand}" />
 
           <TextBlock Text="이전 작업" FontSize="11" FontWeight="SemiBold"
                      Foreground="{DynamicResource TextMutedBrush}" Margin="4,4,0,0" />
@@ -120,7 +121,7 @@
       </StackPanel>
 
       <!-- 채팅 -->
-      <ScrollViewer Padding="28,22,28,4" VerticalScrollBarVisibility="Auto">
+      <ScrollViewer x:Name="ChatScroll" Padding="28,22,28,4" VerticalScrollBarVisibility="Auto">
         <ItemsControl ItemsSource="{Binding Items}" MaxWidth="760" HorizontalAlignment="Center">
           <ItemsControl.Styles>
             <Style Selector="ContentPresenter"><Setter Property="Margin" Value="0,0,0,16" /></Style>
