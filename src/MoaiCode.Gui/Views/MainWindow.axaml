@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:MoaiCode.Gui.ViewModels"
+        xmlns:md="clr-namespace:Markdown.Avalonia;assembly=Markdown.Avalonia"
         x:Class="MoaiCode.Gui.Views.MainWindow"
         Title="MoAI Desktop"
         Width="1120" Height="760" MinWidth="900" MinHeight="580"
@@ -71,18 +72,6 @@
 
       <!-- 하단 작성 영역 -->
       <StackPanel DockPanel.Dock="Bottom" Margin="24,8,24,20" Spacing="12">
-        <ItemsControl ItemsSource="{Binding QuickActions}">
-          <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
-          </ItemsControl.ItemsPanel>
-          <ItemsControl.ItemTemplate>
-            <DataTemplate>
-              <Button Classes="chip" Content="{Binding}" Margin="0,0,8,8"
-                      Command="{Binding $parent[ItemsControl].DataContext.QuickCommand}"
-                      CommandParameter="{Binding}" />
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
 
         <!-- 참조 문서 칩(모드 B) -->
         <ItemsControl ItemsSource="{Binding References}" IsVisible="{Binding HasReferences}">
@@ -139,13 +128,15 @@
               </Border>
             </DataTemplate>
 
-            <!-- 어시스턴트 답변 -->
+            <!-- MoAI 말풍선 (마크다운 렌더링) -->
             <DataTemplate DataType="vm:AssistantItem">
               <StackPanel HorizontalAlignment="Left" MaxWidth="660" Spacing="5">
-                <TextBlock Text="MoAI" FontSize="11" FontWeight="SemiBold"
+                <TextBlock Text="MoAI" FontSize="11" FontWeight="SemiBold" Margin="4,0,0,0"
                            Foreground="{DynamicResource AccentHoverBrush}" />
-                <TextBlock Text="{Binding Text}" FontSize="14" LineHeight="21"
-                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                <Border Background="{DynamicResource ActivityBgBrush}" CornerRadius="4,16,16,16"
+                        Padding="16,11" HorizontalAlignment="Left">
+                  <md:MarkdownScrollViewer Markdown="{Binding Text}" />
+                </Border>
               </StackPanel>
             </DataTemplate>
 

@@ -38,10 +38,6 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>모드 B: 이번 작업에 첨부된 참조 문서(로컬/조직).</summary>
     public ObservableCollection<ReferenceItem> References { get; } = new();
     public bool HasReferences => References.Count > 0;
-    public ObservableCollection<string> QuickActions { get; } = new()
-    {
-        "📝 보고서 만들기", "📊 표·차트 엑셀", "📑 발표자료", "🔎 문서함 검색",
-    };
 
     [ObservableProperty] private string _input = string.Empty;
 
@@ -340,16 +336,6 @@ public sealed partial class MainViewModel : ObservableObject
         sb.AppendLine("─── 요청 ───");
         sb.Append(userText);
         return sb.ToString();
-    }
-
-    [RelayCommand]
-    private void Quick(string action)
-    {
-        Input = action.Length > 2 ? action[2..].Trim() + " 만들어줘" : action;
-        if (SendCommand.CanExecute(null))
-        {
-            SendCommand.Execute(null);
-        }
     }
 
     // '새 작업' — 현재 대화·첨부·입력을 비우고 새 세션을 시작한다.
