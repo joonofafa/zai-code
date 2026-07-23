@@ -3,7 +3,7 @@
         xmlns:vm="using:MoaiCode.Gui.ViewModels"
         x:Class="MoaiCode.Gui.Views.SettingsWindow"
         x:DataType="vm:SettingsViewModel"
-        Title="설정" Width="400" Height="360"
+        Title="{Binding WindowTitle}" Width="400" Height="440"
         WindowStartupLocation="CenterOwner" CanResize="False"
         FontFamily="avares://Avalonia.Fonts.Inter/Assets#Inter"
         Background="{DynamicResource BgWindowBrush}">
@@ -23,7 +23,7 @@
 
     <!-- 계정 -->
     <StackPanel Grid.Row="0" Spacing="3">
-      <TextBlock Text="계정" FontSize="11.5" FontWeight="SemiBold"
+      <TextBlock Text="{Binding AccountLabel}" FontSize="11.5" FontWeight="SemiBold"
                  Foreground="{DynamicResource TextMutedBrush}" />
       <TextBlock Text="{Binding AccountName}" FontSize="15.5" FontWeight="SemiBold"
                  Foreground="{DynamicResource TextPrimaryBrush}" />
@@ -35,20 +35,33 @@
 
     <!-- 모델 -->
     <StackPanel Grid.Row="2" Spacing="9" VerticalAlignment="Top">
-      <TextBlock Text="사용 모델" FontSize="12.5" FontWeight="SemiBold"
+      <TextBlock Text="{Binding ModelLabel}" FontSize="12.5" FontWeight="SemiBold"
                  Foreground="{DynamicResource TextSecondaryBrush}" />
       <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}"
                 HorizontalAlignment="Stretch" />
-      <TextBlock Text="사용량 한도(429) 오류가 나면 다른 모델로 바꿔보세요."
+      <TextBlock Text="{Binding ModelHint}"
                  FontSize="11.5" TextWrapping="Wrap"
+                 Foreground="{DynamicResource TextMutedBrush}" />
+      <TextBlock Text="{Binding LanguageLabel}" Margin="0,12,0,0"
+                 FontSize="12.5" FontWeight="SemiBold"
+                 Foreground="{DynamicResource TextSecondaryBrush}" />
+      <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding SelectedLanguage}"
+                HorizontalAlignment="Stretch">
+        <ComboBox.ItemTemplate>
+          <DataTemplate>
+            <TextBlock Text="{Binding DisplayName}" />
+          </DataTemplate>
+        </ComboBox.ItemTemplate>
+      </ComboBox>
+      <TextBlock Text="{Binding LanguageHint}" FontSize="11.5" TextWrapping="Wrap"
                  Foreground="{DynamicResource TextMutedBrush}" />
     </StackPanel>
 
     <!-- 하단 액션 -->
     <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,14,0,0">
-      <Button Grid.Column="0" Classes="ghost" Content="다시 로그인" Click="OnReLogin" />
-      <Button Grid.Column="2" Classes="ghost" Content="닫기" Click="OnCancel" Margin="0,0,8,0" />
-      <Button Grid.Column="3" Classes="accent" Content="저장" Command="{Binding SaveCommand}" />
+      <Button Grid.Column="0" Classes="ghost" Content="{Binding ReloginText}" Click="OnReLogin" />
+      <Button Grid.Column="2" Classes="ghost" Content="{Binding CloseText}" Click="OnCancel" Margin="0,0,8,0" />
+      <Button Grid.Column="3" Classes="accent" Content="{Binding SaveText}" Command="{Binding SaveCommand}" />
     </Grid>
   </Grid>
 </Window>

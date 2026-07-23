@@ -20,6 +20,20 @@ public sealed partial class LoginViewModel : ObservableObject
     /// <summary>진행 중인 로그인을 취소(창이 로그인 없이 닫힐 때).</summary>
     public void Cancel() => _cts.Cancel();
 
+    /// <summary>로그인 초기 단계로 리셋(로그아웃/재로그인 시 창 내 재사용).</summary>
+    public void ResetToLogin()
+    {
+        ModelPickStage = false;
+        MfaRequired = false;
+        _mfaToken = null;
+        _pending = null;
+        _pendingHost = null;
+        Password = string.Empty;
+        MfaCode = string.Empty;
+        Models.Clear();
+        Status = string.Empty;
+    }
+
     [ObservableProperty] private string _proxyUrl = string.Empty;
     [ObservableProperty] private string _proxyUser = string.Empty;
     [ObservableProperty] private string _proxyPassword = string.Empty;

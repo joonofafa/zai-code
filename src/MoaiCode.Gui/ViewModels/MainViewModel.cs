@@ -1,17 +1,23 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MoaiCode.Config;
 using MoaiCode.Core.Tools;
 using MoaiCode.Gui.Agent;
+using MoaiCode.Gui.Sessions;
+using MoaiCode.Localization;
 using MoaiCode.Tools.OpenXml;
+using MoaiCode.Tools.Office;
 
 namespace MoaiCode.Gui.ViewModels;
 
@@ -26,6 +32,42 @@ public sealed partial class MainViewModel : ObservableObject
         "v" + (typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.4.0");
 
     [ObservableProperty] private string _accountLabel = "로그인 필요";
+    [ObservableProperty] private string _accountEmail = string.Empty;
+
+    /// <summary>인증 여부. false 면 창 전체가 로그인 화면.</summary>
+    [ObservableProperty] private bool _isAuthed;
+
+    /// <summary>우측 패널이 설정 화면을 표시 중인지(false=채팅).</summary>
+    [ObservableProperty] private bool _showSettings;
+
+    /// <summary>로그인 화면(창 내 임베드)용 서브 VM.</summary>
+    public LoginViewModel Login { get; }
+
+    /// <summary>설정: 모델 선택.</summary>
+    public ObservableCollection<string> SettingsModels { get; } = new();
+    public IReadOnlyList<LanguageOption> SettingsLanguages => L10n.SupportedLanguages;
+    [ObservableProperty] private string? _settingsModel;
+    [ObservableProperty] private LanguageOption? _settingsLanguage;
+    [ObservableProperty] private bool _isDark = true;
+    [ObservableProperty] private bool _confirmLogout;
+
+    public string SettingsTitleText => L10n.Get("gui.settings.title");
+    public string SettingsAccountText => L10n.Get("gui.settings.account");
+    public string SettingsLogoutText => L10n.Get("gui.settings.logout");
+    public string SettingsLogoutConfirmText => L10n.Get("gui.settings.logoutConfirm");
+    public string SettingsCancelText => L10n.Get("gui.settings.cancel");
+    public string SettingsApplyText => L10n.Get("gui.settings.apply");
+    public string SettingsModelText => L10n.Get("gui.settings.model");
+    public string SettingsModelHintText => L10n.Get("gui.settings.modelHint");
+    public string SettingsLanguageText => L10n.Get("gui.settings.language");
+    public string SettingsLanguageHintText => L10n.Get("gui.settings.languageHint");
+    public string SettingsThemeText => L10n.Get("gui.settings.theme");
+    public string SettingsDarkModeText => L10n.Get("gui.settings.darkMode");
+    public string SettingsLightModeText => L10n.Get("gui.settings.lightMode");
+
+    /// <summary>좌패널 상단: 열린 Office 문서(COM 제어 대상).</summary>
+    public ObservableCollection<OfficeDoc> OfficeDocs { get; } = new();
+    [ObservableProperty] private OfficeDoc? _selectedOfficeDoc;
 
     /// <summary>채팅을 맨 아래로 스크롤하도록 View 에 요청(자동 스크롤).</summary>
     public event Action? ScrollToEndRequested;
@@ -33,7 +75,9 @@ public sealed partial class MainViewModel : ObservableObject
     private void RequestScroll() => ScrollToEndRequested?.Invoke();
 
     public ObservableCollection<ChatItem> Items { get; } = new();
-    public ObservableCollection<SessionItem> Sessions { get; } = new();
+
+    /// <summary>좌패널 하단: 대화 기록.</summary>
+    public ObservableCollection<SessionMeta> Sessions { get; } = new();
 
     /// <summary>모드 B: 이번 작업에 첨부된 참조 문서(로컬/조직).</summary>
     public ObservableCollection<ReferenceItem> References { get; } = new();
@@ -45,11 +89,218 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(SendCommand))]
     private bool _isBusy;
 
+    private string _sessionId = NewSessionId();
+    private readonly List<TurnLine> _transcript = new();
+
     public MainViewModel()
     {
+        Login = new LoginViewModel();
+        Login.LoggedIn += OnLoggedIn;
+        _isDark = !IsLight(GuiSettings.Load().Theme);
+
+        if (HasCredential())
+        {
+            IsAuthed = true;
+            BuildBackend();
+            RefreshAccount();
+            RefreshSessions();
+            RefreshOffice();
+            WelcomeMessage(_lastError);
+        }
+        else
+        {
+            IsAuthed = false; // 로그인 뷰 표시
+        }
+    }
+
+    private static bool HasCredential() =>
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENAI_API_KEY"))
+        || !string.IsNullOrWhiteSpace(new FileCredentialStore().Get("OPENAI_API_KEY"));
+
+    private static bool IsLight(string? theme) =>
+        string.Equals(theme, "light", StringComparison.OrdinalIgnoreCase);
+
+    private static string NewSessionId() => DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss-fff");
+
+    private void OnLoggedIn() => Dispatcher.UIThread.Post(() =>
+    {
+        IsAuthed = true;
+        ShowSettings = false;
+        Login.ResetToLogin();
         BuildBackend();
         RefreshAccount();
-        Seed(_lastError);
+        RefreshSessions();
+        RefreshOffice();
+        Items.Clear();
+        _transcript.Clear();
+        _sessionId = NewSessionId();
+        WelcomeMessage(_lastError);
+    });
+
+    // ── 설정 패널 ──
+    [RelayCommand]
+    private void OpenSettings()
+    {
+        var s = SettingsLoader.Load(System.IO.Directory.GetCurrentDirectory());
+        AccountEmail = s.Account ?? string.Empty;
+        SettingsModels.Clear();
+        foreach (var m in (s.AvailableModels ?? string.Empty)
+                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            SettingsModels.Add(m);
+        }
+
+        if (!string.IsNullOrEmpty(s.Model) && !SettingsModels.Contains(s.Model))
+        {
+            SettingsModels.Insert(0, s.Model);
+        }
+
+        SettingsModel = s.Model ?? SettingsModels.FirstOrDefault();
+        SettingsLanguage = SettingsLanguages.FirstOrDefault(x => x.Code == s.Language)
+                           ?? SettingsLanguages.First(x => x.Code == L10n.DefaultLanguage);
+        IsDark = !IsLight(GuiSettings.Load().Theme);
+        ConfirmLogout = false;
+        ShowSettings = true;
+    }
+
+    [RelayCommand]
+    private void ApplySettings()
+    {
+        var values = new Dictionary<string, string?>();
+        if (!string.IsNullOrEmpty(SettingsModel))
+        {
+            Environment.SetEnvironmentVariable("MOAI_MODEL", SettingsModel);
+            values["model"] = SettingsModel;
+        }
+
+        if (SettingsLanguage is not null)
+        {
+            L10n.SetLanguage(SettingsLanguage.Code);
+            Environment.SetEnvironmentVariable("MOAI_LANGUAGE", SettingsLanguage.Code);
+            values["language"] = SettingsLanguage.Code;
+            NotifyLocalizedSettingsProperties();
+        }
+
+        if (values.Count > 0)
+        {
+            SettingsWriter.Set(values);
+        }
+
+        var gs = GuiSettings.Load();
+        gs.Theme = IsDark ? "dark" : "light";
+        gs.Save();
+        if (Application.Current is not null)
+        {
+            Application.Current.RequestedThemeVariant = IsDark ? ThemeVariant.Dark : ThemeVariant.Light;
+        }
+
+        ReloadBackend();
+        ShowSettings = false;
+    }
+
+    private void NotifyLocalizedSettingsProperties()
+    {
+        OnPropertyChanged(nameof(SettingsTitleText));
+        OnPropertyChanged(nameof(SettingsAccountText));
+        OnPropertyChanged(nameof(SettingsLogoutText));
+        OnPropertyChanged(nameof(SettingsLogoutConfirmText));
+        OnPropertyChanged(nameof(SettingsCancelText));
+        OnPropertyChanged(nameof(SettingsApplyText));
+        OnPropertyChanged(nameof(SettingsModelText));
+        OnPropertyChanged(nameof(SettingsModelHintText));
+        OnPropertyChanged(nameof(SettingsLanguageText));
+        OnPropertyChanged(nameof(SettingsLanguageHintText));
+        OnPropertyChanged(nameof(SettingsThemeText));
+        OnPropertyChanged(nameof(SettingsDarkModeText));
+        OnPropertyChanged(nameof(SettingsLightModeText));
+    }
+
+    [RelayCommand]
+    private void CloseSettings() => ShowSettings = false;
+
+    [RelayCommand]
+    private void Logout() => ConfirmLogout = true;
+
+    [RelayCommand]
+    private void CancelLogout() => ConfirmLogout = false;
+
+    [RelayCommand]
+    private void LogoutConfirmed()
+    {
+        SaveCurrent();
+        new FileCredentialStore().Set("OPENAI_API_KEY", string.Empty);
+        Environment.SetEnvironmentVariable("OPENAI_API_KEY", string.Empty);
+        SettingsWriter.Set(new Dictionary<string, string?>
+        {
+            ["baseUrl"] = null, ["account"] = null, ["loginAt"] = null, ["name"] = null,
+        });
+
+        ConfirmLogout = false;
+        ShowSettings = false;
+        Items.Clear();
+        _transcript.Clear();
+        AccountLabel = "로그인 필요";
+        Login.ResetToLogin();
+        IsAuthed = false;
+    }
+
+    // ── 좌패널: Office 창 ──
+    [RelayCommand]
+    private void RefreshOffice()
+    {
+        OfficeDocs.Clear();
+        foreach (var d in OfficeWindowLister.ListOpenDocuments())
+        {
+            OfficeDocs.Add(d);
+        }
+    }
+
+    partial void OnSelectedOfficeDocChanged(OfficeDoc? value)
+    {
+        if (value is not null)
+        {
+            OfficeWindowLister.Activate(value);
+        }
+    }
+
+    // ── 좌패널: 대화 기록 ──
+    private void RefreshSessions()
+    {
+        Sessions.Clear();
+        foreach (var m in SessionStore.List())
+        {
+            Sessions.Add(m);
+        }
+    }
+
+    private void SaveCurrent()
+    {
+        if (_transcript.Count > 0)
+        {
+            SessionStore.Save(_sessionId, _transcript);
+            RefreshSessions();
+        }
+    }
+
+    [RelayCommand]
+    private void LoadSession(SessionMeta? meta)
+    {
+        if (IsBusy || meta is null)
+        {
+            return;
+        }
+
+        SaveCurrent();
+        _sessionId = meta.Id;
+        _transcript.Clear();
+        Items.Clear();
+        foreach (var l in SessionStore.Load(meta.Id))
+        {
+            _transcript.Add(l);
+            Items.Add(l.Role == "user" ? new UserItem { Text = l.Text } : new AssistantItem { Text = l.Text });
+        }
+
+        RequestScroll();
     }
 
     // 실제 코어 임베드. 자격증명 없으면 데모(stub) 로 폴백.
@@ -112,6 +363,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         Input = string.Empty;
         Items.Add(new UserItem { Text = References.Count > 0 ? $"{text}\n\n📎 참조 {References.Count}개" : text });
+        _transcript.Add(new TurnLine("user", text));
         IsBusy = true;
 
         // 프롬프트 직후 즉시 '작업 중…' 표시(네트워크/추론 대기 동안 피드백 — 프리징 오해 방지).
@@ -224,6 +476,12 @@ public sealed partial class MainViewModel : ObservableObject
         finally
         {
             RemoveThinking();
+            if (assistant is not null && !string.IsNullOrWhiteSpace(assistant.Text))
+            {
+                _transcript.Add(new TurnLine("assistant", assistant.Text));
+            }
+
+            SaveCurrent(); // 대화 기록 저장
             IsBusy = false;
         }
     }
@@ -347,19 +605,14 @@ public sealed partial class MainViewModel : ObservableObject
             return; // 진행 중이면 무시(응답 도중 초기화 방지).
         }
 
+        SaveCurrent();
+        _sessionId = NewSessionId();
+        _transcript.Clear();
         Items.Clear();
         References.Clear();
         OnPropertyChanged(nameof(HasReferences));
         Input = string.Empty;
         WelcomeMessage();
-    }
-
-    private void Seed(string? error)
-    {
-        Sessions.Add(new SessionItem { Title = "카페 매출 TOP10 엑셀", When = "오늘" });
-        Sessions.Add(new SessionItem { Title = "금융권 AI 거버넌스 보고서", When = "어제" });
-        Sessions.Add(new SessionItem { Title = "메달리온 발표자료", When = "7월 20일" });
-        WelcomeMessage(error);
     }
 
     private void WelcomeMessage(string? error = null)

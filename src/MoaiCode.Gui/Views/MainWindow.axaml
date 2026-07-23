@@ -1,186 +1,223 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:MoaiCode.Gui.ViewModels"
+        xmlns:views="using:MoaiCode.Gui.Views"
         xmlns:md="clr-namespace:Markdown.Avalonia;assembly=Markdown.Avalonia"
         x:Class="MoaiCode.Gui.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
         Title="MoAI Desktop"
         Width="1120" Height="760" MinWidth="900" MinHeight="580"
         Background="{DynamicResource BgWindowBrush}"
         FontFamily="avares://Avalonia.Fonts.Inter/Assets#Inter"
         WindowStartupLocation="CenterScreen">
 
-  <Grid ColumnDefinitions="270,*">
+  <Grid>
 
-    <!-- ═══ 사이드바 ═══ -->
-    <Border Grid.Column="0" Background="{DynamicResource BgSidebarBrush}"
-            BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="0,0,1,0">
-      <DockPanel Margin="18,20,18,16">
+    <!-- ═══ 로그인 (전체 창, 미인증) ═══ -->
+    <Panel IsVisible="{Binding !IsAuthed}">
+      <views:LoginView DataContext="{Binding Login}" />
+    </Panel>
 
-        <StackPanel DockPanel.Dock="Top" Spacing="16">
-          <!-- 로고 -->
-          <StackPanel Orientation="Horizontal" Spacing="11">
-            <Image Source="avares://MoaiCode.Gui/Assets/moai-logo.png" Width="34" Height="34" />
-            <StackPanel VerticalAlignment="Center">
-              <StackPanel Orientation="Horizontal" Spacing="6">
-                <TextBlock Text="MoAI Desktop" FontSize="15" FontWeight="SemiBold" />
-                <TextBlock Text="{Binding AppVersion}" FontSize="10.5" VerticalAlignment="Center"
-                           Foreground="{DynamicResource TextMutedBrush}" />
+    <!-- ═══ 앱 (인증) ═══ -->
+    <Grid ColumnDefinitions="270,*" IsVisible="{Binding IsAuthed}">
+
+      <!-- ── 사이드바 ── -->
+      <Border Grid.Column="0" Background="{DynamicResource BgSidebarBrush}"
+              BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="0,0,1,0">
+        <DockPanel Margin="18,20,18,16">
+
+          <!-- 상단: 로고 + 새 작업 -->
+          <StackPanel DockPanel.Dock="Top" Spacing="16">
+            <StackPanel Orientation="Horizontal" Spacing="11">
+              <Image Source="avares://MoaiCode.Gui/Assets/moai-logo.png" Width="34" Height="34" />
+              <StackPanel VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="MoAI Desktop" FontSize="15" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding AppVersion}" FontSize="10.5" VerticalAlignment="Center"
+                             Foreground="{DynamicResource TextMutedBrush}" />
+                </StackPanel>
+                <TextBlock Text="문서를 말로 만드세요" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" />
               </StackPanel>
-              <TextBlock Text="문서를 말로 만드세요" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" />
             </StackPanel>
+            <Button Classes="accent" HorizontalAlignment="Stretch" Content="+  새 작업"
+                    Command="{Binding NewTaskCommand}" />
           </StackPanel>
 
-          <Button Classes="accent" HorizontalAlignment="Stretch" Content="+  새 작업"
-                  Command="{Binding NewTaskCommand}" />
+          <!-- 하단: 계정(이름/소속) + 설정(톱니바퀴) -->
+          <StackPanel DockPanel.Dock="Bottom" Spacing="8" Margin="0,10,0,0">
+            <Border Height="1" Background="{DynamicResource BorderSoftBrush}" />
+            <Grid ColumnDefinitions="Auto,*,Auto">
+              <TextBlock Grid.Column="0" Text="👤" FontSize="13" VerticalAlignment="Center" Margin="0,0,7,0" />
+              <TextBlock Grid.Column="1" Text="{Binding AccountLabel}" FontSize="12.5" VerticalAlignment="Center"
+                         TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextSecondaryBrush}" />
+              <Button Grid.Column="2" Classes="ghost" Content="⚙" FontSize="16" Padding="7,3"
+                      Command="{Binding OpenSettingsCommand}" ToolTip.Tip="계정 · 모델 설정" />
+            </Grid>
+          </StackPanel>
 
-          <TextBlock Text="이전 작업" FontSize="11" FontWeight="SemiBold"
-                     Foreground="{DynamicResource TextMutedBrush}" Margin="4,4,0,0" />
-        </StackPanel>
+          <!-- 중앙: 상=열린 Office 문서, 하=대화 기록 -->
+          <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
 
-        <!-- 계정 (하단 고정): 이름(소속) + 설정(톱니바퀴) -->
-        <StackPanel DockPanel.Dock="Bottom" Spacing="8" Margin="0,10,0,0">
-          <Border Height="1" Background="{DynamicResource BorderSoftBrush}" />
-          <Grid ColumnDefinitions="Auto,*,Auto">
-            <TextBlock Grid.Column="0" Text="👤" FontSize="13" VerticalAlignment="Center" Margin="0,0,7,0" />
-            <TextBlock Grid.Column="1" Text="{Binding AccountLabel}" FontSize="12.5" VerticalAlignment="Center"
-                       TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextSecondaryBrush}" />
-            <Button Grid.Column="2" Classes="ghost" Content="⚙" FontSize="16" Padding="7,3"
-                    Click="OnSettingsClick" ToolTip.Tip="계정 · 모델 설정" />
+            <!-- Office 창 (상) -->
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="4,2,0,4">
+              <TextBlock Grid.Column="0" Text="열린 Office 문서" FontSize="11" FontWeight="SemiBold"
+                         VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" />
+              <Button Grid.Column="1" Classes="ghost" Content="↻" FontSize="13" Padding="6,1"
+                      Command="{Binding RefreshOfficeCommand}" ToolTip.Tip="목록 새로고침" />
+            </Grid>
+            <ListBox Grid.Row="1" MaxHeight="150" Background="Transparent" BorderThickness="0"
+                     ItemsSource="{Binding OfficeDocs}" SelectedItem="{Binding SelectedOfficeDoc}">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding Display}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+
+            <!-- 구분선 + 대화 기록 헤더 -->
+            <Border Grid.Row="2" Height="1" Background="{DynamicResource BorderSoftBrush}" Margin="0,10" />
+            <TextBlock Grid.Row="3" Text="대화 기록" FontSize="11" FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextMutedBrush}" Margin="4,0,0,6" />
+
+            <!-- 대화 기록 (하) -->
+            <ScrollViewer Grid.Row="4">
+              <ItemsControl ItemsSource="{Binding Sessions}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Button Classes="sideitem" Margin="0,1"
+                            Command="{Binding $parent[ItemsControl].DataContext.LoadSessionCommand}"
+                            CommandParameter="{Binding}">
+                      <StackPanel>
+                        <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding When}" FontSize="11"
+                                   Foreground="{DynamicResource TextMutedBrush}" Margin="0,2,0,0" />
+                      </StackPanel>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
           </Grid>
-        </StackPanel>
+        </DockPanel>
+      </Border>
 
-        <ScrollViewer>
-          <ItemsControl ItemsSource="{Binding Sessions}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate DataType="vm:SessionItem">
-                <Button Classes="sideitem" Margin="0,1">
-                  <StackPanel>
-                    <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="{Binding When}" FontSize="11"
-                               Foreground="{DynamicResource TextMutedBrush}" Margin="0,2,0,0" />
-                  </StackPanel>
-                </Button>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </ScrollViewer>
-      </DockPanel>
-    </Border>
+      <!-- ── 우측 콘텐츠: 채팅 | 설정 ── -->
+      <Panel Grid.Column="1">
 
-    <!-- ═══ 메인 ═══ -->
-    <DockPanel Grid.Column="1">
+        <!-- 설정 패널 -->
+        <views:SettingsView IsVisible="{Binding ShowSettings}" />
 
-      <!-- 하단 작성 영역 -->
-      <StackPanel DockPanel.Dock="Bottom" Margin="24,8,24,20" Spacing="12">
+        <!-- 채팅 -->
+        <DockPanel IsVisible="{Binding !ShowSettings}">
 
-        <!-- 참조 문서 칩(모드 B) -->
-        <ItemsControl ItemsSource="{Binding References}" IsVisible="{Binding HasReferences}">
-          <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
-          </ItemsControl.ItemsPanel>
-          <ItemsControl.ItemTemplate>
-            <DataTemplate>
-              <Border Background="{DynamicResource ActivityBgBrush}" CornerRadius="9"
-                      Padding="10,5" Margin="0,0,7,7">
-                <StackPanel Orientation="Horizontal" Spacing="7">
-                  <TextBlock Text="{Binding Icon}" FontSize="12" VerticalAlignment="Center" />
-                  <TextBlock Text="{Binding DisplayName}" FontSize="12.5" VerticalAlignment="Center" />
-                  <Button Content="✕" Classes="ghost" Padding="4,0" MinWidth="0" FontSize="11"
-                          Command="{Binding $parent[ItemsControl].DataContext.RemoveReferenceCommand}"
-                          CommandParameter="{Binding}" />
-                </StackPanel>
-              </Border>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
+          <!-- 하단 작성 영역 -->
+          <StackPanel DockPanel.Dock="Bottom" Margin="24,8,24,20" Spacing="12">
 
-        <Border Background="{DynamicResource BgInputBrush}" CornerRadius="24"
-                BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1" Padding="8,6">
-          <Grid ColumnDefinitions="Auto,Auto,*,Auto">
-            <Button Grid.Column="0" Classes="ghost" Content="📎" FontSize="16"
-                    VerticalAlignment="Center" Click="OnAttachClick" ToolTip.Tip="로컬 참조 문서 첨부" />
-            <Button Grid.Column="1" Classes="ghost" Content="🗂" FontSize="16"
-                    VerticalAlignment="Center" Click="OnOrgClick" ToolTip.Tip="조직 문서함에서 검색·첨부" />
-            <TextBox Grid.Column="2" Classes="composer" Margin="8,0,8,0"
-                     Watermark="무엇을 만들어 드릴까요?" Text="{Binding Input}">
-              <TextBox.KeyBindings>
-                <KeyBinding Gesture="Enter" Command="{Binding SendCommand}" />
-              </TextBox.KeyBindings>
-            </TextBox>
-            <Button Grid.Column="3" Classes="send" Content="↑" Command="{Binding SendCommand}" />
-          </Grid>
-        </Border>
-      </StackPanel>
-
-      <!-- 채팅 -->
-      <ScrollViewer x:Name="ChatScroll" Padding="28,22,28,4" VerticalScrollBarVisibility="Auto">
-        <ItemsControl ItemsSource="{Binding Items}" MaxWidth="760" HorizontalAlignment="Center">
-          <ItemsControl.Styles>
-            <Style Selector="ContentPresenter"><Setter Property="Margin" Value="0,0,0,16" /></Style>
-          </ItemsControl.Styles>
-          <ItemsControl.DataTemplates>
-
-            <!-- 사용자 말풍선 -->
-            <DataTemplate DataType="vm:UserItem">
-              <Border Background="{DynamicResource UserBubbleBrush}" CornerRadius="16,16,4,16"
-                      Padding="15,11" HorizontalAlignment="Right" MaxWidth="560">
-                <TextBlock Text="{Binding Text}" Foreground="White" FontSize="14" LineHeight="20" />
-              </Border>
-            </DataTemplate>
-
-            <!-- MoAI 말풍선 (마크다운 렌더링) -->
-            <DataTemplate DataType="vm:AssistantItem">
-              <StackPanel HorizontalAlignment="Left" MaxWidth="660" Spacing="5">
-                <TextBlock Text="MoAI" FontSize="11" FontWeight="SemiBold" Margin="4,0,0,0"
-                           Foreground="{DynamicResource AccentHoverBrush}" />
-                <Border Background="{DynamicResource ActivityBgBrush}" CornerRadius="4,16,16,16"
-                        Padding="16,11" HorizontalAlignment="Left">
-                  <md:MarkdownScrollViewer Markdown="{Binding Text}" />
-                </Border>
-              </StackPanel>
-            </DataTemplate>
-
-            <!-- 진행 배지 -->
-            <DataTemplate DataType="vm:ActivityItem">
-              <Border Background="{DynamicResource ActivityBgBrush}" CornerRadius="9" Padding="11,7" HorizontalAlignment="Left">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                  <Ellipse Width="8" Height="8" VerticalAlignment="Center"
-                           Fill="{Binding Done, Converter={x:Static vm:Converters.DoneToBrush}}" />
-                  <TextBlock Text="{Binding Text}" FontSize="12.5"
-                             Foreground="{DynamicResource TextSecondaryBrush}" />
-                </StackPanel>
-              </Border>
-            </DataTemplate>
-
-            <!-- 문서 카드 -->
-            <DataTemplate DataType="vm:DocumentItem">
-              <Border Background="{DynamicResource BgCardBrush}" CornerRadius="14"
-                      BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1"
-                      Padding="16" HorizontalAlignment="Left" MaxWidth="520">
-                <StackPanel Spacing="14">
-                  <StackPanel Orientation="Horizontal" Spacing="13">
-                    <Border Width="46" Height="46" CornerRadius="12" Background="{DynamicResource AccentSoftBrush}">
-                      <TextBlock Text="{Binding Icon}" FontSize="22"
-                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
-                    <StackPanel VerticalAlignment="Center" Spacing="2">
-                      <TextBlock Text="{Binding FileName}" FontSize="14.5" FontWeight="SemiBold" />
-                      <TextBlock Text="{Binding Path}" FontSize="11.5"
-                                 Foreground="{DynamicResource TextMutedBrush}" />
+            <!-- 참조 문서 칩(모드 B) -->
+            <ItemsControl ItemsSource="{Binding References}" IsVisible="{Binding HasReferences}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Background="{DynamicResource ActivityBgBrush}" CornerRadius="9"
+                          Padding="10,5" Margin="0,0,7,7">
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                      <TextBlock Text="{Binding Icon}" FontSize="12" VerticalAlignment="Center" />
+                      <TextBlock Text="{Binding DisplayName}" FontSize="12.5" VerticalAlignment="Center" />
+                      <Button Content="✕" Classes="ghost" Padding="4,0" MinWidth="0" FontSize="11"
+                              Command="{Binding $parent[ItemsControl].DataContext.RemoveReferenceCommand}"
+                              CommandParameter="{Binding}" />
                     </StackPanel>
-                  </StackPanel>
-                  <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button Classes="ghost" Content="열기" />
-                    <Button Classes="ghost" Content="폴더" />
-                    <Button Classes="ghost" Content="문서함 올리기" />
-                  </StackPanel>
-                </StackPanel>
-              </Border>
-            </DataTemplate>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
 
-          </ItemsControl.DataTemplates>
-        </ItemsControl>
-      </ScrollViewer>
-    </DockPanel>
+            <Border Background="{DynamicResource BgInputBrush}" CornerRadius="24"
+                    BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1" Padding="8,6">
+              <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                <Button Grid.Column="0" Classes="ghost" Content="📎" FontSize="16"
+                        VerticalAlignment="Center" Click="OnAttachClick" ToolTip.Tip="로컬 참조 문서 첨부" />
+                <Button Grid.Column="1" Classes="ghost" Content="🗂" FontSize="16"
+                        VerticalAlignment="Center" Click="OnOrgClick" ToolTip.Tip="조직 문서함에서 검색·첨부" />
+                <TextBox Grid.Column="2" Classes="composer" Margin="8,0,8,0"
+                         Watermark="무엇을 만들어 드릴까요?" Text="{Binding Input}">
+                  <TextBox.KeyBindings>
+                    <KeyBinding Gesture="Enter" Command="{Binding SendCommand}" />
+                  </TextBox.KeyBindings>
+                </TextBox>
+                <Button Grid.Column="3" Classes="send" Content="↑" Command="{Binding SendCommand}" />
+              </Grid>
+            </Border>
+          </StackPanel>
+
+          <!-- 채팅 스크롤 -->
+          <ScrollViewer x:Name="ChatScroll" Padding="28,22,28,4" VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{Binding Items}" MaxWidth="760" HorizontalAlignment="Center">
+              <ItemsControl.Styles>
+                <Style Selector="ContentPresenter"><Setter Property="Margin" Value="0,0,0,16" /></Style>
+              </ItemsControl.Styles>
+              <ItemsControl.DataTemplates>
+
+                <!-- 사용자 말풍선 -->
+                <DataTemplate DataType="vm:UserItem">
+                  <Border Background="{DynamicResource UserBubbleBrush}" CornerRadius="16,16,4,16"
+                          Padding="15,11" HorizontalAlignment="Right" MaxWidth="560">
+                    <TextBlock Text="{Binding Text}" Foreground="White" FontSize="14" LineHeight="20" />
+                  </Border>
+                </DataTemplate>
+
+                <!-- MoAI 말풍선 (마크다운) -->
+                <DataTemplate DataType="vm:AssistantItem">
+                  <StackPanel HorizontalAlignment="Left" MaxWidth="660" Spacing="5">
+                    <TextBlock Text="MoAI" FontSize="11" FontWeight="SemiBold" Margin="4,0,0,0"
+                               Foreground="{DynamicResource AccentHoverBrush}" />
+                    <Border Background="{DynamicResource ActivityBgBrush}" CornerRadius="4,16,16,16"
+                            Padding="16,11" HorizontalAlignment="Left">
+                      <md:MarkdownScrollViewer Markdown="{Binding Text}" />
+                    </Border>
+                  </StackPanel>
+                </DataTemplate>
+
+                <!-- 진행 배지 -->
+                <DataTemplate DataType="vm:ActivityItem">
+                  <Border Background="{DynamicResource ActivityBgBrush}" CornerRadius="9" Padding="11,7" HorizontalAlignment="Left">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                               Fill="{Binding Done, Converter={x:Static vm:Converters.DoneToBrush}}" />
+                      <TextBlock Text="{Binding Text}" FontSize="12.5"
+                                 Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+
+                <!-- 문서 카드 -->
+                <DataTemplate DataType="vm:DocumentItem">
+                  <Border Background="{DynamicResource BgCardBrush}" CornerRadius="14"
+                          BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1"
+                          Padding="16" HorizontalAlignment="Left" MaxWidth="520">
+                    <StackPanel Spacing="14">
+                      <StackPanel Orientation="Horizontal" Spacing="13">
+                        <Border Width="46" Height="46" CornerRadius="12" Background="{DynamicResource AccentSoftBrush}">
+                          <TextBlock Text="{Binding Icon}" FontSize="22"
+                                     HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center" Spacing="2">
+                          <TextBlock Text="{Binding FileName}" FontSize="14.5" FontWeight="SemiBold" />
+                          <TextBlock Text="{Binding Path}" FontSize="11.5"
+                                     Foreground="{DynamicResource TextMutedBrush}" />
+                        </StackPanel>
+                      </StackPanel>
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+
+              </ItemsControl.DataTemplates>
+            </ItemsControl>
+          </ScrollViewer>
+        </DockPanel>
+      </Panel>
+    </Grid>
   </Grid>
 </Window>

@@ -8,6 +8,7 @@ using Avalonia.Styling;
 using MoaiCode.Gui.Sync;
 using MoaiCode.Gui.ViewModels;
 using MoaiCode.Gui.Views;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Gui;
 
@@ -24,94 +25,22 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            var startupSettings = MoaiCode.Config.SettingsLoader.Load(System.IO.Directory.GetCurrentDirectory());
+            L10n.SetLanguage(startupSettings.Language);
+
             // 트레이 상주 — 창을 닫아도 프로세스가 종료되지 않는다(백그라운드 폴더 동기화 유지).
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
             // 저장된 사내 프록시 적용 (어떤 HttpClient 사용보다 먼저).
             MoaiCode.Config.ProxyConfig.Apply(System.IO.Directory.GetCurrentDirectory());
 
-            if (HasCredential())
-            {
-                ContinueAfterAuth(desktop);
-            }
-            else
-            {
-                ShowLogin(desktop);
-            }
+            // 테마(기본 다크) 적용. 로그인·설정은 모두 메인 창 내부에서 전환(별도 창 없음).
+            var envTheme = Environment.GetEnvironmentVariable("MOAI_GUI_THEME");
+            ApplyTheme(string.IsNullOrWhiteSpace(envTheme) ? GuiSettings.Load().Theme : envTheme);
+            LaunchMain(desktop);
         }
 
         base.OnFrameworkInitializationCompleted();
-    }
-
-    private static bool HasCredential()
-    {
-        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENAI_API_KEY")))
-        {
-            return true;
-        }
-
-        return !string.IsNullOrWhiteSpace(new MoaiCode.Config.FileCredentialStore().Get("OPENAI_API_KEY"));
-    }
-
-    // 로그인/프록시 화면 (미인증 시). 성공하면 테마/메인으로 진행.
-    private void ShowLogin(IClassicDesktopStyleApplicationLifetime desktop)
-    {
-        var vm = new LoginViewModel();
-        var login = new LoginWindow { DataContext = vm, Icon = LoadIcon() };
-        var authed = false;
-        vm.LoggedIn += () => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-        {
-            authed = true;
-            ContinueAfterAuth(desktop);
-            login.Close();
-        });
-        login.Closing += (_, _) =>
-        {
-            if (!authed)
-            {
-                vm.Cancel();        // 진행 중이던 로그인 요청 취소(종료 후 저장/이벤트 방지).
-                desktop.Shutdown(); // 로그인 없이 창을 닫으면 앱 종료(트레이 상주 전이므로).
-            }
-        };
-        desktop.MainWindow = login;
-        login.Show();
-    }
-
-    // 인증 후: 테마 선택(최초) → 메인.
-    private void ContinueAfterAuth(IClassicDesktopStyleApplicationLifetime desktop)
-    {
-        var theme = Environment.GetEnvironmentVariable("MOAI_GUI_THEME");
-        if (string.IsNullOrWhiteSpace(theme))
-        {
-            theme = GuiSettings.Load().Theme;
-        }
-
-        if (string.IsNullOrWhiteSpace(theme))
-        {
-            ShowThemeChooser(desktop);
-        }
-        else
-        {
-            ApplyTheme(theme);
-            LaunchMain(desktop);
-        }
-    }
-
-    private void ShowThemeChooser(IClassicDesktopStyleApplicationLifetime desktop)
-    {
-        var chooser = new ThemeChooserWindow();
-        chooser.ThemeChosen += chosen =>
-        {
-            var settings = GuiSettings.Load();
-            settings.Theme = chosen;
-            settings.Save();
-
-            ApplyTheme(chosen);
-            LaunchMain(desktop);
-            chooser.Close();
-        };
-        desktop.MainWindow = chooser;
-        chooser.Show(); // 로그인 이후(init 완료 후) 도달 시에도 반드시 표시(자동 표시 안 됨).
     }
 
     private void LaunchMain(IClassicDesktopStyleApplicationLifetime desktop)
