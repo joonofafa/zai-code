@@ -18,10 +18,7 @@
         <StackPanel DockPanel.Dock="Top" Spacing="16">
           <!-- 로고 -->
           <StackPanel Orientation="Horizontal" Spacing="11">
-            <Border Width="34" Height="34" CornerRadius="10" Background="{DynamicResource UserBubbleBrush}">
-              <TextBlock Text="M" FontSize="18" FontWeight="Bold" Foreground="White"
-                         HorizontalAlignment="Center" VerticalAlignment="Center" />
-            </Border>
+            <Image Source="avares://MoaiCode.Gui/Assets/moai.png" Width="34" Height="34" />
             <StackPanel VerticalAlignment="Center">
               <StackPanel Orientation="Horizontal" Spacing="6">
                 <TextBlock Text="MoAI Desktop" FontSize="15" FontWeight="SemiBold" />

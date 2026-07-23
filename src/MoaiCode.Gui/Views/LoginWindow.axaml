@@ -12,10 +12,7 @@
 
       <!-- 로고 / 제목 -->
       <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
-        <Border Width="42" Height="42" CornerRadius="12" Background="{DynamicResource UserBubbleBrush}">
-          <TextBlock Text="M" FontWeight="Bold" FontSize="21" Foreground="White"
-                     HorizontalAlignment="Center" VerticalAlignment="Center" />
-        </Border>
+        <Image Source="avares://MoaiCode.Gui/Assets/moai.png" Width="44" Height="44" />
         <StackPanel VerticalAlignment="Center">
           <TextBlock Text="MoAI Desktop" FontWeight="SemiBold" FontSize="18"
                      Foreground="{DynamicResource TextPrimaryBrush}" />

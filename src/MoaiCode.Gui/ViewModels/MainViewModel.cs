@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -101,44 +102,97 @@ public sealed partial class MainViewModel : ObservableObject
         Items.Add(new UserItem { Text = References.Count > 0 ? $"{text}\n\n📎 참조 {References.Count}개" : text });
         IsBusy = true;
 
+        // 프롬프트 직후 즉시 '작업 중…' 표시(네트워크/추론 대기 동안 피드백 — 프리징 오해 방지).
+        var thinking = new ActivityItem { Text = "작업 중…", Done = false };
+        Items.Add(thinking);
+        var thinkingRemoved = false;
+        void RemoveThinking()
+        {
+            if (!thinkingRemoved)
+            {
+                thinkingRemoved = true;
+                Items.Remove(thinking);
+            }
+        }
+
         var prompt = ComposePrompt(text);
         AssistantItem? assistant = null;
         ActivityItem? activity = null;
 
         try
         {
-            // 엔진(네트워크 + 도구 실행)은 백그라운드 스레드에서 — 차트/문서 생성 같은 무거운
-            // 동기 작업이 UI 스레드를 막지 않도록. UI 변경만 Dispatcher 로 마샬링.
+            // 엔진(네트워크 + 도구 실행)은 백그라운드 스레드에서 — 무거운 동기 작업이 UI 를 막지 않도록.
+            // 스트리밍 토큰은 모아서 ≈60ms 마다만 UI 에 반영(토큰마다 갱신 시 렌더 폭주로 프리징).
             await Task.Run(async () =>
             {
-                await foreach (var ev in _backend.SendAsync(prompt, CancellationToken.None).ConfigureAwait(false))
+                var sb = new StringBuilder();
+                var sw = Stopwatch.StartNew();
+
+                async Task FlushText()
                 {
-                    var current = ev;
+                    if (sb.Length == 0)
+                    {
+                        return;
+                    }
+
+                    var chunk = sb.ToString();
+                    sb.Clear();
                     await Dispatcher.UIThread.InvokeAsync(() =>
                     {
-                        switch (current)
-                        {
-                            case ActivityStarted s:
+                        assistant ??= AddAssistant();
+                        assistant.Text += chunk;
+                    });
+                }
+
+                await foreach (var ev in _backend.SendAsync(prompt, CancellationToken.None).ConfigureAwait(false))
+                {
+                    switch (ev)
+                    {
+                        case AssistantDelta a:
+                            sb.Append(a.Text);
+                            if (sw.ElapsedMilliseconds >= 60)
+                            {
+                                await Dispatcher.UIThread.InvokeAsync(RemoveThinking);
+                                await FlushText();
+                                sw.Restart();
+                            }
+
+                            break;
+
+                        case ActivityStarted s:
+                            await FlushText();
+                            await Dispatcher.UIThread.InvokeAsync(() =>
+                            {
+                                RemoveThinking();
                                 assistant = null; // 이후 답변은 새 말풍선으로(순서 유지)
                                 activity = new ActivityItem { Text = s.Text };
                                 Items.Add(activity);
-                                break;
-                            case ActivityDone d:
+                            });
+                            break;
+
+                        case ActivityDone d:
+                            await Dispatcher.UIThread.InvokeAsync(() =>
+                            {
                                 if (activity is not null) { activity.Text = d.Text; activity.Done = true; }
-                                break;
-                            case DocumentProduced doc:
+                            });
+                            break;
+
+                        case DocumentProduced doc:
+                            await FlushText();
+                            await Dispatcher.UIThread.InvokeAsync(() =>
+                            {
+                                RemoveThinking();
                                 assistant = null;
                                 Items.Add(new DocumentItem { Icon = doc.Icon, Kind = doc.Kind, FileName = doc.FileName, Path = doc.Path });
-                                break;
-                            case AssistantDelta a:
-                                assistant ??= AddAssistant();
-                                assistant.Text += a.Text;
-                                break;
-                            case TurnDone:
-                                break;
-                        }
-                    });
+                            });
+                            break;
+
+                        case TurnDone:
+                            break;
+                    }
                 }
+
+                await FlushText();
             });
         }
         catch (Exception ex)
@@ -147,6 +201,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
         finally
         {
+            RemoveThinking();
             IsBusy = false;
         }
     }
