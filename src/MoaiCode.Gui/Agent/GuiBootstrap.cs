@@ -86,6 +86,9 @@ public static class GuiBootstrap
         list.Add(new ChunkBuildTool());
         list.Add(new ChunkFetchTool());
         list.Add(new ChunkSearchTool());
+
+        // COM Office 편집 툴('열려있는 문서 편집') — Desktop 전용. Windows·Office 없으면 빈 목록.
+        list.AddRange(MoaiCode.Tools.Office.OfficeTools.CreateIfAvailable());
         return list;
     }
 

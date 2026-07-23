@@ -8,10 +8,7 @@
     <!-- 크로스 게시 대상 (Linux에서 win-x64 self-contained exe 생성 가능) -->
     <RuntimeIdentifiers>win-x64;win-x86;win-arm64;linux-x64;linux-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
   </PropertyGroup>
-  <!-- Office COM 툴은 Windows 타깃일 때만 참조 (linux/osx 게시가 깨지지 않도록). -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
-    <ProjectReference Include="..\MoaiCode.Tools.Office\MoaiCode.Tools.Office.csproj" />
-  </ItemGroup>
+  <!-- COM Office 편집 툴은 MoAI Desktop(GUI) 전용 — CLI 는 참조하지 않음. -->
   <ItemGroup>
     <PackageReference Include="System.CommandLine" />
   </ItemGroup>

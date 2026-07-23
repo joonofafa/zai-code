@@ -69,6 +69,8 @@ public static class SettingsLoader
                 Account = GetString(root, "account", "email") ?? baseline.Account,
                 LoginAt = GetString(root, "loginAt", "login_at") ?? baseline.LoginAt,
                 OrgName = GetString(root, "orgName", "org_name") ?? baseline.OrgName,
+                Name = GetString(root, "name", "userName") ?? baseline.Name,
+                AvailableModels = GetString(root, "availableModels") ?? baseline.AvailableModels,
                 ProxyUrl = GetString(root, "proxyUrl", "proxy_url", "proxy") ?? baseline.ProxyUrl,
                 ProxyUser = GetString(root, "proxyUser", "proxy_user") ?? baseline.ProxyUser,
                 ProxyBypass = GetString(root, "proxyBypass", "proxy_bypass", "noProxy") ?? baseline.ProxyBypass,

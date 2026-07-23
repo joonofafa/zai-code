@@ -28,6 +28,12 @@ public sealed record Settings
     /// <summary>로그인 사용자의 소속 조직명. 로그인 시 서버에서 수신. /usage 표시용.</summary>
     public string? OrgName { get; init; }
 
+    /// <summary>로그인 사용자 이름. 로그인 시 서버에서 수신(계정 표시용).</summary>
+    public string? Name { get; init; }
+
+    /// <summary>선택 가능한 모델 목록(쉼표구분). 로그인 시 저장 — 설정에서 모델 변경용.</summary>
+    public string? AvailableModels { get; init; }
+
     /// <summary>HTTP(S) 프록시 서버 (예: http://proxy.corp:8080). 사내망용. 비번은 credentials(PROXY_PASSWORD).</summary>
     public string? ProxyUrl { get; init; }
 

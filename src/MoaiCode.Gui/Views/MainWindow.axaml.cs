@@ -72,24 +72,17 @@ public partial class MainWindow : Window
         }
     }
 
-    // 로그인 / 계정 설정 — 로그인창을 띄우고 성공 시 엔진을 새 자격증명으로 재구성.
-    private async void OnLoginClick(object? sender, RoutedEventArgs e)
+    // 설정(톱니바퀴) — 계정·모델 설정 창. 모델 변경/재로그인 시 엔진 재구성.
+    private async void OnSettingsClick(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel vm)
         {
             return;
         }
 
-        var loginVm = new LoginViewModel();
-        var win = new LoginWindow { DataContext = loginVm };
-        var ok = false;
-        loginVm.LoggedIn += () =>
-        {
-            ok = true;
-            win.Close();
-        };
+        var win = new SettingsWindow();
         await win.ShowDialog(this);
-        if (ok)
+        if (win.Changed)
         {
             vm.ReloadBackend();
         }

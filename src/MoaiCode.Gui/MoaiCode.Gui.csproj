@@ -2,7 +2,9 @@
 
   <PropertyGroup>
     <!-- MoAI Desktop 은 CLI(moai, 1.8.x)와 독립 버전 — 아직 초기 단계. -->
-    <Version>0.4.2</Version>
+    <Version>0.4.3</Version>
+    <!-- Windows 전용 데스크톱 — COM Office 편집 툴 참조를 위해 net10.0-windows 로 타깃(Directory.Build.props 오버라이드). -->
+    <TargetFramework>net10.0-windows</TargetFramework>
     <OutputType>WinExe</OutputType>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
@@ -23,6 +25,8 @@
     <ProjectReference Include="..\MoaiCode.Providers\MoaiCode.Providers.csproj" />
     <ProjectReference Include="..\MoaiCode.Tools\MoaiCode.Tools.csproj" />
     <ProjectReference Include="..\MoaiCode.Tools.OpenXml\MoaiCode.Tools.OpenXml.csproj" />
+    <!-- COM Office 편집 툴('열려있는 문서 편집') — Desktop 전용. net10.0-windows 필요. -->
+    <ProjectReference Include="..\MoaiCode.Tools.Office\MoaiCode.Tools.Office.csproj" />
   </ItemGroup>
 
   <ItemGroup>

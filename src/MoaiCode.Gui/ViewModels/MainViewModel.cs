@@ -88,8 +88,19 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void RefreshAccount()
     {
-        var acc = SettingsLoader.Load(System.IO.Directory.GetCurrentDirectory()).Account;
-        AccountLabel = string.IsNullOrWhiteSpace(acc) ? "로그인 필요" : "👤 " + acc;
+        var s = SettingsLoader.Load(System.IO.Directory.GetCurrentDirectory());
+        if (!string.IsNullOrWhiteSpace(s.Name))
+        {
+            AccountLabel = string.IsNullOrWhiteSpace(s.OrgName) ? s.Name! : $"{s.Name} ({s.OrgName})";
+        }
+        else if (!string.IsNullOrWhiteSpace(s.Account))
+        {
+            AccountLabel = s.Account!;
+        }
+        else
+        {
+            AccountLabel = "로그인 필요";
+        }
     }
 
     private bool CanSend() => !IsBusy;
@@ -206,12 +217,38 @@ public sealed partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            Items.Add(new AssistantItem { Text = "⚠️ 처리 중 오류가 발생했어요: " + ex.Message });
+            var logPath = LogError(text, ex);
+            Items.Add(new AssistantItem
+            {
+                Text = "⚠️ 처리 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.\n" +
+                       "계속되면 좌측 하단 설정에서 모델을 바꾸거나 관리자에게 문의하세요.\n" +
+                       $"자세한 내용은 오류 로그에 기록됐어요: {logPath}",
+            });
         }
         finally
         {
             RemoveThinking();
             IsBusy = false;
+        }
+    }
+
+    // 오류 원문은 사용자에게 노출하지 않고 파일로 남긴다(관리자 전달용).
+    private static string LogError(string request, Exception ex)
+    {
+        try
+        {
+            var dir = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".moai");
+            System.IO.Directory.CreateDirectory(dir);
+            var path = System.IO.Path.Combine(dir, "desktop-errors.log");
+            var req = request.Length > 200 ? request[..200] + "…" : request;
+            System.IO.File.AppendAllText(path,
+                $"\n===== {DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss} =====\n요청: {req}\n{ex}\n");
+            return path;
+        }
+        catch
+        {
+            return "(로그 기록 실패)";
         }
     }
 

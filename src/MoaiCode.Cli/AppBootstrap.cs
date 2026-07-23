@@ -64,10 +64,8 @@ public static class AppBootstrap
         toolList.Add(new MoaiCode.Tools.OpenXml.ChunkFetchTool());
         toolList.Add(new MoaiCode.Tools.OpenXml.ChunkSearchTool());
 
-#if WINDOWS
-        // Windows 빌드(net10.0-windows)에서만 Office COM 툴 등록. Office 미설치/GPO 차단 시 빈 목록.
-        toolList.AddRange(MoaiCode.Tools.Office.OfficeTools.CreateIfAvailable());
-#endif
+        // COM Office 편집 툴('열려있는 문서 편집')은 CLI 에서 제외 — MoAI Desktop(GUI) 전용.
+        // (닫힌 문서 생성/검증 Open XML 툴은 위에서 이미 등록되어 CLI 에도 유지.)
 
         // 3) MCP 서버
         var mcpConfigs = McpConfigLoader.Discover(cwd);

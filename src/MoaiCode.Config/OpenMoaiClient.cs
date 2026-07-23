@@ -12,7 +12,8 @@ public sealed record LoginResult(
     IReadOnlyList<string> Models,
     string? MfaToken,
     string? Error,
-    string? OrgName);
+    string? OrgName,
+    string? Name = null);
 
 /// <summary>open-moai 사이트의 CLI 로그인 엔드포인트 클라이언트. (CLI·GUI 공유)</summary>
 public sealed class OpenMoaiClient
@@ -85,7 +86,8 @@ public sealed class OpenMoaiClient
                 models,
                 Str("mfaToken"),
                 Str("error") ?? Str("message"),
-                Str("orgName"));
+                Str("orgName"),
+                Str("name"));
         }
         catch
         {

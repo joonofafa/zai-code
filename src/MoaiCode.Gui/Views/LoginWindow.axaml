@@ -3,8 +3,8 @@
         xmlns:vm="using:MoaiCode.Gui.ViewModels"
         x:Class="MoaiCode.Gui.Views.LoginWindow"
         x:DataType="vm:LoginViewModel"
-        Title="MoAI Desktop 로그인" Width="420" Height="640"
-        WindowStartupLocation="CenterScreen" CanResize="False"
+        Title="MoAI Desktop 로그인" Width="420" Height="700"
+        WindowStartupLocation="CenterScreen" CanResize="False" SizeToContent="Manual"
         FontFamily="avares://Avalonia.Fonts.Inter/Assets#Inter"
         Background="{DynamicResource BgWindowBrush}">
 
@@ -23,13 +23,21 @@
     <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
       <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
     </Style>
+    <Style Selector="ComboBox">
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Height" Value="46" />
+      <Setter Property="Padding" Value="14,0" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Background" Value="{DynamicResource BgInputBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderSoftBrush}" />
+    </Style>
   </Window.Styles>
 
   <ScrollViewer>
-    <StackPanel Margin="0,36,0,28" Spacing="14" MaxWidth="332" HorizontalAlignment="Center">
+    <StackPanel Margin="0,34,0,26" Spacing="14" MaxWidth="332" HorizontalAlignment="Center">
 
       <!-- 로고 / 제목 -->
-      <StackPanel Spacing="10" HorizontalAlignment="Center" Margin="0,0,0,6">
+      <StackPanel Spacing="10" HorizontalAlignment="Center" Margin="0,0,0,4">
         <Image Source="avares://MoaiCode.Gui/Assets/moai-logo.png" Width="52" Height="52"
                HorizontalAlignment="Center" />
         <TextBlock Text="MoAI Desktop" FontWeight="SemiBold" FontSize="19"
@@ -38,30 +46,42 @@
                    HorizontalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" />
       </StackPanel>
 
-      <!-- 로그인 폼 -->
-      <TextBox Watermark="이메일" Text="{Binding Email}" />
-      <TextBox Watermark="비밀번호" Text="{Binding Password}" PasswordChar="●">
-        <TextBox.KeyBindings>
-          <KeyBinding Gesture="Enter" Command="{Binding LoginCommand}" />
-        </TextBox.KeyBindings>
-      </TextBox>
-      <TextBox Watermark="MFA 코드" Text="{Binding MfaCode}" IsVisible="{Binding MfaRequired}">
-        <TextBox.KeyBindings>
-          <KeyBinding Gesture="Enter" Command="{Binding LoginCommand}" />
-        </TextBox.KeyBindings>
-      </TextBox>
+      <!-- 로그인 단계 -->
+      <StackPanel Spacing="14" IsVisible="{Binding !ModelPickStage}">
+        <TextBox Watermark="이메일" Text="{Binding Email}" />
+        <TextBox Watermark="비밀번호" Text="{Binding Password}" PasswordChar="●">
+          <TextBox.KeyBindings>
+            <KeyBinding Gesture="Enter" Command="{Binding LoginCommand}" />
+          </TextBox.KeyBindings>
+        </TextBox>
+        <TextBox Watermark="MFA 코드" Text="{Binding MfaCode}" IsVisible="{Binding MfaRequired}">
+          <TextBox.KeyBindings>
+            <KeyBinding Gesture="Enter" Command="{Binding LoginCommand}" />
+          </TextBox.KeyBindings>
+        </TextBox>
+        <Button Classes="accent" Content="로그인" HorizontalAlignment="Stretch" Height="46"
+                CornerRadius="12" FontSize="14.5" Command="{Binding LoginCommand}"
+                IsEnabled="{Binding !Busy}" />
+      </StackPanel>
 
-      <Button Classes="accent" Content="로그인" HorizontalAlignment="Stretch" Height="46"
-              CornerRadius="12" FontSize="14.5" Command="{Binding LoginCommand}"
-              IsEnabled="{Binding !Busy}" />
+      <!-- 모델 선택 단계 -->
+      <StackPanel Spacing="10" IsVisible="{Binding ModelPickStage}">
+        <TextBlock Text="사용할 모델" FontSize="12.5" FontWeight="SemiBold"
+                   Foreground="{DynamicResource TextSecondaryBrush}" />
+        <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}"
+                  HorizontalAlignment="Stretch" />
+        <Button Classes="accent" Content="시작" HorizontalAlignment="Stretch" Height="46"
+                CornerRadius="12" FontSize="14.5" Command="{Binding StartCommand}" />
+      </StackPanel>
 
       <TextBlock Text="{Binding Status}" FontSize="12.5" TextWrapping="Wrap" MinHeight="16"
                  HorizontalAlignment="Center" TextAlignment="Center"
                  Foreground="{DynamicResource TextSecondaryBrush}" />
 
-      <!-- 사내 프록시 설정 (로그인 아래 · 동일 폭 · 접이식) -->
+      <!-- 사내 프록시 설정 (로그인 단계에서만 · 로그인 아래 · 동일 폭 · 접이식) -->
       <Expander Header="사내 프록시 설정 (필요 시)" IsExpanded="{Binding ProxyExpanded}"
-                HorizontalAlignment="Stretch" CornerRadius="12" Margin="0,4,0,0">
+                IsVisible="{Binding !ModelPickStage}"
+                HorizontalAlignment="Stretch" CornerRadius="12" Margin="0,2,0,0">
         <StackPanel Spacing="10" Margin="2,10,2,4">
           <TextBlock Text="사내 프록시 뒤에서 접속하는 경우 입력하세요. 로그인 전에 적용됩니다."
                      FontSize="11.5" TextWrapping="Wrap"

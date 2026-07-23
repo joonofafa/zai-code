@@ -30,6 +30,13 @@ public sealed partial class LoginViewModel : ObservableObject
     [ObservableProperty] private string _mfaCode = string.Empty;
     [ObservableProperty] private bool _mfaRequired;
 
+    // 로그인 후 모델 선택 단계.
+    [ObservableProperty] private bool _modelPickStage;
+    [ObservableProperty] private string? _selectedModel;
+    public System.Collections.ObjectModel.ObservableCollection<string> Models { get; } = new();
+    private LoginResult? _pending;
+    private string? _pendingHost;
+
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(LoginCommand))]
     private bool _busy;
@@ -110,14 +117,44 @@ public sealed partial class LoginViewModel : ObservableObject
                 return;
             }
 
-            Save(host, r);
-            Status = "로그인 완료";
-            LoggedIn?.Invoke();
+            // 로그인 성공 → 모델 선택 단계로. (모델 목록이 없으면 바로 진행)
+            _pending = r;
+            _pendingHost = host;
+            Models.Clear();
+            foreach (var m in r.Models)
+            {
+                Models.Add(m);
+            }
+
+            SelectedModel = !string.IsNullOrEmpty(r.DefaultModel) ? r.DefaultModel : r.Models.FirstOrDefault();
+
+            if (Models.Count == 0)
+            {
+                Save(host, r, SelectedModel);
+                LoggedIn?.Invoke();
+                return;
+            }
+
+            ModelPickStage = true;
+            Status = (string.IsNullOrEmpty(r.Name) ? "" : r.Name + " 님, ") + "사용할 모델을 선택하고 시작하세요.";
         }
         finally
         {
             Busy = false;
         }
+    }
+
+    /// <summary>모델 선택 후 시작.</summary>
+    [RelayCommand]
+    private void Start()
+    {
+        if (_pending is null)
+        {
+            return;
+        }
+
+        Save(_pendingHost!, _pending, SelectedModel);
+        LoggedIn?.Invoke();
     }
 
     private void ApplyProxyIfAny()
@@ -129,10 +166,11 @@ public sealed partial class LoginViewModel : ObservableObject
         }
     }
 
-    private void Save(string host, LoginResult r)
+    private void Save(string host, LoginResult r, string? chosenModel)
     {
         var baseUrl = string.IsNullOrEmpty(r.BaseUrl) ? host + "/api/v1" : r.BaseUrl;
-        var model = !string.IsNullOrEmpty(r.DefaultModel) ? r.DefaultModel : r.Models.FirstOrDefault();
+        var model = !string.IsNullOrEmpty(chosenModel) ? chosenModel
+            : !string.IsNullOrEmpty(r.DefaultModel) ? r.DefaultModel : r.Models.FirstOrDefault();
 
         new FileCredentialStore().Set("OPENAI_API_KEY", r.ApiKey!);
 
@@ -153,6 +191,8 @@ public sealed partial class LoginViewModel : ObservableObject
             ["account"] = Email.Trim(),
             ["loginAt"] = DateTimeOffset.Now.ToString("o"),
             ["orgName"] = r.OrgName,
+            ["name"] = r.Name,
+            ["availableModels"] = r.Models.Count > 0 ? string.Join(",", r.Models) : null,
         };
         if (!string.IsNullOrEmpty(model))
         {

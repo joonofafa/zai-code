@@ -9,7 +9,7 @@ export DOTNET_CLI_TELEMETRY_OPTOUT=1
 
 OUT="${1:-/tmp/moai-gui.png}"
 W="${2:-1120}"; H="${3:-760}"; WAIT="${4:-8}"
-DLL="src/MoaiCode.Gui/bin/Debug/net10.0/MoaiCode.Gui.dll"
+DLL="src/MoaiCode.Gui/bin/Debug/net10.0-windows/MoaiCode.Gui.dll"
 
 echo "빌드 중…"
 dotnet build src/MoaiCode.Gui/MoaiCode.Gui.csproj -c Debug -v q \

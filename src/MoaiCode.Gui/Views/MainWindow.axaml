@@ -36,13 +36,16 @@
                      Foreground="{DynamicResource TextMutedBrush}" Margin="4,4,0,0" />
         </StackPanel>
 
-        <!-- 계정 / 로그인 (하단 고정) -->
+        <!-- 계정 (하단 고정): 이름(소속) + 설정(톱니바퀴) -->
         <StackPanel DockPanel.Dock="Bottom" Spacing="8" Margin="0,10,0,0">
           <Border Height="1" Background="{DynamicResource BorderSoftBrush}" />
-          <TextBlock Text="{Binding AccountLabel}" FontSize="11.5" TextTrimming="CharacterEllipsis"
-                     Foreground="{DynamicResource TextSecondaryBrush}" />
-          <Button Classes="ghost" HorizontalAlignment="Stretch" Content="로그인 / 계정 설정"
-                  Click="OnLoginClick" />
+          <Grid ColumnDefinitions="Auto,*,Auto">
+            <TextBlock Grid.Column="0" Text="👤" FontSize="13" VerticalAlignment="Center" Margin="0,0,7,0" />
+            <TextBlock Grid.Column="1" Text="{Binding AccountLabel}" FontSize="12.5" VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextSecondaryBrush}" />
+            <Button Grid.Column="2" Classes="ghost" Content="⚙" FontSize="16" Padding="7,3"
+                    Click="OnSettingsClick" ToolTip.Tip="계정 · 모델 설정" />
+          </Grid>
         </StackPanel>
 
         <ScrollViewer>
