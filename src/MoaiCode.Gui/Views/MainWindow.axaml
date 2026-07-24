@@ -185,7 +185,7 @@
               <ColumnDefinition Width="3*" MaxWidth="760" />
               <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-          <StackPanel Grid.Column="1" Spacing="12" Margin="24,0">
+          <StackPanel Grid.Column="1" Spacing="12">
 
             <!-- 참조 문서 칩(모드 B) -->
             <ItemsControl ItemsSource="{Binding References}" IsVisible="{Binding HasReferences}">
@@ -256,11 +256,16 @@
           </StackPanel>
           </Grid>
 
-          <!-- 채팅 스크롤 -->
-          <ScrollViewer Grid.Row="0" x:Name="ChatScroll" Padding="28,22,28,24" VerticalScrollBarVisibility="Auto"
+          <!-- 채팅 스크롤 — 입력 영역과 동일한 star 3열(중앙 3*, MaxWidth 760)로 폭·정렬을 맞춘다. -->
+          <ScrollViewer Grid.Row="0" x:Name="ChatScroll" Padding="0,22,0,24" VerticalScrollBarVisibility="Auto"
                         HorizontalScrollBarVisibility="Disabled">
-            <ItemsControl ItemsSource="{Binding Items}" MaxWidth="760" HorizontalAlignment="Center"
-                          VerticalAlignment="Top">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="3*" MaxWidth="760" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+            <ItemsControl Grid.Column="1" ItemsSource="{Binding Items}" VerticalAlignment="Top">
               <ItemsControl.Styles>
                 <Style Selector="ContentPresenter"><Setter Property="Margin" Value="0,0,0,16" /></Style>
               </ItemsControl.Styles>
@@ -376,6 +381,7 @@
 
               </ItemsControl.DataTemplates>
             </ItemsControl>
+            </Grid>
           </ScrollViewer>
         </Grid>
       </Panel>
