@@ -132,9 +132,9 @@ public sealed class EngineAgentBackend : IAgentBackend
         var file = System.IO.Path.GetFileName(path);
         var (icon, kind) = tool switch
         {
-            "XlsxCreate" => ("📊", "엑셀"),
-            "PptxCreate" => ("📑", "발표"),
-            _ => ("📝", "워드"),
+            "XlsxCreate" => ("Icon.FileSpreadsheet", "엑셀"),
+            "PptxCreate" => ("Icon.Presentation", "발표"),
+            _ => ("Icon.FileText", "워드"),
         };
         doc = new DocumentProduced(icon, kind, file, path);
         return true;

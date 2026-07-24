@@ -38,9 +38,9 @@ public sealed partial class ConfirmItem : ChatItem
     /// <summary>게이트가 대기 중인 결정. 버튼 클릭 시 완료된다.</summary>
     public TaskCompletionSource<bool>? Tcs { get; init; }
 
-    [RelayCommand] private void Approve() => Decide(true, "✓ 적용함");
+    [RelayCommand] private void Approve() => Decide(true, "적용함");
 
-    [RelayCommand] private void Reject() => Decide(false, "✕ 취소함");
+    [RelayCommand] private void Reject() => Decide(false, "취소함");
 
     private void Decide(bool ok, string label)
     {
@@ -64,7 +64,7 @@ public sealed class SuggestionItem : ChatItem
 /// <summary>생성된 문서 카드.</summary>
 public sealed partial class DocumentItem : ChatItem
 {
-    [ObservableProperty] private string _icon = "📄";
+    [ObservableProperty] private string _icon = "Icon.FileText"; // lucide 리소스 키
     [ObservableProperty] private string _kind = string.Empty;    // 엑셀 / 워드 / 발표
     [ObservableProperty] private string _fileName = string.Empty;
     [ObservableProperty] private string _path = string.Empty;
@@ -83,5 +83,5 @@ public sealed class ReferenceItem
     public string Source { get; init; } = "local"; // local | org
     public string Text { get; init; } = string.Empty;
     public string? Path { get; init; } // local: 파일경로 / org: documentId
-    public string Icon => Source == "org" ? "🗂" : "📎";
+    public string Icon => Source == "org" ? "Icon.FolderOpen" : "Icon.Paperclip";
 }

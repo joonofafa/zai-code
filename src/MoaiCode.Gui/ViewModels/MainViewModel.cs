@@ -513,7 +513,7 @@ public sealed partial class MainViewModel : ObservableObject
         Items.Add(new AssistantItem
         {
             Text = _live
-                ? "✅ 로그인이 적용됐어요. 이제 문서를 만들어 드릴 수 있어요."
+                ? "로그인이 적용됐어요. 이제 문서를 만들어 드릴 수 있어요."
                 : "로그인 정보를 확인하지 못했어요. 사이드바의 '로그인 / 계정'에서 다시 시도해 주세요.",
         });
     }
@@ -547,7 +547,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         Input = string.Empty;
-        Items.Add(new UserItem { Text = References.Count > 0 ? $"{text}\n\n📎 참조 {References.Count}개" : text });
+        Items.Add(new UserItem { Text = References.Count > 0 ? $"{text}\n\n참조 {References.Count}개" : text });
         _transcript.Add(new TurnLine("user", text));
         IsBusy = true;
 
@@ -670,7 +670,7 @@ public sealed partial class MainViewModel : ObservableObject
             var logPath = LogError(text, ex);
             Items.Add(new AssistantItem
             {
-                Text = "⚠️ 처리 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.\n" +
+                Text = "처리 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.\n" +
                        "계속되면 좌측 하단 설정에서 모델을 바꾸거나 관리자에게 문의하세요.\n" +
                        $"자세한 내용은 오류 로그에 기록됐어요: {logPath}",
             });

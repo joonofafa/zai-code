@@ -12,8 +12,13 @@ public sealed record TurnLine(string Role, string Text);
 /// <summary>세션 목록 표시용 메타. Kind: chat(일반) | generate(문서 생성) | edit(열린 문서 편집).</summary>
 public sealed record SessionMeta(string Id, string Title, string When, string Kind = "chat", string? TargetDoc = null)
 {
-    /// <summary>히스토리 행 배지 아이콘.</summary>
-    public string KindIcon => Kind switch { "edit" => "✏️", "generate" => "🆕", _ => "💬" };
+    /// <summary>히스토리 행 배지 아이콘(lucide 리소스 키).</summary>
+    public string KindIcon => Kind switch
+    {
+        "edit" => "Icon.Pencil",
+        "generate" => "Icon.Plus",
+        _ => "Icon.MessageSquare",
+    };
 
     /// <summary>편집 세션이면 대상 파일명, 아니면 빈 문자열(행에 부제로 표시).</summary>
     public string Subtitle => Kind == "edit" && !string.IsNullOrWhiteSpace(TargetDoc) ? TargetDoc! : When;

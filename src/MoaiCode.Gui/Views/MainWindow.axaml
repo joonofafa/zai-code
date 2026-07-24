@@ -88,7 +88,7 @@
                               CommandParameter="{Binding}"
                               ToolTip.Tip="이 문서로 편집 작업 시작">
                         <StackPanel Orientation="Horizontal" Spacing="7">
-                          <TextBlock Text="📄" FontSize="12.5" VerticalAlignment="Center" />
+                          <Path Classes="icon sm" Data="{StaticResource Icon.FileText}" VerticalAlignment="Center" />
                           <TextBlock Text="{Binding Display}" FontSize="12" TextTrimming="CharacterEllipsis"
                                      VerticalAlignment="Center" />
                         </StackPanel>
@@ -100,7 +100,7 @@
               <!-- 빈 상태: 큰 공백 대신 1줄 안내 -->
               <TextBlock IsVisible="{Binding !HasOpenDocs}" Margin="4,2,0,4" TextWrapping="Wrap"
                          FontSize="11.5" Foreground="{DynamicResource TextMutedBrush}"
-                         Text="열린 문서 없음 · Word·Excel·PowerPoint에서 문서를 열고 ↻ 를 누르면 여기에 표시됩니다." />
+                         Text="열린 문서 없음 · Word·Excel·PowerPoint에서 문서를 열고 새로고침을 누르면 여기에 표시됩니다." />
             </Panel>
 
             <!-- 구분선 + 대화 기록 헤더 -->
@@ -117,7 +117,8 @@
                             Command="{Binding $parent[ItemsControl].DataContext.LoadSessionCommand}"
                             CommandParameter="{Binding}">
                       <StackPanel Orientation="Horizontal" Spacing="8">
-                        <TextBlock Text="{Binding KindIcon}" FontSize="13" VerticalAlignment="Center" />
+                        <Path Classes="icon sm" Data="{Binding KindIcon, Converter={x:Static vm:Converters.IconKey}}"
+                              VerticalAlignment="Center" />
                         <StackPanel>
                           <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
                           <TextBlock Text="{Binding Subtitle}" FontSize="11"
@@ -147,17 +148,9 @@
             <!-- 새로운 대화 -->
             <Button Classes="tile" Command="{Binding NewConversationCommand}">
               <StackPanel Spacing="14" HorizontalAlignment="Center">
-                <Canvas Width="52" Height="52" HorizontalAlignment="Center">
-                  <!-- 채팅 말풍선 아이콘 -->
-                  <Border Canvas.Left="4" Canvas.Top="6" Width="44" Height="32" CornerRadius="10"
-                          Background="Transparent" BorderThickness="2.4"
-                          BorderBrush="{DynamicResource AccentHoverBrush}" />
-                  <Path Canvas.Left="14" Canvas.Top="36" Width="14" Height="12"
-                        Fill="{DynamicResource AccentHoverBrush}" Data="M0,0 L14,0 L0,12 Z" />
-                  <Ellipse Canvas.Left="15" Canvas.Top="19" Width="5" Height="5" Fill="{DynamicResource AccentHoverBrush}" />
-                  <Ellipse Canvas.Left="24" Canvas.Top="19" Width="5" Height="5" Fill="{DynamicResource AccentHoverBrush}" />
-                  <Ellipse Canvas.Left="33" Canvas.Top="19" Width="5" Height="5" Fill="{DynamicResource AccentHoverBrush}" />
-                </Canvas>
+                <Path Data="{StaticResource Icon.MessageSquare}" Stroke="{DynamicResource AccentHoverBrush}"
+                      StrokeThickness="1.8" StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                      Width="46" Height="46" Stretch="Uniform" HorizontalAlignment="Center" />
                 <TextBlock Text="새로운 대화" FontSize="14.5" FontWeight="SemiBold" HorizontalAlignment="Center"
                            Foreground="{DynamicResource TextPrimaryBrush}" />
               </StackPanel>
@@ -166,15 +159,9 @@
             <!-- 새로운 오피스 문서 작업 -->
             <Button Classes="tile" Click="OnOfficeDocClick">
               <StackPanel Spacing="14" HorizontalAlignment="Center">
-                <Canvas Width="52" Height="52" HorizontalAlignment="Center">
-                  <!-- 오피스 문서(창) 아이콘 -->
-                  <Border Canvas.Left="6" Canvas.Top="3" Width="40" Height="46" CornerRadius="7"
-                          Background="Transparent" BorderThickness="2.4"
-                          BorderBrush="{DynamicResource AccentHoverBrush}" />
-                  <Rectangle Canvas.Left="13" Canvas.Top="14" Width="26" Height="2.6" Fill="{DynamicResource AccentHoverBrush}" />
-                  <Rectangle Canvas.Left="13" Canvas.Top="22" Width="26" Height="2.6" Fill="{DynamicResource AccentHoverBrush}" />
-                  <Rectangle Canvas.Left="13" Canvas.Top="30" Width="18" Height="2.6" Fill="{DynamicResource AccentHoverBrush}" />
-                </Canvas>
+                <Path Data="{StaticResource Icon.Presentation}" Stroke="{DynamicResource AccentHoverBrush}"
+                      StrokeThickness="1.8" StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                      Width="46" Height="46" Stretch="Uniform" HorizontalAlignment="Center" />
                 <TextBlock Text="새로운 오피스 문서 작업" FontSize="14.5" FontWeight="SemiBold" HorizontalAlignment="Center"
                            Foreground="{DynamicResource TextPrimaryBrush}" />
               </StackPanel>
@@ -226,11 +213,14 @@
                   <Border Background="{DynamicResource ActivityBgBrush}" CornerRadius="9"
                           Padding="10,5" Margin="0,0,7,7">
                     <StackPanel Orientation="Horizontal" Spacing="7">
-                      <TextBlock Text="{Binding Icon}" FontSize="12" VerticalAlignment="Center" />
+                      <Path Classes="icon sm" Data="{Binding Icon, Converter={x:Static vm:Converters.IconKey}}"
+                            Width="13" Height="13" VerticalAlignment="Center" />
                       <TextBlock Text="{Binding DisplayName}" FontSize="12.5" VerticalAlignment="Center" />
-                      <Button Content="✕" Classes="ghost" Padding="4,0" MinWidth="0" FontSize="11"
+                      <Button Classes="ghost" Padding="4,2" MinWidth="0"
                               Command="{Binding $parent[ItemsControl].DataContext.RemoveReferenceCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <Path Classes="icon" Data="{StaticResource Icon.X}" Width="12" Height="12" />
+                      </Button>
                     </StackPanel>
                   </Border>
                 </DataTemplate>
@@ -316,7 +306,7 @@
                           BorderThickness="1" CornerRadius="14" Padding="16,13" HorizontalAlignment="Left" MaxWidth="560">
                     <StackPanel Spacing="12">
                       <StackPanel Orientation="Horizontal" Spacing="10">
-                        <TextBlock Text="✏️" FontSize="15" VerticalAlignment="Center" />
+                        <Path Classes="icon" Data="{StaticResource Icon.Pencil}" VerticalAlignment="Center" />
                         <TextBlock Text="{Binding Text}" FontSize="13.5" TextWrapping="Wrap"
                                    VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
                       </StackPanel>
@@ -355,8 +345,11 @@
                     <StackPanel Spacing="14">
                       <StackPanel Orientation="Horizontal" Spacing="13">
                         <Border Width="46" Height="46" CornerRadius="12" Background="{DynamicResource AccentSoftBrush}">
-                          <TextBlock Text="{Binding Icon}" FontSize="22"
-                                     HorizontalAlignment="Center" VerticalAlignment="Center" />
+                          <Path Data="{Binding Icon, Converter={x:Static vm:Converters.IconKey}}"
+                                Stroke="{DynamicResource AccentHoverBrush}" StrokeThickness="1.7"
+                                StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                Width="24" Height="24" Stretch="Uniform"
+                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <StackPanel VerticalAlignment="Center" Spacing="2">
                           <TextBlock Text="{Binding FileName}" FontSize="14.5" FontWeight="SemiBold" />

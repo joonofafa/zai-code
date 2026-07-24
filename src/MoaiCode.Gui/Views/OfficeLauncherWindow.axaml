@@ -24,7 +24,7 @@
           <ListBox.ItemTemplate>
             <DataTemplate>
               <StackPanel Orientation="Horizontal" Spacing="9" Margin="2">
-                <TextBlock Text="📄" FontSize="14" VerticalAlignment="Center" />
+                <Path Classes="icon sm" Data="{StaticResource Icon.FileText}" VerticalAlignment="Center" />
                 <TextBlock Text="{Binding Display}" FontSize="13" VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis" />
               </StackPanel>
@@ -45,12 +45,24 @@
       <Button x:Name="NewDocBtn" Classes="accent" HorizontalAlignment="Stretch"
               Content="새로운 문서 작업" Click="OnNewDoc" />
       <StackPanel x:Name="AppButtons" Orientation="Horizontal" IsVisible="False" Spacing="10">
-        <Button Classes="ghost" Content="📊  PowerPoint" Click="OnLaunchPowerPoint"
-                HorizontalAlignment="Stretch" Width="128" />
-        <Button Classes="ghost" Content="📝  Word" Click="OnLaunchWord"
-                HorizontalAlignment="Stretch" Width="128" />
-        <Button Classes="ghost" Content="📈  Excel" Click="OnLaunchExcel"
-                HorizontalAlignment="Stretch" Width="128" />
+        <Button Classes="ghost" Click="OnLaunchPowerPoint" HorizontalAlignment="Stretch" Width="128">
+          <StackPanel Orientation="Horizontal" Spacing="7" HorizontalAlignment="Center">
+            <Path Classes="icon sm" Data="{StaticResource Icon.Presentation}" />
+            <TextBlock Text="PowerPoint" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+        <Button Classes="ghost" Click="OnLaunchWord" HorizontalAlignment="Stretch" Width="128">
+          <StackPanel Orientation="Horizontal" Spacing="7" HorizontalAlignment="Center">
+            <Path Classes="icon sm" Data="{StaticResource Icon.FileText}" />
+            <TextBlock Text="Word" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+        <Button Classes="ghost" Click="OnLaunchExcel" HorizontalAlignment="Stretch" Width="128">
+          <StackPanel Orientation="Horizontal" Spacing="7" HorizontalAlignment="Center">
+            <Path Classes="icon sm" Data="{StaticResource Icon.FileSpreadsheet}" />
+            <TextBlock Text="Excel" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
       </StackPanel>
     </StackPanel>
   </Grid>

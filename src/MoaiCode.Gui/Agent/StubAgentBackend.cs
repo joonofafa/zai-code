@@ -43,14 +43,14 @@ public sealed class StubAgentBackend : IAgentBackend
         var p = prompt.ToLowerInvariant();
         if (p.Contains("엑셀") || p.Contains("표") || p.Contains("차트") || p.Contains("xlsx"))
         {
-            return ("📊", "엑셀", "매출_정리.xlsx");
+            return ("Icon.FileSpreadsheet", "엑셀", "매출_정리.xlsx");
         }
 
         if (p.Contains("발표") || p.Contains("ppt") || p.Contains("슬라이드"))
         {
-            return ("📑", "발표", "발표자료.pptx");
+            return ("Icon.Presentation", "발표", "발표자료.pptx");
         }
 
-        return ("📝", "워드", "보고서.docx");
+        return ("Icon.FileText", "워드", "보고서.docx");
     }
 }
