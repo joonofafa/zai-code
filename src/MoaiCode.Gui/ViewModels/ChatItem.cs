@@ -38,9 +38,19 @@ public sealed partial class ConfirmItem : ChatItem
     /// <summary>게이트가 대기 중인 결정. 버튼 클릭 시 완료된다.</summary>
     public TaskCompletionSource<bool>? Tcs { get; init; }
 
+    /// <summary>"계속 허용" 선택 시 호출 — 이후 편집을 세션 동안 자동 승인하도록 VM 에 알린다.</summary>
+    public System.Action? OnApproveAll { get; init; }
+
     [RelayCommand] private void Approve() => Decide(true, "적용함");
 
     [RelayCommand] private void Reject() => Decide(false, "취소함");
+
+    [RelayCommand]
+    private void ApproveAll()
+    {
+        OnApproveAll?.Invoke();
+        Decide(true, "적용함 · 이후 자동 승인");
+    }
 
     private void Decide(bool ok, string label)
     {

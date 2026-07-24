@@ -35,10 +35,11 @@ public partial class MainWindow : Window
 
     private void ScrollChatToEnd()
     {
-        // 새 콘텐츠가 배치된 뒤 스크롤하도록 지연.
-        Dispatcher.UIThread.Post(
-            () => this.FindControl<ScrollViewer>("ChatScroll")?.ScrollToEnd(),
-            DispatcherPriority.Background);
+        // 새 콘텐츠 배치 후 스크롤. 배치 타이밍에 따라 한 번으로는 끝까지 못 가는 경우가 있어
+        // Background(배치 직후)와 Loaded(레이아웃 확정 후) 두 우선순위로 각각 호출한다.
+        void Scroll() => this.FindControl<ScrollViewer>("ChatScroll")?.ScrollToEnd();
+        Dispatcher.UIThread.Post(Scroll, DispatcherPriority.Background);
+        Dispatcher.UIThread.Post(Scroll, DispatcherPriority.Loaded);
     }
 
     // 참조 문서 첨부(모드 B) — 로컬 파일 다중 선택 → ViewModel 에 원문 추출 위임.

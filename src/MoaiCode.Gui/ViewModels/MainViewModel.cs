@@ -108,6 +108,9 @@ public sealed partial class MainViewModel : ObservableObject
     private string _sessionKind = "chat";
     private string? _sessionTargetDoc;
 
+    // 라이브 편집 확인 자동 승인('계속 허용' 선택 시). 새 세션·연결 해제 시 리셋.
+    private bool _autoApproveEdits;
+
     /// <summary>채팅을 맨 아래로 스크롤하도록 View 에 요청(자동 스크롤).</summary>
     public event Action? ScrollToEndRequested;
 
@@ -414,6 +417,7 @@ public sealed partial class MainViewModel : ObservableObject
         ActiveDocName = string.Empty;
         ActiveDocApp = string.Empty;
         _sessionTargetDoc = null;
+        _autoApproveEdits = false; // 연결 해제 시 자동 승인 해제
         if (_sessionKind == "edit")
         {
             _sessionKind = "chat";
@@ -481,10 +485,21 @@ public sealed partial class MainViewModel : ObservableObject
     /// </summary>
     public Task<bool> RequestConfirmAsync(string summary)
     {
+        // '계속 허용'을 이미 선택했으면 확인 카드 없이 즉시 승인(병렬/연속 편집 확인 폭주 방지).
+        if (_autoApproveEdits)
+        {
+            return Task.FromResult(true);
+        }
+
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         Dispatcher.UIThread.Post(() =>
         {
-            Items.Add(new ConfirmItem { Text = summary, Tcs = tcs });
+            Items.Add(new ConfirmItem
+            {
+                Text = summary,
+                Tcs = tcs,
+                OnApproveAll = () => _autoApproveEdits = true,
+            });
             RequestScroll();
         });
         return tcs.Task;

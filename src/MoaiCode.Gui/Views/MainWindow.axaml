@@ -320,6 +320,8 @@
                       <StackPanel Orientation="Horizontal" Spacing="9" HorizontalAlignment="Right"
                                   IsVisible="{Binding !Decided}">
                         <Button Classes="ghost" Content="취소" Command="{Binding RejectCommand}" />
+                        <Button Classes="ghost" Content="계속 허용" Command="{Binding ApproveAllCommand}"
+                                ToolTip.Tip="이후 이 문서 편집은 확인 없이 자동 적용" />
                         <Button Classes="accent" Content="적용" Command="{Binding ApproveCommand}" />
                       </StackPanel>
                       <TextBlock Text="{Binding ResultLabel}" IsVisible="{Binding Decided}" FontSize="12.5"
