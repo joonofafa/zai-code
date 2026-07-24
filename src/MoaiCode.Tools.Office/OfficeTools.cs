@@ -30,16 +30,10 @@ public static class OfficeTools
         new PowerPointInspectTool(sta),
         new PowerPointEditTool(sta),
         new ExcelInspectTool(sta),
-        // TODO: PowerPoint Image/Slide/Save, Excel Edit/Formula/Chart/Sheet/Save (설계 §툴 설계)
+        new ExcelEditTool(sta),
+        new WordInspectTool(sta),
+        new WordEditTool(sta),
     };
 
-    public static IReadOnlyList<ITool> CreateIfAvailableForTests(StaDispatcher sta)
-    {
-        return new ITool[]
-        {
-            new PowerPointInspectTool(sta),
-            new PowerPointEditTool(sta),
-            new ExcelInspectTool(sta)
-        };
-    }
+    public static IReadOnlyList<ITool> CreateIfAvailableForTests(StaDispatcher sta) => BuildTools(sta);
 }

@@ -28,8 +28,9 @@ public sealed class GuiConfirmGate : IPermissionGate
         return await _confirm(Summarize(call.Input)).ConfigureAwait(false);
     }
 
-    // 열린 문서를 즉시 변경하는 COM 편집 도구만 확인 대상(추후 ExcelEdit 등 추가 시 여기 확장).
-    private static bool IsLiveEdit(string toolName) => toolName is "PowerPointEdit";
+    // 열린 문서를 즉시 변경하는 COM 편집 도구만 확인 대상.
+    private static bool IsLiveEdit(string toolName) =>
+        toolName is "PowerPointEdit" or "WordEdit" or "ExcelEdit";
 
     // call.Input(JSON)에서 사람이 읽을 한 줄 요약을 만든다.
     private static string Summarize(JsonElement input)
@@ -46,15 +47,26 @@ public sealed class GuiConfirmGate : IPermissionGate
                 ? v.GetInt32()
                 : null;
 
-        var slide = Num("slide_index");
-        var target = slide is not null ? $"슬라이드 {slide}" : "현재 선택한 도형";
+        // 대상: PowerPoint(slide_index) / Word(para_index) / Excel(cell) / 현재 선택.
+        var target = Num("slide_index") is { } s ? $"슬라이드 {s}"
+            : Num("para_index") is { } p ? $"문단 {p}"
+            : !string.IsNullOrWhiteSpace(Str("cell")) ? Str("cell")
+            : "현재 선택";
 
         var detail = Str("action") switch
         {
             "set_text" => "텍스트를 변경",
-            "set_fill" => $"배경색을 {ColorLabel(Str("color"))} 로 변경",
+            "set_fill" => $"배경/채우기 색을 {ColorLabel(Str("color"))} 로 변경",
             "set_font" => "글자 서식을 변경",
             "set_line" => "테두리를 변경",
+            "set_style" => "문단 스타일을 변경",
+            "set_value" => "셀 값을 변경",
+            "set_formula" => "수식을 입력",
+            "insert_paragraph" => "문단을 추가",
+            "delete_paragraph" => "문단을 삭제",
+            "insert_table" => "표를 삽입",
+            "insert_chart" => "차트를 삽입",
+            "add_sheet" => "시트를 추가",
             _ => "변경",
         };
 

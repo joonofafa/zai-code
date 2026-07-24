@@ -82,6 +82,9 @@ public sealed class EngineAgentBackend : IAgentBackend
         "PowerPointInspect" => ("슬라이드 읽는 중", "슬라이드 읽기"),
         "PowerPointEdit" => ("슬라이드 편집 중", "슬라이드 편집"),
         "ExcelInspect" => ("시트 읽는 중", "시트 읽기"),
+        "ExcelEdit" => ("시트 편집 중", "시트 편집"),
+        "WordInspect" => ("문서 읽는 중", "문서 읽기"),
+        "WordEdit" => ("문서 편집 중", "문서 편집"),
         // 문서 생성
         "DocxCreate" => ("워드 문서 만드는 중", "워드 문서 생성"),
         "XlsxCreate" => ("엑셀 문서 만드는 중", "엑셀 문서 생성"),
