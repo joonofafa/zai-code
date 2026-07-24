@@ -668,11 +668,17 @@ public sealed partial class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             var logPath = LogError(text, ex);
+            var msg = ex.Message ?? string.Empty;
+            var isAuth = msg.Contains("401") || msg.Contains("Invalid API key")
+                         || msg.Contains("invalid_api_key") || msg.Contains("invalid_request_error");
             Items.Add(new AssistantItem
             {
-                Text = "처리 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.\n" +
-                       "계속되면 좌측 하단 설정에서 모델을 바꾸거나 관리자에게 문의하세요.\n" +
-                       $"자세한 내용은 오류 로그에 기록됐어요: {logPath}",
+                Text = isAuth
+                    ? "로그인이 만료되었거나 API 키가 유효하지 않아요.\n" +
+                      "좌측 하단 설정(톱니)에서 로그아웃한 뒤 다시 로그인해 주세요."
+                    : "처리 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.\n" +
+                      "계속되면 좌측 하단 설정에서 모델을 바꾸거나 관리자에게 문의하세요.\n" +
+                      $"자세한 내용은 오류 로그에 기록됐어요: {logPath}",
             });
         }
         finally
