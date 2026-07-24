@@ -175,9 +175,10 @@
         <!-- 채팅 -->
         <DockPanel IsVisible="{Binding IsChatVisible}">
 
-          <!-- 하단 작성 영역 (채팅 본문과 같은 760 중앙 정렬) -->
+          <!-- 하단 작성 영역 (채팅 본문과 같은 760 중앙 정렬).
+               Stretch+MaxWidth 로 칩 유무와 무관하게 입력창 폭을 760 으로 고정(Center 는 자식 폭에 쪼그라듦). -->
           <StackPanel DockPanel.Dock="Bottom" Margin="24,8,24,20" Spacing="12"
-                      MaxWidth="760" HorizontalAlignment="Center">
+                      MaxWidth="760" HorizontalAlignment="Stretch">
 
             <!-- 활성 대상 칩: 편집 모드일 때 대상 문서·적용 범위·해제 -->
             <Border IsVisible="{Binding IsDocConnected}" Background="{DynamicResource AccentSoftBrush}"
