@@ -88,7 +88,9 @@
                               CommandParameter="{Binding}"
                               ToolTip.Tip="이 문서로 편집 작업 시작">
                         <StackPanel Orientation="Horizontal" Spacing="7">
-                          <Path Classes="icon sm" Data="{StaticResource Icon.FileText}" VerticalAlignment="Center" />
+                          <Path Classes="icon sm" VerticalAlignment="Center"
+                                Data="{Binding App, Converter={x:Static vm:Converters.AppIcon}}"
+                                Stroke="{Binding App, Converter={x:Static vm:Converters.AppBrush}}" />
                           <TextBlock Text="{Binding Display}" FontSize="12" TextTrimming="CharacterEllipsis"
                                      VerticalAlignment="Center" />
                         </StackPanel>
@@ -175,17 +177,25 @@
         <!-- 채팅 -->
         <DockPanel IsVisible="{Binding IsChatVisible}">
 
-          <!-- 하단 작성 영역 (채팅 본문과 같은 760 중앙 정렬).
-               Stretch+MaxWidth 로 칩 유무와 무관하게 입력창 폭을 760 으로 고정(Center 는 자식 폭에 쪼그라듦). -->
-          <StackPanel DockPanel.Dock="Bottom" Margin="24,8,24,20" Spacing="12"
-                      MaxWidth="760" HorizontalAlignment="Stretch">
+          <!-- 하단 작성 영역: 대칭 star 컬럼으로 채팅 본문과 같은 760 중앙 고정.
+               (Stretch+MaxWidth 는 Avalonia 에서 좌측 편향, Center 는 칩 유무에 폭 쪼그라듦 → 대칭 star 로 해결) -->
+          <Grid DockPanel.Dock="Bottom" Margin="0,8,0,20">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="3*" MaxWidth="760" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+          <StackPanel Grid.Column="1" Spacing="12" Margin="24,0">
 
-            <!-- 활성 대상 칩: 편집 모드일 때 대상 문서·적용 범위·해제 -->
+            <!-- 활성 대상 칩: 편집 모드일 때 대상 문서·적용 범위·해제. 테두리·아이콘은 연결된 앱 색. -->
             <Border IsVisible="{Binding IsDocConnected}" Background="{DynamicResource AccentSoftBrush}"
-                    BorderBrush="{DynamicResource AccentHoverBrush}" BorderThickness="1"
+                    BorderBrush="{Binding ActiveDocApp, Converter={x:Static vm:Converters.AppBrush}}" BorderThickness="1.5"
                     CornerRadius="12" Padding="12,8" HorizontalAlignment="Left">
               <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
-                <Path Classes="icon solid" Data="{StaticResource Icon.Play}" VerticalAlignment="Center" />
+                <Path Data="{StaticResource Icon.Play}" Width="10" Height="10" Stretch="Uniform"
+                      Fill="{Binding ActiveDocApp, Converter={x:Static vm:Converters.AppBrush}}"
+                      Stroke="{Binding ActiveDocApp, Converter={x:Static vm:Converters.AppBrush}}"
+                      StrokeThickness="1" VerticalAlignment="Center" />
                 <TextBlock Text="편집 중:" FontSize="12.5" VerticalAlignment="Center"
                            Foreground="{DynamicResource TextSecondaryBrush}" />
                 <TextBlock Text="{Binding ActiveDocName}" FontSize="12.5" FontWeight="SemiBold"
@@ -251,6 +261,7 @@
               </Grid>
             </Border>
           </StackPanel>
+          </Grid>
 
           <!-- 채팅 스크롤 -->
           <ScrollViewer x:Name="ChatScroll" Padding="28,22,28,24" VerticalScrollBarVisibility="Auto"
@@ -327,6 +338,12 @@
                 <!-- 추천 질문(클릭 버튼): 1열 3행 세로 나열 -->
                 <DataTemplate DataType="vm:SuggestionItem">
                   <ItemsControl ItemsSource="{Binding Suggestions}" HorizontalAlignment="Left">
+                    <ItemsControl.Styles>
+                      <!-- 채팅 ItemsControl 의 ContentPresenter Margin(16) 상속 차단 -->
+                      <Style Selector="ContentPresenter">
+                        <Setter Property="Margin" Value="0" />
+                      </Style>
+                    </ItemsControl.Styles>
                     <ItemsControl.ItemTemplate>
                       <DataTemplate>
                         <Button Classes="suggestion" Content="{Binding}" Margin="0,0,0,7"

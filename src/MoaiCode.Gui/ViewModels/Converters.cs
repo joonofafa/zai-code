@@ -11,7 +11,28 @@ public static class Converters
         done => new SolidColorBrush(Color.Parse(done ? "#3FB68B" : "#6D5EF0")));
 
     // 아이콘 키("Icon.FileText" 등) → App 리소스의 lucide Geometry. 이모지 대신 벡터 아이콘 바인딩용.
-    public static readonly IValueConverter IconKey = new FuncValueConverter<string?, Geometry?>(key =>
+    public static readonly IValueConverter IconKey = new FuncValueConverter<string?, Geometry?>(key => Resolve(key));
+
+    // Office 앱(PowerPoint/Excel/Word) → 브랜드 색(PPT 빨강, Excel 녹색, Word 파랑).
+    public static readonly IValueConverter AppBrush = new FuncValueConverter<string?, IBrush>(app =>
+        new SolidColorBrush(Color.Parse(app switch
+        {
+            "PowerPoint" => "#D24726",
+            "Excel" => "#217346",
+            "Word" => "#2B579A",
+            _ => "#64748B",
+        })));
+
+    // Office 앱 → 대응 문서 아이콘 geometry.
+    public static readonly IValueConverter AppIcon = new FuncValueConverter<string?, Geometry?>(app => Resolve(app switch
+    {
+        "PowerPoint" => "Icon.Presentation",
+        "Excel" => "Icon.FileSpreadsheet",
+        "Word" => "Icon.FileText",
+        _ => "Icon.FileText",
+    }));
+
+    private static Geometry? Resolve(string? key)
     {
         if (string.IsNullOrEmpty(key) || Application.Current is null)
         {
@@ -21,5 +42,5 @@ public static class Converters
         return Application.Current.Resources.TryGetResource(key, Application.Current.ActualThemeVariant, out var g)
             ? g as Geometry
             : null;
-    });
+    }
 }
