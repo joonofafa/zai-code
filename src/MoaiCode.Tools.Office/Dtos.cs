@@ -27,4 +27,9 @@ public sealed record ShapeInfo(
     double Top,
     double Width,
     double Height,
-    bool HasTextFrame);
+    bool HasTextFrame,
+    // 서식(모델이 슬라이드 톤을 보고 편집을 판단하도록). 텍스트 없으면 null.
+    double? FontSize = null,
+    string? FontName = null,
+    bool? Bold = null,
+    string? FontColor = null);

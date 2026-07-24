@@ -50,7 +50,27 @@ public sealed class WordSession
             dynamic para = doc.Paragraphs[i];
             var text = TryGet(() => (string?)para.Range.Text, null) ?? string.Empty;
             var style = TryGet(() => (string?)para.Style.NameLocal, null);
-            paras.Add(new WordParaInfo(i, text.Trim('\r', '\n', '\a', ' '), style));
+
+            // 문단 서식(모델이 문서 톤을 보고 판단하도록). mixed/undefined 값은 null 로.
+            var size = TryGet(() => (double?)(float)para.Range.Font.Size, null);
+            if (size is <= 0 or > 1638) // wdUndefined(9999999) 등 비정상 값 제외
+            {
+                size = null;
+            }
+
+            var fontName = TryGet(() => (string?)para.Range.Font.Name, null);
+            if (string.IsNullOrWhiteSpace(fontName))
+            {
+                fontName = null;
+            }
+
+            var boldVal = TryGet(() => (int?)para.Range.Font.Bold, null);
+            bool? bold = boldVal is -1 ? true : boldVal is 0 ? false : null; // 그 외(mixed)는 null
+
+            var colorVal = TryGet(() => (int?)para.Range.Font.Color, null);
+            var color = ColorHex(colorVal);
+
+            paras.Add(new WordParaInfo(i, text.Trim('\r', '\n', '\a', ' '), style, size, fontName, bold, color));
         }
 
         return new WordDocInfo(
@@ -59,6 +79,21 @@ public sealed class WordSession
             ParagraphCount: paraCount,
             SelectionText: selection,
             Paragraphs: paras);
+    }
+
+    // Office COM 색(BGR int) → "#RRGGBB". wdColorAutomatic(-16777216) 등 특수값은 null.
+    private static string? ColorHex(int? bgr)
+    {
+        if (bgr is null || bgr.Value < 0)
+        {
+            return null;
+        }
+
+        var c = bgr.Value;
+        var r = c & 0xFF;
+        var g = (c >> 8) & 0xFF;
+        var b = (c >> 16) & 0xFF;
+        return $"#{r:X2}{g:X2}{b:X2}";
     }
 
     private static T? TryGet<T>(Func<T> get, string? what)

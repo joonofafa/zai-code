@@ -58,6 +58,22 @@ public sealed class PowerPointSession
                 bool hasTextFrame = TriBool(shape.HasTextFrame);
                 bool hasText = hasTextFrame && TriBool(shape.TextFrame.HasText);
                 string? text = hasText ? (string?)shape.TextFrame.TextRange.Text : null;
+
+                // 텍스트 도형이면 대표 서식(크기·글꼴·굵기·색) — 모델이 슬라이드 톤을 보고 판단하도록.
+                double? fontSize = null;
+                string? fontName = null;
+                bool? bold = null;
+                string? fontColor = null;
+                if (hasText)
+                {
+                    dynamic font = shape.TextFrame.TextRange.Font;
+                    fontSize = TryGet(() => (double?)Convert.ToDouble(font.Size));
+                    fontName = TryGet(() => (string?)font.Name);
+                    var b = TryGet(() => (int?)font.Bold); // MsoTriState
+                    bold = b is -1 ? true : b is 0 ? false : null;
+                    fontColor = ColorHex(TryGet(() => (int?)font.Color.RGB));
+                }
+
                 shapes.Add(new ShapeInfo(
                     ShapeId: (int)shape.Id,
                     Name: (string)shape.Name,
@@ -66,7 +82,11 @@ public sealed class PowerPointSession
                     Top: Convert.ToDouble(shape.Top),
                     Width: Convert.ToDouble(shape.Width),
                     Height: Convert.ToDouble(shape.Height),
-                    HasTextFrame: hasTextFrame));
+                    HasTextFrame: hasTextFrame,
+                    FontSize: fontSize,
+                    FontName: fontName,
+                    Bold: bold,
+                    FontColor: fontColor));
             }
 
             slides.Add(new SlideInfo(
@@ -82,6 +102,18 @@ public sealed class PowerPointSession
             SlideCount: slideCount,
             CurrentSlideIndex: current,
             Slides: slides);
+    }
+
+    // Office COM 색(BGR int) → "#RRGGBB". 음수/특수값은 null.
+    private static string? ColorHex(int? bgr)
+    {
+        if (bgr is null || bgr.Value < 0)
+        {
+            return null;
+        }
+
+        var c = bgr.Value;
+        return $"#{c & 0xFF:X2}{(c >> 8) & 0xFF:X2}{(c >> 16) & 0xFF:X2}";
     }
 
     // Office COM 의 불리언 속성은 bool 이 아니라 MsoTriState(int: msoTrue=-1, msoFalse=0)로 온다.

@@ -24,8 +24,9 @@ public sealed class PowerPointInspectTool : ITool
     public string Name => "PowerPointInspect";
 
     public string Description => """
-        Inspects the running PowerPoint: active presentation, slides, and shapes (read-only).
-        Use BEFORE editing to read current state — shape ids, text, positions. Windows only;
+        Inspects the running PowerPoint: active presentation, slides, and shapes (read-only) — shape ids,
+        text, positions, and font (font_size, font_name, bold, font_color). Use BEFORE editing, and MATCH
+        the slide's existing tone (size/color/font) so edited text fits the design. Windows only;
         requires PowerPoint to be running with an open presentation.
         """;
 

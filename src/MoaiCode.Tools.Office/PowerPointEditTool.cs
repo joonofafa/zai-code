@@ -227,34 +227,27 @@ public sealed class PowerPointEditTool : ITool
 
                 dynamic textRange = shape.TextFrame.TextRange;
 
-                // 텍스트를 길게 바꾸면 PowerPoint 자동맞춤(AutoFit)이 폰트를 극단적으로 축소(예: 3pt)한다.
-                // 원래 폰트 크기를 기억했다가 교체 후 복원해 크기를 보존한다(Font.Size 는 Single).
-                float? keepSize = null;
-                try
-                {
-                    var sz = (float)textRange.Font.Size;
-                    if (sz > 0)
-                    {
-                        keepSize = sz;
-                    }
-                }
-                catch
-                {
-                    // 여러 크기가 섞여 있으면(ppfMixed) 보존 생략.
-                }
+                // 텍스트를 교체하면 (1) AutoFit 이 폰트를 극단 축소(예: 3pt)하거나 (2) 서식이 첫 문자
+                // 기준으로 통일될 수 있다. 교체 전 대표 서식(크기·굵기·글꼴명)을 기억했다가 복원해 톤을 유지한다.
+                float? keepSize = TryFloat(() => (float)textRange.Font.Size);
+                int? keepBold = TryInt(() => (int)textRange.Font.Bold);
+                string? keepName = TryStr(() => (string)textRange.Font.Name);
 
                 textRange.Text = inp.Text;
 
                 if (keepSize is > 0)
                 {
-                    try
-                    {
-                        textRange.Font.Size = keepSize.Value;
-                    }
-                    catch
-                    {
-                        // 크기 복원 실패는 무시(텍스트 변경 자체는 성공).
-                    }
+                    TrySet(() => textRange.Font.Size = keepSize.Value);
+                }
+
+                if (keepBold is 0 or -1)
+                {
+                    TrySet(() => textRange.Font.Bold = keepBold.Value);
+                }
+
+                if (!string.IsNullOrEmpty(keepName))
+                {
+                    TrySet(() => textRange.Font.Name = keepName);
                 }
 
                 break;
@@ -326,4 +319,24 @@ public sealed class PowerPointEditTool : ITool
         return null;
     }
 
+    // COM 서식 값 캡처/설정 헬퍼(mixed·예외는 조용히 무시).
+    private static float? TryFloat(Func<float> get)
+    {
+        try { return get(); } catch { return null; }
+    }
+
+    private static int? TryInt(Func<int> get)
+    {
+        try { return get(); } catch { return null; }
+    }
+
+    private static string? TryStr(Func<string> get)
+    {
+        try { return get(); } catch { return null; }
+    }
+
+    private static void TrySet(Action set)
+    {
+        try { set(); } catch { }
+    }
 }

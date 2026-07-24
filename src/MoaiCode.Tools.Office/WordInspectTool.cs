@@ -21,8 +21,10 @@ public sealed class WordInspectTool : ITool
     public string Name => "WordInspect";
 
     public string Description => """
-        Inspects the running Word document: paragraphs (1-based index, text, style), current selection.
-        Use BEFORE editing to read current state. Windows only; requires Word running with an open document.
+        Inspects the running Word document: paragraphs (1-based index, text, style, font_size, font_name,
+        bold, font_color), and current selection. Use BEFORE editing, and MATCH the document's existing
+        tone — e.g. give inserted body text the same size/color as surrounding body paragraphs, not a heading.
+        Windows only; requires Word running with an open document.
         """;
 
     public bool IsReadOnly => true;

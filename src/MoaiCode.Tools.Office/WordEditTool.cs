@@ -32,7 +32,8 @@ public sealed class WordEditTool : ITool
           - set_text: replace target text (needs "text")
           - set_font: color/size/bold (any of "color","font_size","bold")
           - set_style: paragraph style ("style": heading1|heading2|heading3|title|normal)
-          - insert_paragraph: append a new paragraph at end (needs "text"; optional "style")
+          - insert_paragraph: append a new paragraph at end (needs "text"; optional "style").
+            Body text defaults to Normal style (does NOT inherit the previous heading). Set "style" only for headings.
           - delete_paragraph: delete paragraph at "para_index"
           - insert_table: insert a table (needs "rows","cols")
         Target the paragraph by 1-based "para_index" (from WordInspect); if omitted, the CURRENT SELECTION.
@@ -153,12 +154,11 @@ public sealed class WordEditTool : ITool
             {
                 dynamic content = doc.Content;
                 content.InsertAfter("\r" + inp.Text);
-                if (!string.IsNullOrWhiteSpace(inp.Style))
-                {
-                    dynamic last = doc.Paragraphs[(int)doc.Paragraphs.Count].Range;
-                    last.Style = StyleId(inp.Style!);
-                }
+                dynamic last = doc.Paragraphs[(int)doc.Paragraphs.Count].Range;
 
+                // Word 는 새 문단이 '앞 문단' 서식을 상속한다. 앞이 제목(48pt)이면 본문도 제목이 되어버린다.
+                // style 을 지정했으면 그 스타일, 없으면 본문(Normal)로 강제해 톤앤매너를 유지한다.
+                last.Style = string.IsNullOrWhiteSpace(inp.Style) ? WdStyleNormal : StyleId(inp.Style!);
                 return "OK: 문단을 추가했습니다.";
             }
 
