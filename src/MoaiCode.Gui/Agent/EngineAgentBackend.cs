@@ -74,35 +74,39 @@ public sealed class EngineAgentBackend : IAgentBackend
         return clean.Length > 0 ? clean : null;
     }
 
-    // (동사, 명사) — 시작/완료 문구를 자연스럽게 만들기 위해.
-    private static (string Verb, string Noun) Phrase(string tool) => tool switch
+    // (진행 중 문구, 완료/실패에 붙일 라벨) — 도구별로 구체적으로.
+    // 시작: "{Doing}…"  완료: "{Label} 완료"  실패: "{Label} 실패"
+    private static (string Doing, string Label) Phrase(string tool) => tool switch
     {
-        "DocxCreate" => ("만드는 중", "워드 문서"),
-        "XlsxCreate" => ("만드는 중", "엑셀 문서"),
-        "PptxCreate" => ("만드는 중", "발표자료"),
-        "OfficeDocInspect" => ("점검하는 중", "문서"),
-        "OrgDocsUpload" => ("올리는 중", "회사 문서함에"),
-        "OrgDocs" or "OrgDocsList" => ("검색하는 중", "회사 문서함"),
-        "OrgList" => ("확인하는 중", "소속 조직"),
-        "ChunkBuild" => ("분석하는 중", "문서"),
-        "ChunkFetch" or "ChunkSearch" => ("찾는 중", "문서 내용"),
-        "WebSearch" or "WebFetch" => ("찾는 중", "웹 자료"),
-        "FileRead" or "Glob" or "Grep" => ("확인하는 중", "파일"),
-        "FileWrite" or "FileEdit" => ("저장하는 중", "파일"),
-        _ => ("작업하는 중", ""),
+        // COM Office 실시간 편집(Desktop)
+        "PowerPointInspect" => ("슬라이드 읽는 중", "슬라이드 읽기"),
+        "PowerPointEdit" => ("슬라이드 편집 중", "슬라이드 편집"),
+        "ExcelInspect" => ("시트 읽는 중", "시트 읽기"),
+        // 문서 생성
+        "DocxCreate" => ("워드 문서 만드는 중", "워드 문서 생성"),
+        "XlsxCreate" => ("엑셀 문서 만드는 중", "엑셀 문서 생성"),
+        "PptxCreate" => ("발표자료 만드는 중", "발표자료 생성"),
+        "ImageCreate" => ("이미지 만드는 중", "이미지 생성"),
+        "OfficeDocInspect" => ("문서 살펴보는 중", "문서 점검"),
+        // 조직 문서함 / 검색
+        "OrgDocsUpload" => ("회사 문서함에 올리는 중", "업로드"),
+        "OrgDocs" or "OrgDocsList" => ("회사 문서함 검색하는 중", "문서함 검색"),
+        "OrgList" => ("소속 조직 확인하는 중", "조직 확인"),
+        "ChunkBuild" => ("문서 분석하는 중", "문서 분석"),
+        "ChunkFetch" or "ChunkSearch" => ("문서 내용 찾는 중", "내용 검색"),
+        "WebSearch" or "WebFetch" => ("웹 자료 찾는 중", "웹 검색"),
+        // 파일
+        "FileRead" or "Glob" or "Grep" => ("파일 확인하는 중", "파일 확인"),
+        "FileWrite" or "FileEdit" => ("파일 저장하는 중", "파일 저장"),
+        _ => ("작업하는 중", "작업"),
     };
 
-    private static string FriendlyStart(string tool)
-    {
-        var (verb, noun) = Phrase(tool);
-        return string.IsNullOrEmpty(noun) ? $"{verb}…" : $"{noun} {verb}…";
-    }
+    private static string FriendlyStart(string tool) => $"{Phrase(tool).Doing}…";
 
     private static string FriendlyDone(string tool, bool isError)
     {
-        var (_, noun) = Phrase(tool);
-        var head = string.IsNullOrEmpty(noun) ? "작업" : noun.TrimEnd('에');
-        return isError ? $"{head} 실패" : $"{head} 완료";
+        var label = Phrase(tool).Label;
+        return isError ? $"{label} 실패" : $"{label} 완료";
     }
 
     private bool TryDocument(string tool, string output, out DocumentProduced? doc)

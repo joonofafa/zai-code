@@ -13,8 +13,14 @@ public sealed record Settings
     public string? Model { get; init; }
     public string? BaseUrl { get; init; }
 
+    /// <summary>사용자 인터페이스 언어(ko|en). 기존 사용자 경험을 유지하기 위해 기본값은 ko.</summary>
+    public string Language { get; init; } = "ko";
+
     /// <summary>추론 강도 passthrough (예: low|medium|high). OpenAI 호환 chat/completions의 reasoning_effort로 전달.</summary>
     public string? ReasoningEffort { get; init; }
+
+    /// <summary>파일 로그 최소 레벨(trace|debug|info|warn|error|fatal|off). 기본 info. ~/.moai/logs/moai.log 로 기록.</summary>
+    public string? LogLevel { get; init; }
 
     /// <summary>로그인 호스트 (예: https://vip.bccard.ai). /usage 표시용.</summary>
     public string? Host { get; init; }

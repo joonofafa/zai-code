@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using MoaiCode.Config;
 
 namespace MoaiCode.Tools.Office;
 
@@ -21,15 +22,19 @@ public sealed class PowerPointSession
 
     private static PresentationInfo? Inspect(int maxSlides, int maxShapesPerSlide)
     {
+        MoaiLog.Debug($"PowerPointInspect: enter on thread apartment={System.Threading.Thread.CurrentThread.GetApartmentState()}");
+
         dynamic? app = ComInterop.TryGetActiveObject("PowerPoint.Application");
         if (app is null)
         {
+            MoaiLog.Warn("PowerPointInspect: no running PowerPoint instance (app is null)");
             return null; // PowerPoint 미실행
         }
 
-        dynamic? pres = TryGet(() => app.ActivePresentation);
+        dynamic? pres = TryGet(() => app.ActivePresentation, "app.ActivePresentation");
         if (pres is null)
         {
+            MoaiLog.Warn("PowerPointInspect: PowerPoint running but ActivePresentation is null (no open document?)");
             return null; // 열린 프레젠테이션 없음
         }
 
@@ -50,17 +55,18 @@ public sealed class PowerPointSession
             for (var j = 1; j <= shapeCount && shapes.Count < maxShapesPerSlide; j++)
             {
                 dynamic shape = slide.Shapes[j];
-                bool hasText = (bool)shape.HasTextFrame && (bool)shape.TextFrame.HasText;
+                bool hasTextFrame = TriBool(shape.HasTextFrame);
+                bool hasText = hasTextFrame && TriBool(shape.TextFrame.HasText);
                 string? text = hasText ? (string?)shape.TextFrame.TextRange.Text : null;
                 shapes.Add(new ShapeInfo(
                     ShapeId: (int)shape.Id,
                     Name: (string)shape.Name,
                     Text: text,
-                    Left: (double)shape.Left,
-                    Top: (double)shape.Top,
-                    Width: (double)shape.Width,
-                    Height: (double)shape.Height,
-                    HasTextFrame: (bool)shape.HasTextFrame));
+                    Left: Convert.ToDouble(shape.Left),
+                    Top: Convert.ToDouble(shape.Top),
+                    Width: Convert.ToDouble(shape.Width),
+                    Height: Convert.ToDouble(shape.Height),
+                    HasTextFrame: hasTextFrame));
             }
 
             slides.Add(new SlideInfo(
@@ -78,15 +84,24 @@ public sealed class PowerPointSession
             Slides: slides);
     }
 
-    // COM 속성 접근이 예외(문서 없음/보호된 보기 등)를 던지면 null 로 흡수.
-    private static T? TryGet<T>(Func<T> get)
+    // Office COM 의 불리언 속성은 bool 이 아니라 MsoTriState(int: msoTrue=-1, msoFalse=0)로 온다.
+    // dynamic 에서 (bool) 로 직접 캐스팅하면 RuntimeBinderException('int'->'bool') 이 나므로 int 로 변환한다.
+    private static bool TriBool(dynamic triState) => (int)triState != 0;
+
+    // COM 속성 접근이 예외(문서 없음/보호된 보기 등)를 던지면 null 로 흡수하되, 진단 로그를 남긴다.
+    private static T? TryGet<T>(Func<T> get, string? what = null)
     {
         try
         {
             return get();
         }
-        catch
+        catch (Exception ex)
         {
+            if (what is not null)
+            {
+                MoaiLog.Debug($"PowerPointInspect: COM access '{what}' failed: {ex.GetType().Name}: {ex.Message}");
+            }
+
             return default;
         }
     }

@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using MoaiCode.Config;
 using MoaiCode.Core.Tools;
 
 namespace MoaiCode.Tools.Office;
@@ -67,6 +68,7 @@ public sealed class PowerPointInspectTool : ITool
         catch (Exception ex)
         {
             error = ex.Message;
+            MoaiLog.Error("PowerPointInspect: inspection threw", ex);
         }
 
         if (error is not null)

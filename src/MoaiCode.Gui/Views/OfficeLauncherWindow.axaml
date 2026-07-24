@@ -1,0 +1,57 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="MoaiCode.Gui.Views.OfficeLauncherWindow"
+        Title="새로운 오피스 문서 작업"
+        Width="440" Height="440"
+        CanResize="False"
+        Background="{DynamicResource BgWindowBrush}"
+        FontFamily="avares://Avalonia.Fonts.Inter/Assets#Inter"
+        WindowStartupLocation="CenterOwner">
+
+  <Grid Margin="26,24,26,22" RowDefinitions="Auto,Auto,*,Auto,Auto">
+
+    <TextBlock Grid.Row="0" Text="새로운 오피스 문서 작업" FontSize="18" FontWeight="Bold"
+               Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,4" />
+    <TextBlock Grid.Row="1" Text="현재 켜져 있는 Office 문서" FontSize="11.5" FontWeight="SemiBold"
+               Foreground="{DynamicResource TextMutedBrush}" Margin="0,8,0,8" />
+
+    <!-- 열린 Office 목록 (없으면 안내 문구) -->
+    <Border Grid.Row="2" Background="{DynamicResource BgInputBrush}" CornerRadius="12"
+            BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1" Padding="6">
+      <Panel>
+        <ListBox x:Name="OpenList" Background="Transparent" BorderThickness="0"
+                 SelectionChanged="OnOpenDocSelected">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="9" Margin="2">
+                <TextBlock Text="📄" FontSize="14" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding Display}" FontSize="13" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+        <TextBlock x:Name="EmptyLabel" Text="켜져있는 오피스 툴이 없습니다"
+                   IsVisible="False" FontSize="13" Foreground="{DynamicResource TextMutedBrush}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+      </Panel>
+    </Border>
+
+    <!-- 구분선 -->
+    <Border Grid.Row="3" Height="1" Background="{DynamicResource BorderSoftBrush}" Margin="0,16,0,14" />
+
+    <!-- 새로운 문서 작업 → 앱 선택 -->
+    <StackPanel Grid.Row="4" Spacing="12">
+      <Button x:Name="NewDocBtn" Classes="accent" HorizontalAlignment="Stretch"
+              Content="새로운 문서 작업" Click="OnNewDoc" />
+      <StackPanel x:Name="AppButtons" Orientation="Horizontal" IsVisible="False" Spacing="10">
+        <Button Classes="ghost" Content="📊  PowerPoint" Click="OnLaunchPowerPoint"
+                HorizontalAlignment="Stretch" Width="128" />
+        <Button Classes="ghost" Content="📝  Word" Click="OnLaunchWord"
+                HorizontalAlignment="Stretch" Width="128" />
+        <Button Classes="ghost" Content="📈  Excel" Click="OnLaunchExcel"
+                HorizontalAlignment="Stretch" Width="128" />
+      </StackPanel>
+    </StackPanel>
+  </Grid>
+</Window>

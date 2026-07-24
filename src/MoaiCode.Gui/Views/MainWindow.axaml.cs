@@ -72,6 +72,17 @@ public partial class MainWindow : Window
         }
     }
 
+    // 홈 "새로운 오피스 문서 작업" — 열린 Office 목록 + 앱 실행 창.
+    // 열린 문서를 고르면 그 문서로 COM 세션을 열고 채팅을 시작한다.
+    private async void OnOfficeDocClick(object? sender, RoutedEventArgs e)
+    {
+        var doc = await new OfficeLauncherWindow().PickAsync(this);
+        if (doc is not null && DataContext is MainViewModel vm)
+        {
+            vm.OpenOfficeSession(doc);
+        }
+    }
+
     // 조직 문서함 검색(모드 B) — RAG 검색 다이얼로그 → 선택 스니펫을 참조로 첨부.
     private async void OnOrgClick(object? sender, RoutedEventArgs e)
     {

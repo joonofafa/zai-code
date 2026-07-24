@@ -1,5 +1,6 @@
 using System.Text.Json;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Config;
 
@@ -63,6 +64,8 @@ public static class SettingsLoader
                 Model = GetString(root, "model", "model_id") ?? baseline.Model,
                 Provider = GetString(root, "provider") ?? baseline.Provider,
                 BaseUrl = GetString(root, "baseUrl", "base_url") ?? baseline.BaseUrl,
+                Language = L10n.NormalizeLanguage(GetString(root, "language", "locale", "uiLanguage", "ui_language"))
+                           ?? baseline.Language,
                 ReasoningEffort = NormalizeEffort(GetString(root, "reasoningEffort", "reasoning_effort", "effort"))
                                   ?? baseline.ReasoningEffort,
                 Host = GetString(root, "host") ?? baseline.Host,
@@ -76,6 +79,7 @@ public static class SettingsLoader
                 ProxyBypass = GetString(root, "proxyBypass", "proxy_bypass", "noProxy") ?? baseline.ProxyBypass,
                 Permission = ParsePermission(GetString(root, "permission", "permissionMode"))
                              ?? baseline.Permission,
+                LogLevel = GetString(root, "logLevel", "log_level") ?? baseline.LogLevel,
                 MaxTurns = GetInt(root, "maxTurns", "max_turns") ?? baseline.MaxTurns,
                 OutputStyle = GetString(root, "outputStyle", "output_style") ?? baseline.OutputStyle,
                 LintCommand = GetString(root, "lintCommand", "lint_cmd", "lintCmd") ?? baseline.LintCommand,
@@ -101,6 +105,7 @@ public static class SettingsLoader
         var model = Environment.GetEnvironmentVariable("MOAI_MODEL")
                     ?? Environment.GetEnvironmentVariable("OPENAI_MODEL");
         var baseUrl = Environment.GetEnvironmentVariable("OPENAI_BASE_URL");
+        var language = L10n.NormalizeLanguage(Environment.GetEnvironmentVariable("MOAI_LANGUAGE"));
         var effort = NormalizeEffort(Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT")
                                      ?? Environment.GetEnvironmentVariable("OPENAI_REASONING_EFFORT")
                                      ?? Environment.GetEnvironmentVariable("MOAI_EFFORT"));
@@ -122,6 +127,7 @@ public static class SettingsLoader
         {
             Model = model ?? baseline.Model,
             BaseUrl = baseUrl ?? baseline.BaseUrl,
+            Language = language ?? baseline.Language,
             ReasoningEffort = effort ?? baseline.ReasoningEffort,
             ProxyUrl = proxy ?? baseline.ProxyUrl,
             Permission = perm ?? baseline.Permission,

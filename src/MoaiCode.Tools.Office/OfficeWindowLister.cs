@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MoaiCode.Config;
 
 namespace MoaiCode.Tools.Office;
 
@@ -46,15 +47,47 @@ public static class OfficeWindowLister
                 {
                     list.Add(new OfficeDoc(appName, (string)item.Name, progId));
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // 개별 항목 접근 실패는 건너뜀.
+                    MoaiLog.Debug($"OfficeList: skip one {appName} item: {ex.GetType().Name}");
                 }
             }
         }
+        catch (Exception ex)
+        {
+            MoaiLog.Debug($"OfficeList: {appName} not available: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    /// <summary>Office 앱을 새로 실행한다("PowerPoint"|"Word"|"Excel"). Windows 전용.</summary>
+    public static bool Launch(string app)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return false;
+        }
+
+        var exe = app switch
+        {
+            "PowerPoint" => "powerpnt",
+            "Word" => "winword",
+            "Excel" => "excel",
+            _ => null,
+        };
+        if (exe is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            // App Paths 레지스트리로 실행 파일 해석 → ShellExecute 필요.
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe) { UseShellExecute = true });
+            return true;
+        }
         catch
         {
-            // 해당 앱 미실행/COM 차단 — 건너뜀.
+            return false;
         }
     }
 
@@ -71,6 +104,7 @@ public static class OfficeWindowLister
             dynamic? app = ComInterop.TryGetActiveObject(doc.ProgId);
             if (app is null)
             {
+                MoaiLog.Warn($"OfficeActivate: cannot reach {doc.App} via COM (app is null)");
                 return false;
             }
 
@@ -98,9 +132,12 @@ public static class OfficeWindowLister
 
                     break;
             }
+
+            MoaiLog.Warn($"OfficeActivate: document '{doc.Name}' not found among open {doc.App} docs");
         }
-        catch
+        catch (Exception ex)
         {
+            MoaiLog.Error($"OfficeActivate: {doc.App} '{doc.Name}' threw", ex);
             return false;
         }
 

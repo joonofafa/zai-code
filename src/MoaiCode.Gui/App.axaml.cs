@@ -28,6 +28,10 @@ public partial class App : Application
             var startupSettings = MoaiCode.Config.SettingsLoader.Load(System.IO.Directory.GetCurrentDirectory());
             L10n.SetLanguage(startupSettings.Language);
 
+            // 파일 로그 레벨 적용(settings.json의 logLevel, 기본 info) 후 시작 기록.
+            MoaiCode.Config.MoaiLog.Configure(startupSettings.LogLevel);
+            MoaiCode.Config.MoaiLog.Info($"MoAI Desktop started (logLevel={MoaiCode.Config.MoaiLog.MinLevel})");
+
             // 트레이 상주 — 창을 닫아도 프로세스가 종료되지 않는다(백그라운드 폴더 동기화 유지).
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 

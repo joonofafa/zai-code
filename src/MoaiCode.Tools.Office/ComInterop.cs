@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using MoaiCode.Config;
 
 namespace MoaiCode.Tools.Office;
 
@@ -19,16 +20,32 @@ internal static class ComInterop
             var type = Type.GetTypeFromProgID(progId);
             if (type is null)
             {
+                MoaiLog.Warn($"COM: ProgID '{progId}' not registered (Office not installed?)");
                 return null;
             }
 
             var clsid = type.GUID;
             var hr = GetActiveObject(ref clsid, IntPtr.Zero, out var obj);
-            return hr == 0 ? obj : null;
+            if (hr != 0)
+            {
+                // 0x800401E3 (MK_E_UNAVAILABLE): running instance not in ROT for THIS
+                // desktop/integrity level -> usually a UAC elevation mismatch between this
+                // app and the Office process, or the doc is not registered in the ROT.
+                MoaiLog.Warn(
+                    $"COM: GetActiveObject('{progId}') hr=0x{(uint)hr:X8}" +
+                    (hr == unchecked((int)0x800401E3)
+                        ? " (MK_E_UNAVAILABLE: no running instance visible; check UAC/elevation mismatch)"
+                        : string.Empty));
+                return null;
+            }
+
+            MoaiLog.Debug($"COM: GetActiveObject('{progId}') ok, thread STA={System.Threading.Thread.CurrentThread.GetApartmentState()}");
+            return obj;
         }
-        catch (COMException)
+        catch (Exception ex)
         {
-            return null; // MK_E_UNAVAILABLE 등 — 실행 중인 인스턴스 없음
+            MoaiLog.Error($"COM: GetActiveObject('{progId}') threw", ex);
+            return null;
         }
     }
 

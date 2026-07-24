@@ -1,4 +1,6 @@
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace MoaiCode.Gui.ViewModels;
 
@@ -22,6 +24,33 @@ public sealed partial class ActivityItem : ChatItem
 {
     [ObservableProperty] private string _text = string.Empty;
     [ObservableProperty] private bool _done;
+}
+
+/// <summary>라이브 편집 전 확인 카드(미리보기 게이트). 사용자가 [적용]/[취소] 를 누르면 Tcs 로 결과 전달.</summary>
+public sealed partial class ConfirmItem : ChatItem
+{
+    [ObservableProperty] private string _text = string.Empty;
+    [ObservableProperty] private bool _decided;
+    [ObservableProperty] private string _resultLabel = string.Empty;
+
+    /// <summary>게이트가 대기 중인 결정. 버튼 클릭 시 완료된다.</summary>
+    public TaskCompletionSource<bool>? Tcs { get; init; }
+
+    [RelayCommand] private void Approve() => Decide(true, "✓ 적용함");
+
+    [RelayCommand] private void Reject() => Decide(false, "✕ 취소함");
+
+    private void Decide(bool ok, string label)
+    {
+        if (Decided)
+        {
+            return;
+        }
+
+        Decided = true;
+        ResultLabel = label;
+        Tcs?.TrySetResult(ok);
+    }
 }
 
 /// <summary>생성된 문서 카드.</summary>
