@@ -552,7 +552,8 @@ public sealed partial class MainViewModel : ObservableObject
         _transcript.Add(new TurnLine("user", text));
         IsBusy = true;
 
-        // 프롬프트 직후 즉시 '작업 중…' 표시(네트워크/추론 대기 동안 피드백 — 프리징 오해 방지).
+        // '작업 중…' 바운스를 항상 맨 아래에 유지한다(도구 사이·최종 답변 전 빈 구간에도 멈춰 보이지 않게).
+        // 새 항목(배지·문서·답변)은 이 인디케이터 '위'에 삽입하고, 인디케이터는 finally 에서만 제거한다.
         var thinking = new ActivityItem { Text = "작업 중…", Done = false };
         Items.Add(thinking);
         RequestScroll();
@@ -563,6 +564,20 @@ public sealed partial class MainViewModel : ObservableObject
             {
                 thinkingRemoved = true;
                 Items.Remove(thinking);
+            }
+        }
+
+        // 진행 인디케이터 위(=맨 아래 직전)에 항목을 삽입한다.
+        void AddAbove(ChatItem item)
+        {
+            var idx = Items.IndexOf(thinking);
+            if (idx >= 0)
+            {
+                Items.Insert(idx, item);
+            }
+            else
+            {
+                Items.Add(item);
             }
         }
 
@@ -593,7 +608,12 @@ public sealed partial class MainViewModel : ObservableObject
                     sb.Clear();
                     await Dispatcher.UIThread.InvokeAsync(() =>
                     {
-                        assistant ??= AddAssistant();
+                        if (assistant is null)
+                        {
+                            assistant = new AssistantItem();
+                            AddAbove(assistant); // 답변 말풍선은 진행 인디케이터 위에
+                        }
+
                         assistant.Text += chunk;
                         RequestScroll();
                     });
@@ -607,7 +627,6 @@ public sealed partial class MainViewModel : ObservableObject
                             sb.Append(a.Text);
                             if (sw.ElapsedMilliseconds >= 60)
                             {
-                                await Dispatcher.UIThread.InvokeAsync(RemoveThinking);
                                 await FlushText();
                                 sw.Restart();
                             }
@@ -618,11 +637,10 @@ public sealed partial class MainViewModel : ObservableObject
                             await FlushText();
                             await Dispatcher.UIThread.InvokeAsync(() =>
                             {
-                                RemoveThinking();
                                 assistant = null; // 이후 답변은 새 말풍선으로(순서 유지)
                                 var act = new ActivityItem { Text = s.Text };
                                 pending.Add(act);
-                                Items.Add(act);
+                                AddAbove(act);
                                 RequestScroll();
                             });
                             break;
@@ -645,7 +663,6 @@ public sealed partial class MainViewModel : ObservableObject
                             await FlushText();
                             await Dispatcher.UIThread.InvokeAsync(() =>
                             {
-                                RemoveThinking();
                                 assistant = null;
                                 // 편집 세션이 아니면 '문서 생성' 세션으로 분류(히스토리 배지용).
                                 if (_sessionKind != "edit")
@@ -653,7 +670,7 @@ public sealed partial class MainViewModel : ObservableObject
                                     _sessionKind = "generate";
                                 }
 
-                                Items.Add(new DocumentItem { Icon = doc.Icon, Kind = doc.Kind, FileName = doc.FileName, Path = doc.Path });
+                                AddAbove(new DocumentItem { Icon = doc.Icon, Kind = doc.Kind, FileName = doc.FileName, Path = doc.Path });
                                 RequestScroll();
                             });
                             break;
@@ -712,12 +729,6 @@ public sealed partial class MainViewModel : ObservableObject
         return MoaiCode.Config.MoaiLog.FilePath;
     }
 
-    private AssistantItem AddAssistant()
-    {
-        var a = new AssistantItem();
-        Items.Add(a);
-        return a;
-    }
 
     // 문서당 컨텍스트 주입 상한(대형 단일 문서 방어; 초과분 축약은 TODO — 로컬 검색으로 대체 예정).
     private const int PerRefCharCap = 30000;
