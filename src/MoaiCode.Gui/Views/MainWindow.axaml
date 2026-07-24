@@ -179,8 +179,9 @@
         <!-- 채팅 -->
         <DockPanel IsVisible="{Binding IsChatVisible}">
 
-          <!-- 하단 작성 영역 -->
-          <StackPanel DockPanel.Dock="Bottom" Margin="24,8,24,20" Spacing="12">
+          <!-- 하단 작성 영역 (채팅 본문과 같은 760 중앙 정렬) -->
+          <StackPanel DockPanel.Dock="Bottom" Margin="24,8,24,20" Spacing="12"
+                      MaxWidth="760" HorizontalAlignment="Center">
 
             <!-- 활성 대상 칩: 편집 모드일 때 대상 문서·적용 범위·해제 -->
             <Border IsVisible="{Binding IsDocConnected}" Background="{DynamicResource AccentSoftBrush}"
@@ -312,6 +313,22 @@
                                  HorizontalAlignment="Right" Foreground="{DynamicResource TextMutedBrush}" />
                     </StackPanel>
                   </Border>
+                </DataTemplate>
+
+                <!-- 추천 질문(클릭 버튼) -->
+                <DataTemplate DataType="vm:SuggestionItem">
+                  <ItemsControl ItemsSource="{Binding Suggestions}" HorizontalAlignment="Left" MaxWidth="620">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Button Classes="suggestion" Content="{Binding}" Margin="0,0,8,8"
+                                Command="{Binding $parent[Window].DataContext.UseSuggestionCommand}"
+                                CommandParameter="{Binding}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
                 </DataTemplate>
 
                 <!-- 문서 카드 -->

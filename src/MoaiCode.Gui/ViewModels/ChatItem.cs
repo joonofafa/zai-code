@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -51,6 +53,12 @@ public sealed partial class ConfirmItem : ChatItem
         ResultLabel = label;
         Tcs?.TrySetResult(ok);
     }
+}
+
+/// <summary>클릭 가능한 추천 질문 묶음(편집 세션 진입 시 등).</summary>
+public sealed class SuggestionItem : ChatItem
+{
+    public IReadOnlyList<string> Suggestions { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>생성된 문서 카드.</summary>

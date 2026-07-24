@@ -332,15 +332,58 @@ public sealed partial class MainViewModel : ObservableObject
         ShowSettings = false;
         ShowHome = false; // 채팅 화면 표시
 
-        Items.Add(new AssistantItem
+        if (connected)
         {
-            Text = connected
-                ? $"**{doc.Display}** 에 연결했어요. 이 문서에 대해 무엇을 할까요?\n" +
-                  "예) \"3번 슬라이드에 매출 차트 넣어줘\", \"표지 디자인 다듬어줘\""
-                : $"**{doc.Display}** 에 연결을 시도했지만 응답이 없어요. " +
-                  "문서가 아직 열려 있는지 확인한 뒤 다시 시도해 주세요.",
-        });
+            Items.Add(new AssistantItem { Text = $"**{doc.Display}** 에 연결했어요. 무엇을 할까요?" });
+            Items.Add(new SuggestionItem { Suggestions = SuggestionsFor(doc.App) });
+        }
+        else
+        {
+            Items.Add(new AssistantItem
+            {
+                Text = $"**{doc.Display}** 에 연결을 시도했지만 응답이 없어요. " +
+                       "문서가 아직 열려 있는지 확인한 뒤 다시 시도해 주세요.",
+            });
+        }
+
         RequestScroll();
+    }
+
+    // 편집 세션 진입 시 앱별 추천 질문(클릭 버튼).
+    private static IReadOnlyList<string> SuggestionsFor(string app) => app switch
+    {
+        "PowerPoint" => new[]
+        {
+            "현재 슬라이드 내용을 더 풍성하게 만들어줘",
+            "선택한 도형 배경색을 파란색으로 바꿔줘",
+            "표지 디자인을 더 깔끔하게 다듬어줘",
+        },
+        "Excel" => new[]
+        {
+            "선택한 표를 요약해줘",
+            "이 데이터로 차트를 제안해줘",
+            "머리글 행을 굵게 강조해줘",
+        },
+        "Word" => new[]
+        {
+            "이 문단을 더 간결하게 다듬어줘",
+            "제목 스타일을 정리해줘",
+            "맞춤법과 문장을 매끄럽게 고쳐줘",
+        },
+        _ => new[] { "이 문서를 요약해줘", "개선할 점을 알려줘" },
+    };
+
+    /// <summary>추천 질문 버튼 클릭 → 해당 질문으로 바로 전송.</summary>
+    [RelayCommand]
+    private async Task UseSuggestion(string? question)
+    {
+        if (IsBusy || string.IsNullOrWhiteSpace(question))
+        {
+            return;
+        }
+
+        Input = question;
+        await Send();
     }
 
     /// <summary>사이드바 '열린 문서' 런처에서 문서를 클릭 → 그 문서로 편집 세션 시작.</summary>

@@ -125,6 +125,23 @@
     <Setter Property="TextBlock.Foreground" Value="{DynamicResource TextPrimaryBrush}" />
   </Style>
 
+  <!-- 추천 질문 pill(아웃라인) -->
+  <Style Selector="Button.suggestion">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSoftBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="16" />
+    <Setter Property="Padding" Value="13,7" />
+    <Setter Property="FontSize" Value="12.5" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.suggestion:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentHoverBrush}" />
+    <Setter Property="TextBlock.Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+  </Style>
+
   <!-- 홈 화면 타일(창문 모양 버튼) -->
   <Style Selector="Button.tile">
     <Setter Property="Background" Value="{DynamicResource BgCardBrush}" />
