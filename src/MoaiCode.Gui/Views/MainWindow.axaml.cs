@@ -35,11 +35,24 @@ public partial class MainWindow : Window
 
     private void ScrollChatToEnd()
     {
-        // 새 콘텐츠 배치 후 스크롤. 배치 타이밍에 따라 한 번으로는 끝까지 못 가는 경우가 있어
-        // Background(배치 직후)와 Loaded(레이아웃 확정 후) 두 우선순위로 각각 호출한다.
-        void Scroll() => this.FindControl<ScrollViewer>("ChatScroll")?.ScrollToEnd();
-        Dispatcher.UIThread.Post(Scroll, DispatcherPriority.Background);
-        Dispatcher.UIThread.Post(Scroll, DispatcherPriority.Loaded);
+        var sv = this.FindControl<ScrollViewer>("ChatScroll");
+        if (sv is null)
+        {
+            return;
+        }
+
+        // 새 콘텐츠(특히 방금 추가된 마지막 카드)는 이 호출 시점엔 아직 배치 전이라
+        // 즉시 ScrollToEnd 하면 끝까지 못 간다. 다음 레이아웃이 끝나는 순간(LayoutUpdated)에
+        // 한 번 더 스크롤하고 핸들러를 해제한다(1회성).
+        void OnLayoutUpdated(object? sender, EventArgs e)
+        {
+            sv.LayoutUpdated -= OnLayoutUpdated;
+            sv.ScrollToEnd();
+        }
+
+        sv.LayoutUpdated -= OnLayoutUpdated; // 중복 구독 방지
+        sv.LayoutUpdated += OnLayoutUpdated;
+        sv.ScrollToEnd();
     }
 
     // 참조 문서 첨부(모드 B) — 로컬 파일 다중 선택 → ViewModel 에 원문 추출 위임.
