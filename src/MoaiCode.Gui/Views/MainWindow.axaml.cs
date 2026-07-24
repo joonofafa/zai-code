@@ -72,6 +72,17 @@ public partial class MainWindow : Window
         }
     }
 
+    // 활성 대상 칩(App 버튼) → 연결 해제 확인 팝업의 [연결 해제]. Flyout 을 먼저 닫아
+    // 해제 후 빈 값('( · )')으로 재표시되는 것을 막는다.
+    private void OnDetachConfirm(object? sender, RoutedEventArgs e)
+    {
+        (this.FindControl<Button>("DocButton")?.Flyout as Avalonia.Controls.Flyout)?.Hide();
+        if (DataContext is MainViewModel vm)
+        {
+            vm.DetachDocCommand.Execute(null);
+        }
+    }
+
     // 홈 "새로운 오피스 문서 작업" — 열린 Office 목록 + 앱 실행 창.
     // 열린 문서를 고르면 그 문서로 COM 세션을 열고 채팅을 시작한다.
     private async void OnOfficeDocClick(object? sender, RoutedEventArgs e)

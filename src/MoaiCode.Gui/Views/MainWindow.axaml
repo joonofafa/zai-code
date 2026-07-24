@@ -174,12 +174,12 @@
                      FontSize="13" Foreground="{DynamicResource TextMutedBrush}" />
         </Grid>
 
-        <!-- 채팅 -->
-        <DockPanel IsVisible="{Binding IsChatVisible}">
+        <!-- 채팅: 상=스크롤(*), 하=입력(Auto). Grid 2행으로 겹침 없이 분리(스크롤 끝까지 보장). -->
+        <Grid IsVisible="{Binding IsChatVisible}" RowDefinitions="*,Auto">
 
           <!-- 하단 작성 영역: 대칭 star 컬럼으로 채팅 본문과 같은 760 중앙 고정.
                (Stretch+MaxWidth 는 Avalonia 에서 좌측 편향, Center 는 칩 유무에 폭 쪼그라듦 → 대칭 star 로 해결) -->
-          <Grid DockPanel.Dock="Bottom" Margin="0,8,0,20">
+          <Grid Grid.Row="1" Margin="0,8,0,20">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="*" />
               <ColumnDefinition Width="3*" MaxWidth="760" />
@@ -217,7 +217,7 @@
                     BorderThickness="1.5" Padding="8,6">
               <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
                 <!-- 연결된 문서(앱) 버튼: 클릭 시 해제 확인 -->
-                <Button Grid.Column="0" IsVisible="{Binding IsDocConnected}" Classes="ghost"
+                <Button Grid.Column="0" x:Name="DocButton" IsVisible="{Binding IsDocConnected}" Classes="ghost"
                         VerticalAlignment="Center" Padding="8" ToolTip.Tip="연결된 문서 · 클릭하여 해제">
                   <Path Data="{Binding ActiveDocApp, Converter={x:Static vm:Converters.AppIcon}}"
                         Stroke="{Binding ActiveDocApp, Converter={x:Static vm:Converters.AppBrush}}"
@@ -229,7 +229,7 @@
                         <TextBlock Text="{Binding DetachPrompt}" TextWrapping="Wrap" FontSize="13"
                                    Foreground="{DynamicResource TextPrimaryBrush}" />
                         <Button Classes="accent" Content="연결 해제" HorizontalAlignment="Right"
-                                Command="{Binding DetachDocCommand}" />
+                                Click="OnDetachConfirm" />
                       </StackPanel>
                     </Flyout>
                   </Button.Flyout>
@@ -257,7 +257,7 @@
           </Grid>
 
           <!-- 채팅 스크롤 -->
-          <ScrollViewer x:Name="ChatScroll" Padding="28,22,28,24" VerticalScrollBarVisibility="Auto"
+          <ScrollViewer Grid.Row="0" x:Name="ChatScroll" Padding="28,22,28,24" VerticalScrollBarVisibility="Auto"
                         HorizontalScrollBarVisibility="Disabled">
             <ItemsControl ItemsSource="{Binding Items}" MaxWidth="760" HorizontalAlignment="Center"
                           VerticalAlignment="Top">
@@ -375,7 +375,7 @@
               </ItemsControl.DataTemplates>
             </ItemsControl>
           </ScrollViewer>
-        </DockPanel>
+        </Grid>
       </Panel>
     </Grid>
   </Grid>

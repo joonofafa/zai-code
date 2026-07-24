@@ -113,21 +113,36 @@ public static class OfficeWindowLister
                 case "PowerPoint":
                     foreach (var p in app.Presentations)
                     {
-                        if ((string)p.Name == doc.Name) { p.Windows.Item(1).Activate(); return true; }
+                        if ((string)p.Name == doc.Name)
+                        {
+                            p.Windows.Item(1).Activate();
+                            BringAppToFront(app);
+                            return true;
+                        }
                     }
 
                     break;
                 case "Excel":
                     foreach (var w in app.Workbooks)
                     {
-                        if ((string)w.Name == doc.Name) { w.Activate(); return true; }
+                        if ((string)w.Name == doc.Name)
+                        {
+                            w.Activate();
+                            BringAppToFront(app);
+                            return true;
+                        }
                     }
 
                     break;
                 case "Word":
                     foreach (var d in app.Documents)
                     {
-                        if ((string)d.Name == doc.Name) { d.Activate(); return true; }
+                        if ((string)d.Name == doc.Name)
+                        {
+                            d.Activate();
+                            BringAppToFront(app);
+                            return true;
+                        }
                     }
 
                     break;
@@ -142,5 +157,27 @@ public static class OfficeWindowLister
         }
 
         return false;
+    }
+
+    // 오피스 앱 창을 화면 앞으로. 문서 Activate 만으로는 앱 창이 뒤에 남을 수 있어 앱 자체도 활성화한다.
+    private static void BringAppToFront(dynamic app)
+    {
+        try
+        {
+            app.Visible = true; // 최소화/숨김 상태 복원
+        }
+        catch
+        {
+            // Visible 미지원/차단 — 무시.
+        }
+
+        try
+        {
+            app.Activate(); // 앱 창을 포그라운드로
+        }
+        catch
+        {
+            // Activate 실패 — 무시.
+        }
     }
 }
