@@ -225,7 +225,38 @@ public sealed class PowerPointEditTool : ITool
                     throw new InvalidOperationException($"도형 '{(string)shape.Name}' 은 텍스트 프레임이 없습니다.");
                 }
 
-                shape.TextFrame.TextRange.Text = inp.Text;
+                dynamic textRange = shape.TextFrame.TextRange;
+
+                // 텍스트를 길게 바꾸면 PowerPoint 자동맞춤(AutoFit)이 폰트를 극단적으로 축소(예: 3pt)한다.
+                // 원래 폰트 크기를 기억했다가 교체 후 복원해 크기를 보존한다(Font.Size 는 Single).
+                float? keepSize = null;
+                try
+                {
+                    var sz = (float)textRange.Font.Size;
+                    if (sz > 0)
+                    {
+                        keepSize = sz;
+                    }
+                }
+                catch
+                {
+                    // 여러 크기가 섞여 있으면(ppfMixed) 보존 생략.
+                }
+
+                textRange.Text = inp.Text;
+
+                if (keepSize is > 0)
+                {
+                    try
+                    {
+                        textRange.Font.Size = keepSize.Value;
+                    }
+                    catch
+                    {
+                        // 크기 복원 실패는 무시(텍스트 변경 자체는 성공).
+                    }
+                }
+
                 break;
 
             case "set_fill":

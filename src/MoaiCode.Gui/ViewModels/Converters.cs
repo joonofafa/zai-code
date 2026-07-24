@@ -32,6 +32,27 @@ public static class Converters
         _ => "Icon.FileText",
     }));
 
+    // 입력창 윤곽선: 편집 연결 중이면 앱 색, 아니면 테마 기본 테두리.
+    public static readonly IValueConverter InputOutline = new FuncValueConverter<string?, IBrush?>(app =>
+    {
+        var hex = app switch
+        {
+            "PowerPoint" => "#D24726",
+            "Excel" => "#217346",
+            "Word" => "#2B579A",
+            _ => null,
+        };
+        if (hex is not null)
+        {
+            return new SolidColorBrush(Color.Parse(hex));
+        }
+
+        return Application.Current?.Resources.TryGetResource(
+            "BorderSoftBrush", Application.Current.ActualThemeVariant, out var b) == true
+            ? b as IBrush
+            : null;
+    });
+
     private static Geometry? Resolve(string? key)
     {
         if (string.IsNullOrEmpty(key) || Application.Current is null)

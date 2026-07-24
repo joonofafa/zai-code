@@ -91,17 +91,18 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>현재 세션이 열린 Office 문서에 연결(편집 모드)돼 있는지.</summary>
     [ObservableProperty] private bool _isDocConnected;
 
-    /// <summary>칩에 표시할 활성 대상 라벨(예: "보고서.pptx").</summary>
-    [ObservableProperty] private string _activeDocName = string.Empty;
+    /// <summary>활성 대상 문서 이름(예: "보고서.pptx").</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DetachPrompt))]
+    private string _activeDocName = string.Empty;
 
-    /// <summary>활성 대상 앱(PowerPoint/Word/Excel) — 칩 보조 표기.</summary>
-    [ObservableProperty] private string _activeDocApp = string.Empty;
+    /// <summary>활성 대상 앱(PowerPoint/Word/Excel).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DetachPrompt))]
+    private string _activeDocApp = string.Empty;
 
-    /// <summary>편집 적용 범위 선택지.</summary>
-    public ObservableCollection<string> ActiveScopes { get; } =
-        new() { "현재 선택 영역", "문서 전체" };
-
-    [ObservableProperty] private string _activeScope = "현재 선택 영역";
+    /// <summary>연결 해제 확인 문구(입력창 좌측 앱 버튼의 팝업).</summary>
+    public string DetachPrompt => $"({ActiveDocApp} · {ActiveDocName}) 연결을 해제할까요?";
 
     // 현재 세션 분류(저장 메타). generate 는 문서 생성이 일어나면 승격.
     private string _sessionKind = "chat";
@@ -777,13 +778,12 @@ public sealed partial class MainViewModel : ObservableObject
     // 첨부 참조가 있으면 원문을 프롬프트 앞에 붙여 넣는다(모드 B: 청킹 없이 통째로).
     private string ComposePrompt(string userText)
     {
-        // 활성 대상 문서(편집 모드)면 대상·적용 범위를 컨텍스트로 명시한다.
+        // 활성 대상 문서(편집 모드)면 대상을 컨텍스트로 명시한다.
+        // 기본 대상은 사용자가 PowerPoint 등에서 선택한 영역/도형이다.
         var docContext = IsDocConnected
             ? $"[작업 대상] 현재 열려 있는 {ActiveDocApp} 문서 '{ActiveDocName}' 를 COM 으로 편집합니다. " +
-              $"적용 범위: {ActiveScope}. " +
-              (ActiveScope == "현재 선택 영역"
-                  ? "사용자가 선택한 영역/도형을 대상으로 하세요(slide_index·shape_id 를 지정하지 말고 현재 선택을 사용)."
-                  : "문서 전체를 대상으로 하세요.") + "\n\n"
+              "특별한 지시가 없으면 사용자가 선택한 영역/도형을 대상으로 하세요" +
+              "(slide_index·shape_id 를 지정하지 말고 현재 선택을 사용). 문서 전체가 필요하면 명시적으로 처리하세요.\n\n"
             : string.Empty;
 
         if (References.Count == 0)
