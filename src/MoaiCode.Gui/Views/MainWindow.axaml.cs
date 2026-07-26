@@ -47,8 +47,8 @@ public partial class MainWindow : Window
         var passes = 0;
         void OnLayoutUpdated(object? sender, EventArgs e)
         {
-            sv.ScrollToEnd();
-            if (++passes >= 4)
+            ScrollToBottom(sv);
+            if (++passes >= 6)
             {
                 sv.LayoutUpdated -= OnLayoutUpdated;
             }
@@ -57,7 +57,15 @@ public partial class MainWindow : Window
         sv.LayoutUpdated -= OnLayoutUpdated; // 중복 구독 방지
         passes = 0;
         sv.LayoutUpdated += OnLayoutUpdated;
+        ScrollToBottom(sv);
+    }
+
+    // ScrollToEnd() 만으로는 배치 타이밍상 끝까지 못 가는 경우가 있어, Offset 을 콘텐츠 최대
+    // 높이로 직접 설정한다(ScrollViewer 가 유효 범위로 자동 clamp).
+    private static void ScrollToBottom(ScrollViewer sv)
+    {
         sv.ScrollToEnd();
+        sv.Offset = new Avalonia.Vector(sv.Offset.X, sv.Extent.Height);
     }
 
     // 참조 문서 첨부(모드 B) — 로컬 파일 다중 선택 → ViewModel 에 원문 추출 위임.
