@@ -41,16 +41,21 @@ public partial class MainWindow : Window
             return;
         }
 
-        // 새 콘텐츠(특히 방금 추가된 마지막 카드)는 이 호출 시점엔 아직 배치 전이라
-        // 즉시 ScrollToEnd 하면 끝까지 못 간다. 다음 레이아웃이 끝나는 순간(LayoutUpdated)에
-        // 한 번 더 스크롤하고 핸들러를 해제한다(1회성).
+        // 새 콘텐츠(마지막 카드/스트리밍 중인 MarkdownBlock)는 이 호출 시점엔 아직 배치 전이라
+        // 즉시 ScrollToEnd 하면 끝까지 못 간다. 스트리밍 중 높이는 여러 레이아웃 패스에 걸쳐
+        // 늘어나므로, 몇 프레임 동안 LayoutUpdated 마다 ScrollToEnd 한 뒤 해제한다.
+        var passes = 0;
         void OnLayoutUpdated(object? sender, EventArgs e)
         {
-            sv.LayoutUpdated -= OnLayoutUpdated;
             sv.ScrollToEnd();
+            if (++passes >= 4)
+            {
+                sv.LayoutUpdated -= OnLayoutUpdated;
+            }
         }
 
         sv.LayoutUpdated -= OnLayoutUpdated; // 중복 구독 방지
+        passes = 0;
         sv.LayoutUpdated += OnLayoutUpdated;
         sv.ScrollToEnd();
     }

@@ -492,16 +492,25 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var item = new ConfirmItem
+        {
+            Text = summary,
+            Tcs = tcs,
+            OnApproveAll = () => _autoApproveEdits = true,
+        };
+
         Dispatcher.UIThread.Post(() =>
         {
-            Items.Add(new ConfirmItem
-            {
-                Text = summary,
-                Tcs = tcs,
-                OnApproveAll = () => _autoApproveEdits = true,
-            });
+            Items.Add(item);
             RequestScroll();
         });
+
+        // 결정(적용/계속 허용/취소)이 끝나면 확인 카드를 제거한다 — 승인 시 실제 편집 배지가
+        // 이어지고 취소 시 대화가 이어지므로, 카드가 큰 상자로 남지 않게 한다.
+        tcs.Task.ContinueWith(
+            _ => Dispatcher.UIThread.Post(() => Items.Remove(item)),
+            TaskScheduler.Default);
+
         return tcs.Task;
     }
 
@@ -733,6 +742,7 @@ public sealed partial class MainViewModel : ObservableObject
 
             SaveCurrent(); // 대화 기록 저장
             IsBusy = false;
+            RequestScroll(); // 스트리밍·정리 완료 후 최종 스크롤(마지막 답변이 입력창에 가리지 않게)
         }
     }
 
