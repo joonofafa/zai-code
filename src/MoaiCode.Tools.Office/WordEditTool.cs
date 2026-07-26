@@ -37,6 +37,8 @@ public sealed class WordEditTool : ITool
           - delete_paragraph: delete paragraph at "para_index"
           - insert_table: insert a table (needs "rows","cols")
         Target the paragraph by 1-based "para_index" (from WordInspect); if omitted, the CURRENT SELECTION.
+        IMPORTANT: set_text only edits EXISTING paragraphs (1..N as reported by WordInspect). Never use an
+        out-of-range para_index — to ADD new content use insert_paragraph. Always WordInspect first to get N.
         Colors are "#RRGGBB" hex or a basic name. Windows only.
         """;
 
@@ -187,6 +189,20 @@ public sealed class WordEditTool : ITool
         switch (inp.Action)
         {
             case "set_text":
+                // 문단 Range 는 끝에 ¶(문단기호)를 포함한다. 그대로 Text 를 설정하면
+                // '줄 끝에 대한 작업이 잘못되었습니다'(0x800A1483)가 난다. 문단 대상이면 ¶ 를 제외한다.
+                if (inp.ParaIndex is not null)
+                {
+                    try
+                    {
+                        range.MoveEnd(1 /* wdCharacter */, -1);
+                    }
+                    catch
+                    {
+                        // 축소 실패 시 그대로 시도.
+                    }
+                }
+
                 range.Text = inp.Text;
                 break;
 
@@ -225,7 +241,9 @@ public sealed class WordEditTool : ITool
             int count = (int)doc.Paragraphs.Count;
             if (inp.ParaIndex.Value < 1 || inp.ParaIndex.Value > count)
             {
-                throw new System.InvalidOperationException($"문단 {inp.ParaIndex} 없음(현재 {count}개).");
+                throw new System.InvalidOperationException(
+                    $"문단 {inp.ParaIndex} 없음(현재 {count}개). 새 내용은 set_text 가 아니라 insert_paragraph 로 추가하고, " +
+                    "편집 전 WordInspect 로 실제 문단 수를 확인하세요.");
             }
 
             return doc.Paragraphs[inp.ParaIndex.Value].Range;

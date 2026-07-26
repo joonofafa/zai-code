@@ -53,6 +53,27 @@ public static class Converters
             : null;
     });
 
+    // 전송 버튼 색: 편집 연결 중이면 입력창 윤곽선과 같은 앱 색, 아니면 기본 accent(파랑).
+    public static readonly IValueConverter SendBrush = new FuncValueConverter<string?, IBrush?>(app =>
+    {
+        var hex = app switch
+        {
+            "PowerPoint" => "#D24726",
+            "Excel" => "#217346",
+            "Word" => "#2B579A",
+            _ => null,
+        };
+        if (hex is not null)
+        {
+            return new SolidColorBrush(Color.Parse(hex));
+        }
+
+        return Application.Current?.Resources.TryGetResource(
+            "AccentBrush", Application.Current.ActualThemeVariant, out var b) == true
+            ? b as IBrush
+            : new SolidColorBrush(Color.Parse("#3B82F6"));
+    });
+
     private static Geometry? Resolve(string? key)
     {
         if (string.IsNullOrEmpty(key) || Application.Current is null)

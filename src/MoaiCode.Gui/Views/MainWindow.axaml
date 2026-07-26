@@ -248,7 +248,8 @@
                     <KeyBinding Gesture="Enter" Command="{Binding SendCommand}" />
                   </TextBox.KeyBindings>
                 </TextBox>
-                <Button Grid.Column="4" Classes="send" Command="{Binding SendCommand}">
+                <Button Grid.Column="4" Classes="send" Command="{Binding SendCommand}"
+                        Background="{Binding ActiveDocApp, Converter={x:Static vm:Converters.SendBrush}}">
                   <Path Classes="icon on-accent" Data="{StaticResource Icon.ArrowUp}" />
                 </Button>
               </Grid>
