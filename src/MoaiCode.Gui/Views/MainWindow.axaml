@@ -80,7 +80,7 @@
             </Grid>
             <Panel Grid.Row="1">
               <ScrollViewer MaxHeight="150" IsVisible="{Binding HasOpenDocs}">
-                <ItemsControl ItemsSource="{Binding OfficeDocs}">
+                <ItemsControl ItemsSource="{Binding OfficeDocs}" Margin="0,0,10,0">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate>
                       <Button Classes="sideitem" Margin="0,1"
@@ -112,7 +112,8 @@
 
             <!-- 대화 기록 (하): 유형 배지 + 제목 + 부제(편집은 대상 파일명) -->
             <ScrollViewer Grid.Row="4">
-              <ItemsControl ItemsSource="{Binding Sessions}">
+              <!-- 우측 여백: 오버레이 스크롤바가 항목 텍스트를 가리지 않도록 -->
+              <ItemsControl ItemsSource="{Binding Sessions}" Margin="0,0,10,0">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
                     <Button Classes="sideitem" Margin="0,1"
