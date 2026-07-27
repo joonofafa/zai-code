@@ -1,5 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="..\MoaiCode.Core\MoaiCode.Core.csproj" />
+    <!-- Read 툴이 Office/PDF 를 내장 추출기로 투명하게 읽기 위함(외부 도구·스크립트 불필요).
+         OpenXml 은 Tools 를 참조하지 않으므로 순환 없음. -->
+    <ProjectReference Include="..\MoaiCode.Tools.OpenXml\MoaiCode.Tools.OpenXml.csproj" />
   </ItemGroup>
 </Project>

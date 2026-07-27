@@ -22,6 +22,7 @@ public sealed class FileReadTool : ITool
         - By default, it reads up to 2000 lines from the beginning of the file.
         - When you already know which part of the file you need, only read that part using offset/limit. This matters for larger files.
         - Results are returned using cat -n format, with line numbers starting at 1.
+        - Office documents (.docx/.xlsx/.pptx) and .pdf are read as extracted plain text — read them directly with this tool, do NOT install packages or write scripts to parse them. (Scanned/image-only PDFs may yield little or no text.)
         - This tool reads text files, not directories. To list a directory, use Glob or Bash (ls).
         - If you read a file that exists but is empty, you will receive a system reminder warning in place of file contents.
         """;
@@ -66,45 +67,64 @@ public sealed class FileReadTool : ITool
 
         context.Reads?.MarkRead(path);
 
-        // 바운드 읽기: 특수 파일(FIFO·/dev/zero 등)이나 과대 파일을 통째로 읽다 무한 행/OOM 되는 것 방지.
-        // 바이트 상한(10MB) + 시간 상한(30s). 사용자 Ctrl+C(ct)는 그대로 전파.
-        const long maxBytes = 10_000_000;
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
-
         string text;
         var truncatedBytes = false;
         string? readError = null;
-        try
-        {
-            await using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            var buf = new byte[maxBytes + 1];
-            var total = 0;
-            int n;
-            while (total < buf.Length &&
-                   (n = await fs.ReadAsync(buf.AsMemory(total, buf.Length - total), timeoutCts.Token)
-                       .ConfigureAwait(false)) > 0)
-            {
-                total += n;
-            }
 
-            if (total > maxBytes)
+        // Office(.docx/.xlsx/.pptx)·PDF 는 바이너리(zip/pdf)라 원시 바이트 읽기로는 깨진다.
+        // 내장 추출기로 평문 텍스트를 얻어 동일한 라인 포맷으로 반환한다(외부 도구·스크립트 불필요).
+        var ext = Path.GetExtension(path).ToLowerInvariant();
+        if (ext is ".docx" or ".xlsx" or ".pptx" or ".pdf")
+        {
+            try
             {
-                truncatedBytes = true;
-                total = (int)maxBytes;
+                text = MoaiCode.Tools.OpenXml.DocumentTextExtractor.Extract(path);
             }
+            catch (Exception ex)
+            {
+                readError = $"Read: could not extract text from {ext} — {ex.Message}";
+                text = string.Empty;
+            }
+        }
+        else
+        {
+            // 바운드 읽기: 특수 파일(FIFO·/dev/zero 등)이나 과대 파일을 통째로 읽다 무한 행/OOM 되는 것 방지.
+            // 바이트 상한(10MB) + 시간 상한(30s). 사용자 Ctrl+C(ct)는 그대로 전파.
+            const long maxBytes = 10_000_000;
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
 
-            text = Encoding.UTF8.GetString(buf, 0, total);
-        }
-        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
-        {
-            readError = $"Read: 30초 내 읽기 미완료 — FIFO/장치 등 특수 파일이거나 과대 파일일 수 있습니다: {path}";
-            text = string.Empty;
-        }
-        catch (IOException ex)
-        {
-            readError = $"Read: {ex.Message}";
-            text = string.Empty;
+            try
+            {
+                await using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                var buf = new byte[maxBytes + 1];
+                var total = 0;
+                int n;
+                while (total < buf.Length &&
+                       (n = await fs.ReadAsync(buf.AsMemory(total, buf.Length - total), timeoutCts.Token)
+                           .ConfigureAwait(false)) > 0)
+                {
+                    total += n;
+                }
+
+                if (total > maxBytes)
+                {
+                    truncatedBytes = true;
+                    total = (int)maxBytes;
+                }
+
+                text = Encoding.UTF8.GetString(buf, 0, total);
+            }
+            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
+            {
+                readError = $"Read: 30초 내 읽기 미완료 — FIFO/장치 등 특수 파일이거나 과대 파일일 수 있습니다: {path}";
+                text = string.Empty;
+            }
+            catch (IOException ex)
+            {
+                readError = $"Read: {ex.Message}";
+                text = string.Empty;
+            }
         }
 
         if (readError is not null)
@@ -138,7 +158,7 @@ public sealed class FileReadTool : ITool
 
         if (truncatedBytes)
         {
-            sb.Append($"\n… (file exceeded {maxBytes / 1_000_000}MB; read was truncated)");
+            sb.Append("\n… (file exceeded 10MB; read was truncated)");
         }
 
         // 빈 파일은 내용 대신 경고 리마인더로 대체 (OpenClaude 동작).
