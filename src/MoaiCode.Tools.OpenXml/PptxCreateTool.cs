@@ -268,7 +268,18 @@ public sealed class PptxCreateTool : ITool
     private const long BodyTop = 1500000;
     private const long BodyBottom = 6500000;
     private const long RowHeight = 370840;    // 표 행 높이 ≈ 0.4"
+    private const long MinRowHeight = 210000; // 최소 행 높이 ≈ 0.23"(auto-fit 하한)
     private const string DefaultAccent = "2F5496";
+
+    // 불릿 개수가 많을수록 시작 폰트를 줄여 슬라이드 밖으로 넘치는 것을 완화(normAutofit 과 병행).
+    private static int BulletFontSize(int count) => count switch
+    {
+        <= 5 => 1800,
+        <= 8 => 1600,
+        <= 11 => 1400,
+        <= 15 => 1200,
+        _ => 1050,
+    };
 
     private static Slide BuildSlide(SlideIn s)
     {
@@ -312,9 +323,10 @@ public sealed class PptxCreateTool : ITool
                     paras.Add(TextParagraph(cols[i].Heading!, 2000, bold: true, bullet: false, color: accent));
                 }
 
+                var colSize = Math.Min(1600, BulletFontSize((cols[i].Bullets ?? new List<string>()).Count));
                 foreach (var b in cols[i].Bullets ?? new List<string>())
                 {
-                    paras.Add(TextParagraph(b, 1600, bold: false, bullet: true, color: null));
+                    paras.Add(TextParagraph(b, colSize, bold: false, bullet: true, color: null));
                 }
 
                 if (paras.Count == 0)
@@ -327,13 +339,15 @@ public sealed class PptxCreateTool : ITool
         }
         else if (hasBullets)
         {
+            var bodySize = BulletFontSize(s.Bullets!.Count);
             tree.AppendChild(MakeShape(id++, "Body", MarginX, textTop, ContentW, textH,
-                s.Bullets!.Select(b => TextParagraph(b, 1800, bold: false, bullet: true, color: null))));
+                s.Bullets!.Select(b => TextParagraph(b, bodySize, bold: false, bullet: true, color: null))));
         }
 
         if (hasTable)
         {
-            tree.AppendChild(BuildTable(id++, MarginX, tableTop, ContentW, s.Table!, accent));
+            // 표 가용 높이(본문 아래 남는 공간)를 넘겨 행 높이·폰트를 맞춘다.
+            tree.AppendChild(BuildTable(id++, MarginX, tableTop, ContentW, s.Table!, accent, BodyBottom - tableTop));
         }
 
         var hasShapes = s.Shapes is { Count: > 0 };
@@ -419,7 +433,8 @@ public sealed class PptxCreateTool : ITool
     private static P.Shape MakeShape(
         uint id, string name, long x, long y, long cx, long cy, IEnumerable<D.Paragraph> paragraphs)
     {
-        var body = new P.TextBody(new D.BodyProperties(), new D.ListStyle());
+        // normAutofit: 텍스트가 상자를 넘치면 PowerPoint 가 폰트를 자동 축소(오버플로우 방지).
+        var body = new P.TextBody(new D.BodyProperties(new D.NormalAutoFit()), new D.ListStyle());
         foreach (var p in paragraphs)
         {
             body.AppendChild(p);
@@ -475,7 +490,8 @@ public sealed class PptxCreateTool : ITool
     }
 
     // 표(graphicFrame + a:tbl). 헤더 행은 accent 배경 + 흰 볼드.
-    private static P.GraphicFrame BuildTable(uint id, long x, long y, long w, TableIn t, string accent)
+    // availHeight: 표에 허용된 세로 공간. 행이 많으면 행 높이·폰트를 줄여 슬라이드 밖으로 넘치지 않게 한다.
+    private static P.GraphicFrame BuildTable(uint id, long x, long y, long w, TableIn t, string accent, long availHeight)
     {
         var headers = t.Headers ?? new List<string>();
         var rows = t.Rows ?? new List<List<string>>();
@@ -486,6 +502,14 @@ public sealed class PptxCreateTool : ITool
         }
 
         var colW = w / ncols;
+
+        // 행 높이 적응: 가용 높이/행수. 기본보다 크게는 안 늘리고, 하한 아래로는 안 줄인다.
+        var nrows = (headers.Count > 0 ? 1 : 0) + rows.Count;
+        var rowH = nrows > 0
+            ? Math.Max(MinRowHeight, Math.Min(RowHeight, availHeight / nrows))
+            : RowHeight;
+        // 행 높이가 기본보다 작아지면 폰트도 같은 비율로 축소(하한 있음).
+        var fontScale = (double)rowH / RowHeight;
 
         var table = new D.Table(new D.TableProperties { FirstRow = true });
         var grid = new D.TableGrid();
@@ -498,15 +522,15 @@ public sealed class PptxCreateTool : ITool
 
         if (headers.Count > 0)
         {
-            table.AppendChild(BuildRow(headers, ncols, header: true, accent));
+            table.AppendChild(BuildRow(headers, ncols, header: true, accent, rowH, fontScale));
         }
 
         foreach (var r in rows)
         {
-            table.AppendChild(BuildRow(r, ncols, header: false, accent));
+            table.AppendChild(BuildRow(r, ncols, header: false, accent, rowH, fontScale));
         }
 
-        var totalH = RowHeight * ((headers.Count > 0 ? 1 : 0) + rows.Count);
+        var totalH = rowH * nrows;
         return new P.GraphicFrame(
             new P.NonVisualGraphicFrameProperties(
                 new P.NonVisualDrawingProperties { Id = id, Name = "Table" },
@@ -519,20 +543,22 @@ public sealed class PptxCreateTool : ITool
             }));
     }
 
-    private static D.TableRow BuildRow(List<string> cells, int ncols, bool header, string accent)
+    private static D.TableRow BuildRow(List<string> cells, int ncols, bool header, string accent, long rowH, double fontScale)
     {
-        var tr = new D.TableRow { Height = RowHeight };
+        var tr = new D.TableRow { Height = rowH };
         for (var c = 0; c < ncols; c++)
         {
-            tr.AppendChild(BuildCell(c < cells.Count ? cells[c] : string.Empty, header, accent));
+            tr.AppendChild(BuildCell(c < cells.Count ? cells[c] : string.Empty, header, accent, fontScale));
         }
 
         return tr;
     }
 
-    private static D.TableCell BuildCell(string text, bool header, string accent)
+    private static D.TableCell BuildCell(string text, bool header, string accent, double fontScale)
     {
-        var runProps = new D.RunProperties { Language = "en-US", FontSize = header ? 1600 : 1400 };
+        var baseSize = header ? 1600 : 1400;
+        var size = Math.Max(900, (int)(baseSize * fontScale)); // 축소 시 하한 9pt
+        var runProps = new D.RunProperties { Language = "en-US", FontSize = size };
         if (header)
         {
             runProps.Bold = true;

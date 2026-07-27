@@ -279,6 +279,43 @@ public sealed class CreateRoundTripTests : IDisposable
     }
 
     [Fact]
+    public async Task Pptx_autofit_shrinks_dense_content()
+    {
+        var manyBullets = Enumerable.Range(1, 16).Select(i => $"요점 {i}").ToArray();
+        var manyRows = Enumerable.Range(1, 20) // 20행 → 기본 행높이로는 슬라이드 초과 → 축소돼야
+            .Select(i => new[] { $"항목{i}", $"{i * 100}" }).ToArray();
+
+        await Run(new PptxCreateTool(), new
+        {
+            path = "dense.pptx",
+            slides = new object[]
+            {
+                new { title = "불릿 많은 슬라이드", bullets = manyBullets },
+                new { title = "행 많은 표", table = new { headers = new[] { "항목", "값" }, rows = manyRows } },
+            },
+        });
+
+        using var doc = PresentationDocument.Open(Path.Combine(_dir, "dense.pptx"), false);
+        Assert.Equal(0, Validate(doc));
+        var slides = doc.PresentationPart!.SlideParts.ToList();
+
+        // 불릿 16개 → 본문 폰트가 기본(1800)보다 작게 축소됐는지.
+        var bodyRun = slides[0].Slide.Descendants<DocumentFormat.OpenXml.Drawing.Run>()
+            .First(r => r.Text?.Text == "요점 1");
+        Assert.True(bodyRun.RunProperties!.FontSize!.Value < 1800);
+
+        // 표 normAutofit: body 텍스트박스에 자동맞춤 속성이 들어갔는지(첫 슬라이드).
+        Assert.NotEmpty(slides[0].Slide.Descendants<DocumentFormat.OpenXml.Drawing.NormalAutoFit>());
+
+        // 행 12개 표 → 행 높이가 기본(370840)보다 줄었는지.
+        var rowHeights = slides[1].Slide.Descendants<DocumentFormat.OpenXml.Drawing.TableRow>()
+            .Select(tr => tr.Height!.Value).ToList();
+        Assert.NotEmpty(rowHeights);
+        Assert.All(rowHeights, h => Assert.True(h <= 370840));
+        Assert.Contains(rowHeights, h => h < 370840); // 실제로 축소됨
+    }
+
+    [Fact]
     public async Task Pptx_table_columns_shapes_are_valid()
     {
         await Run(new PptxCreateTool(), new
