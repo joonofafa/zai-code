@@ -5,6 +5,7 @@ Windows 데스크톱(Avalonia, 단일 exe) 릴리스 이력. CLI(`moai`)와 독�
 
 | 버전 | 요약 |
 |------|------|
+| 0.4.44 | **문서 생성 품질 개선**: (1) 문서 툴 세션 전용 시스템 프롬프트 지침 추가 — 코딩용 "간결하게" 규칙이 문서 본문과 상충하던 문제 해소, 문서유형별 구조·톤·편집 시 서식매칭 지시. (2) **DocxCreate 대폭 확장** — 제목레벨/글머리표·번호목록/표/본문 **굵게**·*기울임* 인라인 서식(기존 flat paragraphs 하위호환). LibreOffice 렌더 검증 |
 | 0.4.43 | **답변 가림 최종 해결**: 하단 여백을 `ScrollViewer.Padding`(=Extent 미포함, sticky의 Extent-Viewport 계산에서 무시됨)에서 **스크롤 콘텐츠 Margin(56)** 으로 이동. 이제 마지막 말풍선이 입력창 위로 여백을 두고 온전히 표시. + 중간 Panel 래퍼 제거(Grid star-row 높이 제약 직접 전달) |
 | 0.4.42 | **답변 가림 근본 해결**: 입력창을 앱 Grid 최상위 **하단 Row(Auto)로 물리 분리**, 채팅 ScrollViewer는 Row0(*)에서 constrained. 스크롤바가 더 이상 입력창을 침범하지 않음(스크롤 정상) |
 | 0.4.41 | 스크롤 정석 재구현(웹리서치 기반): **StickyBottomScroll**(ScrollChanged로 Extent 변경마다 하단 재핀, 사용자 위로 올리면 해제) + **AllowAutoHide=False**(오버레이 스크롤바 겹침 방지). 임기응변 스크롤 로직 제거 |
