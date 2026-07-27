@@ -142,14 +142,14 @@
         </DockPanel>
       </Border>
 
-      <!-- ── 우측 콘텐츠: 채팅 스크롤 | 설정 | 홈 (입력은 Row1 로 분리) ── -->
-      <Panel Grid.Column="1" Grid.Row="0">
+      <!-- ── 우측 콘텐츠: 채팅 스크롤 | 설정 | 홈 (앱 Grid Row0 셀에 Z겹침, IsVisible 로 전환).
+           Panel 을 없애고 ScrollViewer 를 Grid 셀에 직접 둬서 star 행 제약이 확실히 전달되게 함. -->
 
         <!-- 설정 패널 -->
-        <views:SettingsView IsVisible="{Binding ShowSettings}" />
+        <views:SettingsView Grid.Column="1" Grid.Row="0" IsVisible="{Binding ShowSettings}" />
 
         <!-- 홈(시작) 화면: 창문 모양 버튼 2개 (패널 중앙) -->
-        <Grid IsVisible="{Binding IsHomeVisible}" RowDefinitions="*,Auto,Auto,*">
+        <Grid Grid.Column="1" Grid.Row="0" IsVisible="{Binding IsHomeVisible}" RowDefinitions="*,Auto,Auto,*">
           <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="22">
 
             <!-- 새로운 대화 -->
@@ -179,12 +179,15 @@
                      FontSize="13" Foreground="{DynamicResource TextMutedBrush}" />
         </Grid>
 
-          <!-- 채팅 스크롤 (Panel 직속; 입력은 앱 Grid 하단 Row1 로 물리 분리).
+          <!-- 채팅 스크롤 (앱 Grid Row0 직속; 입력은 앱 Grid 하단 Row1 로 물리 분리).
                AllowAutoHide=False: Fluent 오버레이 스크롤바가 마지막 줄을 덮는 것 방지. -->
-          <ScrollViewer x:Name="ChatScroll" IsVisible="{Binding IsChatVisible}"
-                        Padding="0,22,0,20" VerticalScrollBarVisibility="Auto"
+          <ScrollViewer Grid.Column="1" Grid.Row="0" x:Name="ChatScroll" IsVisible="{Binding IsChatVisible}"
+                        Padding="0,22,0,0" VerticalScrollBarVisibility="Auto"
                         HorizontalScrollBarVisibility="Disabled" AllowAutoHide="False">
-            <Grid>
+            <!-- 하단 여백은 ScrollViewer.Padding 이 아니라 콘텐츠 Margin 으로 준다.
+                 Padding 은 Extent 에 포함되지 않아 StickyBottomScroll 의 (Extent-Viewport)
+                 하단 고정 계산에서 무시된다 → 마지막 말풍선이 입력창 뒤로 가려지던 근본 원인. -->
+            <Grid Margin="0,0,0,56">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="3*" MaxWidth="760" />
@@ -308,7 +311,6 @@
             </ItemsControl>
             </Grid>
           </ScrollViewer>
-      </Panel>
 
       <!-- ── 하단 작성 영역 (앱 Grid Row1 로 물리 분리; 채팅일 때만) ── -->
       <Grid Grid.Column="1" Grid.Row="1" IsVisible="{Binding IsChatVisible}" Margin="0,8,0,20">
