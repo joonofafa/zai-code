@@ -19,10 +19,12 @@
     </Panel>
 
     <!-- ═══ 앱 (인증) ═══ -->
-    <Grid ColumnDefinitions="270,*" IsVisible="{Binding IsAuthed}">
+    <!-- RowDefinitions="*,Auto": 우측 콘텐츠(Row0)와 채팅 입력(Row1)을 물리적으로 분리해
+         ScrollViewer 가 입력창 영역을 침범하지 못하게 한다(스크롤 constrained 보장). -->
+    <Grid ColumnDefinitions="270,*" RowDefinitions="*,Auto" IsVisible="{Binding IsAuthed}">
 
       <!-- ── 사이드바 ── -->
-      <Border Grid.Column="0" Background="{DynamicResource BgSidebarBrush}"
+      <Border Grid.Column="0" Grid.RowSpan="2" Background="{DynamicResource BgSidebarBrush}"
               BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="0,0,1,0">
         <DockPanel Margin="18,20,18,16">
 
@@ -140,8 +142,8 @@
         </DockPanel>
       </Border>
 
-      <!-- ── 우측 콘텐츠: 채팅 | 설정 ── -->
-      <Panel Grid.Column="1">
+      <!-- ── 우측 콘텐츠: 채팅 스크롤 | 설정 | 홈 (입력은 Row1 로 분리) ── -->
+      <Panel Grid.Column="1" Grid.Row="0">
 
         <!-- 설정 패널 -->
         <views:SettingsView IsVisible="{Binding ShowSettings}" />
@@ -177,96 +179,10 @@
                      FontSize="13" Foreground="{DynamicResource TextMutedBrush}" />
         </Grid>
 
-        <!-- 채팅: DockPanel 로 하단 입력(Dock=Bottom)과 스크롤(Fill)을 물리적으로 분리.
-             Grid RowDefinitions="*,Auto" 가 이 환경에서 스크롤 영역을 입력창까지 확장(겹침)시켰음. -->
-        <DockPanel IsVisible="{Binding IsChatVisible}">
-
-          <!-- 하단 작성 영역: 대칭 star 컬럼으로 채팅 본문과 같은 760 중앙 고정. -->
-          <Grid DockPanel.Dock="Bottom" Margin="0,8,0,20">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="*" />
-              <ColumnDefinition Width="3*" MaxWidth="760" />
-              <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-          <StackPanel Grid.Column="1" Spacing="12">
-
-            <!-- 참조 문서 칩(모드 B) -->
-            <ItemsControl ItemsSource="{Binding References}" IsVisible="{Binding HasReferences}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Border Background="{DynamicResource ActivityBgBrush}" CornerRadius="9"
-                          Padding="10,5" Margin="0,0,7,7">
-                    <StackPanel Orientation="Horizontal" Spacing="7">
-                      <Path Classes="icon sm" Data="{Binding Icon, Converter={x:Static vm:Converters.IconKey}}"
-                            Width="13" Height="13" VerticalAlignment="Center" />
-                      <TextBlock Text="{Binding DisplayName}" FontSize="12.5" VerticalAlignment="Center" />
-                      <Button Classes="ghost" Padding="4,2" MinWidth="0"
-                              Command="{Binding $parent[ItemsControl].DataContext.RemoveReferenceCommand}"
-                              CommandParameter="{Binding}">
-                        <Path Classes="icon" Data="{StaticResource Icon.X}" Width="12" Height="12" />
-                      </Button>
-                    </StackPanel>
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-            <!-- 입력창: 편집 연결 중이면 윤곽선이 앱 색으로. 좌측 앱 버튼으로 연결 해제. -->
-            <Border Background="{DynamicResource BgInputBrush}" CornerRadius="24"
-                    BorderBrush="{Binding ActiveDocApp, Converter={x:Static vm:Converters.InputOutline}}"
-                    BorderThickness="1.5" Padding="8,6">
-              <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
-                <!-- 연결된 문서(앱) 버튼: 클릭 시 해제 확인 -->
-                <Button Grid.Column="0" x:Name="DocButton" IsVisible="{Binding IsDocConnected}" Classes="ghost"
-                        VerticalAlignment="Center" Padding="8" ToolTip.Tip="연결된 문서 · 클릭하여 해제">
-                  <Path Data="{Binding ActiveDocApp, Converter={x:Static vm:Converters.AppIcon}}"
-                        Stroke="{Binding ActiveDocApp, Converter={x:Static vm:Converters.AppBrush}}"
-                        StrokeThickness="1.6" StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                        Width="17" Height="17" Stretch="Uniform" />
-                  <Button.Flyout>
-                    <Flyout Placement="Top">
-                      <StackPanel Spacing="11" MaxWidth="240" Margin="4">
-                        <TextBlock Text="{Binding DetachPrompt}" TextWrapping="Wrap" FontSize="13"
-                                   Foreground="{DynamicResource TextPrimaryBrush}" />
-                        <Button Classes="accent" Content="연결 해제" HorizontalAlignment="Right"
-                                Click="OnDetachConfirm" />
-                      </StackPanel>
-                    </Flyout>
-                  </Button.Flyout>
-                </Button>
-                <Button Grid.Column="1" Classes="ghost" VerticalAlignment="Center" Padding="8"
-                        Click="OnAttachClick" ToolTip.Tip="로컬 참조 문서 첨부">
-                  <Path Classes="icon" Data="{StaticResource Icon.Paperclip}" Width="16" Height="16" />
-                </Button>
-                <Button Grid.Column="2" Classes="ghost" VerticalAlignment="Center" Padding="8"
-                        Click="OnOrgClick" ToolTip.Tip="조직 문서함에서 검색·첨부">
-                  <Path Classes="icon" Data="{StaticResource Icon.FolderOpen}" Width="16" Height="16" />
-                </Button>
-                <TextBox Grid.Column="3" Classes="composer" Margin="8,0,8,0"
-                         Watermark="무엇을 만들어 드릴까요?" Text="{Binding Input}">
-                  <TextBox.KeyBindings>
-                    <KeyBinding Gesture="Enter" Command="{Binding SendCommand}" />
-                  </TextBox.KeyBindings>
-                </TextBox>
-                <Button Grid.Column="4" Classes="send" Command="{Binding SendCommand}"
-                        Background="{Binding ActiveDocApp, Converter={x:Static vm:Converters.SendBrush}}">
-                  <Path Classes="icon on-accent" Data="{StaticResource Icon.ArrowUp}" />
-                </Button>
-              </Grid>
-            </Border>
-          </StackPanel>
-          </Grid>
-
-          <!-- 채팅 스크롤 — 입력 영역과 동일한 star 3열(중앙 3*, MaxWidth 760)로 폭·정렬을 맞춘다. -->
-          <!-- 하단 Padding 을 입력창 높이(~76)보다 크게 둬, 스크롤/레이아웃 오차와 무관하게
-               마지막 메시지가 항상 입력창 위로 밀리도록 한다(가림 물리적 방지). -->
-          <!-- AllowAutoHide=False: Fluent 오버레이 스크롤바가 마지막 줄 위에 겹쳐 그려지는 것 방지.
-               하단 Padding 90: sticky 가 Extent-Viewport 로 스크롤하므로 이 여백만큼 마지막 메시지가
-               입력창 위로 밀린다(이 환경의 미세 뷰포트 겹침 보상). -->
-          <ScrollViewer x:Name="ChatScroll" Padding="0,22,0,90" VerticalScrollBarVisibility="Auto"
+          <!-- 채팅 스크롤 (Panel 직속; 입력은 앱 Grid 하단 Row1 로 물리 분리).
+               AllowAutoHide=False: Fluent 오버레이 스크롤바가 마지막 줄을 덮는 것 방지. -->
+          <ScrollViewer x:Name="ChatScroll" IsVisible="{Binding IsChatVisible}"
+                        Padding="0,22,0,20" VerticalScrollBarVisibility="Auto"
                         HorizontalScrollBarVisibility="Disabled" AllowAutoHide="False">
             <Grid>
               <Grid.ColumnDefinitions>
@@ -392,8 +308,86 @@
             </ItemsControl>
             </Grid>
           </ScrollViewer>
-        </DockPanel>
       </Panel>
+
+      <!-- ── 하단 작성 영역 (앱 Grid Row1 로 물리 분리; 채팅일 때만) ── -->
+      <Grid Grid.Column="1" Grid.Row="1" IsVisible="{Binding IsChatVisible}" Margin="0,8,0,20">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="3*" MaxWidth="760" />
+          <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <StackPanel Grid.Column="1" Spacing="12">
+
+          <!-- 참조 문서 칩(모드 B) -->
+          <ItemsControl ItemsSource="{Binding References}" IsVisible="{Binding HasReferences}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border Background="{DynamicResource ActivityBgBrush}" CornerRadius="9"
+                        Padding="10,5" Margin="0,0,7,7">
+                  <StackPanel Orientation="Horizontal" Spacing="7">
+                    <Path Classes="icon sm" Data="{Binding Icon, Converter={x:Static vm:Converters.IconKey}}"
+                          Width="13" Height="13" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding DisplayName}" FontSize="12.5" VerticalAlignment="Center" />
+                    <Button Classes="ghost" Padding="4,2" MinWidth="0"
+                            Command="{Binding $parent[ItemsControl].DataContext.RemoveReferenceCommand}"
+                            CommandParameter="{Binding}">
+                      <Path Classes="icon" Data="{StaticResource Icon.X}" Width="12" Height="12" />
+                    </Button>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <!-- 입력창: 편집 연결 중이면 윤곽선이 앱 색으로. 좌측 앱 버튼으로 연결 해제. -->
+          <Border Background="{DynamicResource BgInputBrush}" CornerRadius="24"
+                  BorderBrush="{Binding ActiveDocApp, Converter={x:Static vm:Converters.InputOutline}}"
+                  BorderThickness="1.5" Padding="8,6">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
+              <!-- 연결된 문서(앱) 버튼: 클릭 시 해제 확인 -->
+              <Button Grid.Column="0" x:Name="DocButton" IsVisible="{Binding IsDocConnected}" Classes="ghost"
+                      VerticalAlignment="Center" Padding="8" ToolTip.Tip="연결된 문서 · 클릭하여 해제">
+                <Path Data="{Binding ActiveDocApp, Converter={x:Static vm:Converters.AppIcon}}"
+                      Stroke="{Binding ActiveDocApp, Converter={x:Static vm:Converters.AppBrush}}"
+                      StrokeThickness="1.6" StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                      Width="17" Height="17" Stretch="Uniform" />
+                <Button.Flyout>
+                  <Flyout Placement="Top">
+                    <StackPanel Spacing="11" MaxWidth="240" Margin="4">
+                      <TextBlock Text="{Binding DetachPrompt}" TextWrapping="Wrap" FontSize="13"
+                                 Foreground="{DynamicResource TextPrimaryBrush}" />
+                      <Button Classes="accent" Content="연결 해제" HorizontalAlignment="Right"
+                              Click="OnDetachConfirm" />
+                    </StackPanel>
+                  </Flyout>
+                </Button.Flyout>
+              </Button>
+              <Button Grid.Column="1" Classes="ghost" VerticalAlignment="Center" Padding="8"
+                      Click="OnAttachClick" ToolTip.Tip="로컬 참조 문서 첨부">
+                <Path Classes="icon" Data="{StaticResource Icon.Paperclip}" Width="16" Height="16" />
+              </Button>
+              <Button Grid.Column="2" Classes="ghost" VerticalAlignment="Center" Padding="8"
+                      Click="OnOrgClick" ToolTip.Tip="조직 문서함에서 검색·첨부">
+                <Path Classes="icon" Data="{StaticResource Icon.FolderOpen}" Width="16" Height="16" />
+              </Button>
+              <TextBox Grid.Column="3" Classes="composer" Margin="8,0,8,0"
+                       Watermark="무엇을 만들어 드릴까요?" Text="{Binding Input}">
+                <TextBox.KeyBindings>
+                  <KeyBinding Gesture="Enter" Command="{Binding SendCommand}" />
+                </TextBox.KeyBindings>
+              </TextBox>
+              <Button Grid.Column="4" Classes="send" Command="{Binding SendCommand}"
+                      Background="{Binding ActiveDocApp, Converter={x:Static vm:Converters.SendBrush}}">
+                <Path Classes="icon on-accent" Data="{StaticResource Icon.ArrowUp}" />
+              </Button>
+            </Grid>
+          </Border>
+        </StackPanel>
+      </Grid>
     </Grid>
   </Grid>
 </Window>

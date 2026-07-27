@@ -5,6 +5,7 @@ Windows 데스크톱(Avalonia, 단일 exe) 릴리스 이력. CLI(`moai`)와 독�
 
 | 버전 | 요약 |
 |------|------|
+| 0.4.42 | **답변 가림 근본 해결**: 입력창을 앱 Grid 최상위 **하단 Row(Auto)로 물리 분리**, 채팅 ScrollViewer는 Row0(*)에서 constrained. 스크롤바가 더 이상 입력창을 침범하지 않음(스크롤 정상) |
 | 0.4.41 | 스크롤 정석 재구현(웹리서치 기반): **StickyBottomScroll**(ScrollChanged로 Extent 변경마다 하단 재핀, 사용자 위로 올리면 해제) + **AllowAutoHide=False**(오버레이 스크롤바 겹침 방지). 임기응변 스크롤 로직 제거 |
 | 0.4.40 | **답변 가림 근본 수정**: 채팅 영역을 Grid(RowDefinitions) → **DockPanel(입력=Dock Bottom, 스크롤=Fill)** 로 재구성. Grid 가 스크롤 영역을 입력창까지 확장(겹침)시키던 문제. + 하단 여백 90 유지 |
 | 0.4.39 | 답변 가림 물리적 해결: 채팅 **하단 Padding 90**(입력창보다 크게)로 마지막 메시지 항상 위로 밀기 + near-bottom 추적을 다음 프레임+Offset 강제로 보정 |
