@@ -9,8 +9,10 @@ using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
 namespace MoaiCode.Tools.OpenXml;
 
 /// <summary>
-/// 로컬 문서에서 평문 텍스트를 추출한다(청킹 전처리용). 지원: txt/md/csv(네이티브),
+/// 로컬 문서에서 텍스트를 추출한다(청킹·RAG·참조 입력용). 지원: txt/md/csv(네이티브),
 /// docx/xlsx/pptx(Open XML), pdf(PdfPig). 스캔 PDF(이미지)는 텍스트가 없어 빈 문자열이 될 수 있다.
+/// 구조 보존: docx는 제목/목록/표를 마크다운 마커(#, -, | |)로, xlsx는 시트명, pptx는
+/// 슬라이드 경계를 제목으로 표시해 문서 구조가 소실되지 않게 한다.
 /// </summary>
 public static class DocumentTextExtractor
 {
@@ -37,6 +39,9 @@ public static class DocumentTextExtractor
         };
     }
 
+    // 구조 보존 추출: 최상위 요소를 순서대로 순회한다(표 안 문단이 섞이지 않게).
+    // 제목/목록은 마크다운 마커(#, -)로, 표는 마크다운 표(| |)로 살려 청킹·RAG·참조
+    // 입력이 문서 구조를 잃지 않게 한다.
     private static string ExtractDocx(string path)
     {
         using var doc = WordprocessingDocument.Open(path, false);
@@ -47,16 +52,65 @@ public static class DocumentTextExtractor
         }
 
         var sb = new StringBuilder();
-        foreach (var para in body.Descendants<DW.Paragraph>())
+        foreach (var el in body.Elements())
         {
-            var text = para.InnerText;
-            if (!string.IsNullOrWhiteSpace(text))
+            switch (el)
             {
-                sb.AppendLine(text);
+                case DW.Paragraph para:
+                    var text = para.InnerText;
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        sb.Append(ParagraphPrefix(para)).AppendLine(text);
+                    }
+
+                    break;
+                case DW.Table table:
+                    AppendMarkdownTable(sb, table);
+                    break;
             }
         }
 
         return sb.ToString();
+    }
+
+    // 문단 스타일 → 마크다운 접두어. 진짜 Heading/Title 스타일과 목록(numPr)만 인식한다.
+    private static string ParagraphPrefix(DW.Paragraph p)
+    {
+        var style = p.ParagraphProperties?.ParagraphStyleId?.Val?.Value;
+        if (!string.IsNullOrEmpty(style))
+        {
+            var s = style.ToLowerInvariant();
+            if (s == "title")
+            {
+                return "# ";
+            }
+
+            if (s.StartsWith("heading"))
+            {
+                var digits = new string(s.Where(char.IsDigit).ToArray());
+                return digits switch { "1" => "# ", "2" => "## ", _ => "### " };
+            }
+        }
+
+        return p.ParagraphProperties?.NumberingProperties is not null ? "- " : string.Empty;
+    }
+
+    private static void AppendMarkdownTable(StringBuilder sb, DW.Table table)
+    {
+        var rows = table.Elements<DW.TableRow>().ToList();
+        for (var r = 0; r < rows.Count; r++)
+        {
+            var cells = rows[r].Elements<DW.TableCell>()
+                .Select(c => c.InnerText.ReplaceLineEndings(" ").Trim())
+                .ToList();
+            sb.Append("| ").Append(string.Join(" | ", cells)).AppendLine(" |");
+            if (r == 0)
+            {
+                sb.Append("| ").Append(string.Join(" | ", Enumerable.Repeat("---", cells.Count))).AppendLine(" |");
+            }
+        }
+
+        sb.AppendLine();
     }
 
     private static string ExtractXlsx(string path)
@@ -75,6 +129,12 @@ public static class DocumentTextExtractor
             if (sheet.Id?.Value is not { } relId || wbPart.GetPartById(relId) is not WorksheetPart wsPart)
             {
                 continue;
+            }
+
+            // 시트 구분(구조 보존): 여러 시트가 하나로 뭉치지 않게 시트명을 제목으로 단다.
+            if (!string.IsNullOrEmpty(sheet.Name?.Value))
+            {
+                sb.Append("## ").AppendLine(sheet.Name!.Value);
             }
 
             foreach (var row in wsPart.Worksheet.Descendants<Row>())
@@ -122,8 +182,11 @@ public static class DocumentTextExtractor
         }
 
         var sb = new StringBuilder();
+        var slideNo = 1;
         foreach (var slidePart in presPart.SlideParts)
         {
+            // 슬라이드 구분(구조 보존): 슬라이드 경계를 제목으로 표시.
+            sb.Append("## ").Append("Slide ").AppendLine(slideNo++.ToString());
             foreach (var t in slidePart.Slide.Descendants<DA.Text>())
             {
                 if (!string.IsNullOrWhiteSpace(t.Text))

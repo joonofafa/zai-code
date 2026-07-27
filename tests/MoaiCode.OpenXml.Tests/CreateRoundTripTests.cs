@@ -89,6 +89,51 @@ public sealed class CreateRoundTripTests : IDisposable
     }
 
     [Fact]
+    public async Task Extractor_preserves_table_structure_as_markdown()
+    {
+        await Run(new DocxCreateTool(), new
+        {
+            path = "tbl.docx",
+            blocks = new object[]
+            {
+                new
+                {
+                    type = "table",
+                    header = true,
+                    rows = new object[]
+                    {
+                        new[] { "항목", "값" },
+                        new[] { "매출", "120억" },
+                    },
+                },
+            },
+        });
+
+        var text = DocumentTextExtractor.Extract(Path.Combine(_dir, "tbl.docx"));
+        Assert.Contains("| 항목 | 값 |", text);       // 마크다운 표 헤더
+        Assert.Contains("| --- | --- |", text);       // 헤더 구분선
+        Assert.Contains("| 매출 | 120억 |", text);    // 데이터 행
+    }
+
+    [Fact]
+    public async Task Extractor_marks_sheet_boundaries()
+    {
+        await Run(new XlsxCreateTool(), new
+        {
+            path = "multi.xlsx",
+            sheets = new[]
+            {
+                new { name = "요약", rows = new[] { new[] { "A", "B" } } },
+                new { name = "상세", rows = new[] { new[] { "C", "D" } } },
+            },
+        });
+
+        var text = DocumentTextExtractor.Extract(Path.Combine(_dir, "multi.xlsx"));
+        Assert.Contains("## 요약", text);
+        Assert.Contains("## 상세", text);
+    }
+
+    [Fact]
     public async Task Docx_legacy_paragraphs_still_work()
     {
         // blocks 없이 기존 title/paragraphs 경로가 그대로 동작(하위호환).
