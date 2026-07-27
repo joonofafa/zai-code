@@ -47,6 +47,11 @@ public sealed class XlsxCreateTool : ITool
                   "name": { "type": "string" },
                   "rows": { "type": "array", "items": { "type": "array", "items": { "type": "string" } } },
                   "boldHeader": { "type": "boolean", "description": "Bold the first row (header). Default false." },
+                  "formats": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Optional per-column number format, index-aligned to columns. Applies to data rows (not the header) and formats formula results too. Aliases: won, usd, percent, thousands, int, date. Or a raw Excel code like \"#,##0\" or \"0.0%\". Empty string = auto-detect that column."
+                  },
                   "charts": {
                     "type": "array",
                     "description": "Charts on this sheet, referencing its cell ranges",
@@ -97,6 +102,7 @@ public sealed class XlsxCreateTool : ITool
         [property: JsonPropertyName("name")] string? Name,
         [property: JsonPropertyName("rows")] List<List<string>>? Rows,
         [property: JsonPropertyName("boldHeader")] bool? BoldHeader,
+        [property: JsonPropertyName("formats")] List<string>? Formats,
         [property: JsonPropertyName("charts")] List<ChartIn>? Charts);
 
     private sealed record Input(
@@ -138,9 +144,25 @@ public sealed class XlsxCreateTool : ITool
         var wbPart = doc.AddWorkbookPart();
         wbPart.Workbook = new Workbook();
 
-        // 스타일시트(인덱스 1 = 굵게). 헤더 굵게용.
+        // 모든 시트의 열 서식(formats)을 먼저 수집해 커스텀 numFmt/스타일로 등록한다.
+        // (스타일시트는 시트 기록 전에 한 번만 만들어지므로 사전 수집이 필요.)
+        var customCodes = new List<string>();
+        var codeToStyle = new Dictionary<string, uint>(StringComparer.Ordinal);
+        foreach (var sheet in sheets)
+        {
+            foreach (var fmt in sheet.Formats ?? new List<string>())
+            {
+                var code = ResolveFormat(fmt);
+                if (code is not null && !codeToStyle.ContainsKey(code))
+                {
+                    codeToStyle[code] = (uint)(FirstCustomStyle + customCodes.Count);
+                    customCodes.Add(code);
+                }
+            }
+        }
+
         var stylesPart = wbPart.AddNewPart<WorkbookStylesPart>();
-        stylesPart.Stylesheet = BuildStylesheet();
+        stylesPart.Stylesheet = BuildStylesheet(customCodes);
 
         var sheetsEl = wbPart.Workbook.AppendChild(new Sheets());
 
@@ -149,9 +171,14 @@ public sealed class XlsxCreateTool : ITool
         {
             var wsPart = wbPart.AddNewPart<WorksheetPart>();
             var data = new SheetData();
-            wsPart.Worksheet = new Worksheet(data);
+
+            // 열별 서식 스타일 인덱스(지정 없으면 null → 자동 감지).
+            var colStyles = (sheet.Formats ?? new List<string>())
+                .Select(f => ResolveFormat(f) is { } code ? codeToStyle[code] : (uint?)null)
+                .ToList();
 
             var bold = sheet.BoldHeader == true;
+            var colWidth = new Dictionary<int, double>();
             uint r = 1;
             foreach (var rowCells in sheet.Rows ?? new List<List<string>>())
             {
@@ -159,13 +186,41 @@ public sealed class XlsxCreateTool : ITool
                 var col = 0;
                 foreach (var value in rowCells)
                 {
-                    row.AppendChild(MakeCell(Reference(col, r), value, bold && r == 1));
+                    var colStyle = col < colStyles.Count ? colStyles[col] : null;
+                    row.AppendChild(MakeCell(Reference(col, r), value, bold && r == 1, colStyle));
+
+                    // 열 너비 추정: 수식은 결과를 몰라 내용폭에서 제외하고 서식 최소폭으로 커버.
+                    var content = (value ?? string.Empty).StartsWith('=') ? 0 : DisplayWidth(value);
+                    var want = Math.Max(content, MinWidthForFormat(col < colStyles.Count ? sheet.Formats?[col] : null));
+                    colWidth[col] = Math.Max(colWidth.GetValueOrDefault(col), want);
                     col++;
                 }
 
                 data.AppendChild(row);
                 r++;
             }
+
+            // Worksheet 조립(스키마 순서: cols → sheetData). 열 너비로 '###' 잘림 방지.
+            var ws = new Worksheet();
+            if (colWidth.Count > 0)
+            {
+                var cols = new Columns();
+                foreach (var kv in colWidth.OrderBy(k => k.Key))
+                {
+                    cols.AppendChild(new Column
+                    {
+                        Min = (uint)(kv.Key + 1),
+                        Max = (uint)(kv.Key + 1),
+                        Width = Math.Clamp(kv.Value + 2, 8, 80),
+                        CustomWidth = true,
+                    });
+                }
+
+                ws.AppendChild(cols);
+            }
+
+            ws.AppendChild(data);
+            wsPart.Worksheet = ws;
 
             // 차트(SheetData 뒤에 drawing 추가).
             var specs = MapCharts(sheet.Charts);
@@ -214,46 +269,103 @@ public sealed class XlsxCreateTool : ITool
     }
 
     // CellFormat 인덱스: 0 기본 · 1 굵게 · 2 퍼센트(0.00%) · 3 천단위 정수(#,##0) · 4 천단위 소수(#,##0.00).
-    // 서식 ID(9/10/3/4)는 모두 스프레드시트 builtin 이라 NumberingFormats 정의가 필요 없다.
+    // 5+ = 열 서식(formats)으로 요청된 커스텀 코드. 서식 ID 10/3/4 는 builtin.
     private const uint StyleBold = 1;
     private const uint StylePercent = 2;
     private const uint StyleThousandsInt = 3;
     private const uint StyleThousandsDec = 4;
+    private const uint FirstCustomStyle = 5;
+    private const uint FirstCustomNumFmtId = 164; // Open XML: 커스텀 numFmt 는 164 이상.
 
-    private static Stylesheet BuildStylesheet()
+    // 열 서식 별칭 → Excel 서식 코드. 별칭이 아니면 원시 코드로 사용한다.
+    private static string? ResolveFormat(string? alias)
     {
-        return new Stylesheet(
-            new Fonts(
-                new Font(),                                   // 0: 기본
-                new Font(new Bold())),                        // 1: 굵게
-            new Fills(new Fill(new PatternFill { PatternType = PatternValues.None })),
-            new Borders(new Border()),
-            new CellFormats(
-                new CellFormat(),                                                          // 0: 기본
-                new CellFormat { FontId = 1, ApplyFont = true },                           // 1: 굵게
-                new CellFormat { NumberFormatId = 10, ApplyNumberFormat = true },          // 2: 0.00%
-                new CellFormat { NumberFormatId = 3, ApplyNumberFormat = true },           // 3: #,##0
-                new CellFormat { NumberFormatId = 4, ApplyNumberFormat = true }));         // 4: #,##0.00
+        if (string.IsNullOrWhiteSpace(alias))
+        {
+            return null;
+        }
+
+        return alias.Trim().ToLowerInvariant() switch
+        {
+            "won" or "krw" or "currency" => "#,##0\"원\"",
+            "usd" => "$#,##0.00",
+            "percent" or "pct" => "0.0%",
+            "thousands" => "#,##0",
+            "int" => "0",
+            "date" => "yyyy-mm-dd",
+            _ => alias.Trim(),
+        };
+    }
+
+    private static Stylesheet BuildStylesheet(IReadOnlyList<string> customCodes)
+    {
+        var cellFormats = new CellFormats(
+            new CellFormat(),                                                          // 0: 기본
+            new CellFormat { FontId = 1, ApplyFont = true },                           // 1: 굵게
+            new CellFormat { NumberFormatId = 10, ApplyNumberFormat = true },          // 2: 0.00%
+            new CellFormat { NumberFormatId = 3, ApplyNumberFormat = true },           // 3: #,##0
+            new CellFormat { NumberFormatId = 4, ApplyNumberFormat = true });          // 4: #,##0.00
+
+        var numberingFormats = new NumberingFormats();
+        var fmtId = FirstCustomNumFmtId;
+        foreach (var code in customCodes)
+        {
+            numberingFormats.AppendChild(new NumberingFormat { NumberFormatId = fmtId, FormatCode = code });
+            cellFormats.AppendChild(new CellFormat { NumberFormatId = fmtId, ApplyNumberFormat = true });
+            fmtId++;
+        }
+
+        var fonts = new Fonts(new Font(), new Font(new Bold()));
+        var fills = new Fills(new Fill(new PatternFill { PatternType = PatternValues.None }));
+        var borders = new Borders(new Border());
+
+        // Stylesheet 자식 순서(스키마): numFmts → fonts → fills → borders → cellFormats.
+        if (customCodes.Count > 0)
+        {
+            numberingFormats.Count = (uint)customCodes.Count;
+            return new Stylesheet(numberingFormats, fonts, fills, borders, cellFormats);
+        }
+
+        return new Stylesheet(fonts, fills, borders, cellFormats);
     }
 
     private static readonly Regex PercentRe = new(@"^-?\d+(\.\d+)?%$", RegexOptions.Compiled);
     private static readonly Regex ThousandsRe = new(@"^-?\d{1,3}(,\d{3})+(\.\d+)?$", RegexOptions.Compiled);
 
-    // 셀 문자열을 자동 타이핑한다: 헤더=라벨(굵게 텍스트), 수식(=)·퍼센트·천단위·순수숫자·텍스트.
-    private static Cell MakeCell(string reference, string? value, bool isHeader)
+    // 셀 문자열을 타이핑한다. columnStyle 지정 시 그 서식을 강제(수식 결과 서식·통화·날짜 등),
+    // 아니면 자동 감지: 헤더=라벨(굵게 텍스트), 수식(=)·퍼센트·천단위·순수숫자·텍스트.
+    private static Cell MakeCell(string reference, string? value, bool isHeader, uint? columnStyle)
     {
         var v = value ?? string.Empty;
 
-        // 헤더는 라벨로 취급 — 값 자동감지 없이 굵게 텍스트.
+        // 헤더는 라벨로 취급 — 값 감지/열서식 없이 굵게 텍스트.
         if (isHeader)
         {
             return Str(reference, v, StyleBold);
         }
 
+        // 열 서식이 지정된 경우: 값에서 숫자를 뽑아 그 서식으로(수식 결과에도 서식 적용).
+        if (columnStyle is uint cs)
+        {
+            if (v.Length > 1 && v[0] == '=')
+            {
+                return Formula(reference, v[1..], cs);
+            }
+
+            var isPct = v.EndsWith('%');
+            var numStr = (isPct ? v[..^1] : v).Replace(",", string.Empty);
+            if (double.TryParse(numStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var cn))
+            {
+                return Num(reference, isPct ? cn / 100.0 : cn, cs);
+            }
+
+            return Str(reference, v, 0u); // 숫자가 아니면 서식 미적용 텍스트
+        }
+
         // 수식: "=..." → 라이브 수식(값은 Excel/LibreOffice 가 열 때 계산).
         if (v.Length > 1 && v[0] == '=')
         {
-            return new Cell { CellReference = reference, CellFormula = new CellFormula(v[1..]) };
+            return Formula(reference, v[1..], 0u);
         }
 
         // 퍼센트: "12.5%" → 0.125 + 퍼센트 서식.
@@ -281,6 +393,56 @@ public sealed class XlsxCreateTool : ITool
         }
 
         return Str(reference, v, 0u);
+    }
+
+    // 표시폭 추정: CJK/전각 문자는 2폭으로 센다(한글 문서 열 너비 근사).
+    private static double DisplayWidth(string? s)
+    {
+        if (string.IsNullOrEmpty(s))
+        {
+            return 0;
+        }
+
+        double w = 0;
+        foreach (var ch in s)
+        {
+            w += ch >= 0x1100 ? 2 : 1;
+        }
+
+        return w;
+    }
+
+    // 서식 열의 최소 표시폭(서식 적용 후 길어지는 통화·천단위·퍼센트·날짜 커버).
+    private static double MinWidthForFormat(string? alias)
+    {
+        var code = ResolveFormat(alias);
+        if (code is null)
+        {
+            return 0;
+        }
+
+        if (code.Contains('원') || code.Contains('$') || code.Contains("#,##0"))
+        {
+            return 14;
+        }
+
+        if (code.Contains('%'))
+        {
+            return 10;
+        }
+
+        return code.Contains("yyyy") ? 12 : 0;
+    }
+
+    private static Cell Formula(string reference, string expr, uint styleIndex)
+    {
+        var c = new Cell { CellReference = reference, CellFormula = new CellFormula(expr) };
+        if (styleIndex != 0)
+        {
+            c.StyleIndex = styleIndex;
+        }
+
+        return c;
     }
 
     private static Cell Num(string reference, double value, uint styleIndex)

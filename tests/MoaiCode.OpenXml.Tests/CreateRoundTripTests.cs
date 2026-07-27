@@ -190,6 +190,51 @@ public sealed class CreateRoundTripTests : IDisposable
     }
 
     [Fact]
+    public async Task Xlsx_column_formats_apply_to_formula_results()
+    {
+        await Run(new XlsxCreateTool(), new
+        {
+            path = "cols.xlsx",
+            sheets = new[]
+            {
+                new
+                {
+                    name = "s",
+                    boldHeader = true,
+                    formats = new[] { "", "won", "percent" }, // A 자동, B 통화, C 퍼센트
+                    rows = new[]
+                    {
+                        new[] { "항목", "금액", "비중" },
+                        new[] { "매출", "1200000", "=B2/1000000" }, // 수식 결과가 퍼센트 서식이어야
+                    },
+                },
+            },
+        });
+
+        using var doc = SpreadsheetDocument.Open(Path.Combine(_dir, "cols.xlsx"), false);
+        Assert.Equal(0, Validate(doc)); // 커스텀 numFmt 포함 유효
+
+        var cells = doc.WorkbookPart!.WorksheetParts.First().Worksheet
+            .Descendants<DocumentFormat.OpenXml.Spreadsheet.Cell>().ToList();
+        DocumentFormat.OpenXml.Spreadsheet.Cell C(string r) => cells.First(c => c.CellReference == r);
+
+        // 통화 열: 숫자 + 커스텀 스타일(>=5).
+        Assert.Equal("1200000", C("B2").CellValue!.InnerText);
+        Assert.True(C("B2").StyleIndex!.Value >= 5);
+
+        // 퍼센트 열의 수식: CellFormula + 퍼센트 커스텀 스타일이 붙어 결과가 %로 표시됨.
+        Assert.NotNull(C("C2").CellFormula);
+        Assert.True(C("C2").StyleIndex!.Value >= 5);
+
+        // 커스텀 numFmt 가 스타일시트에 등록됐는지(원화·퍼센트 코드).
+        var codes = doc.WorkbookPart.WorkbookStylesPart!.Stylesheet
+            .Descendants<DocumentFormat.OpenXml.Spreadsheet.NumberingFormat>()
+            .Select(n => n.FormatCode!.Value).ToList();
+        Assert.Contains(codes, c => c!.Contains("원"));
+        Assert.Contains(codes, c => c == "0.0%");
+    }
+
+    [Fact]
     public async Task Xlsx_creates_valid_workbook_with_numbers_and_text()
     {
         await Run(new XlsxCreateTool(), new
