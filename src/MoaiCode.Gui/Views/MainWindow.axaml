@@ -261,7 +261,9 @@
           </Grid>
 
           <!-- 채팅 스크롤 — 입력 영역과 동일한 star 3열(중앙 3*, MaxWidth 760)로 폭·정렬을 맞춘다. -->
-          <ScrollViewer Grid.Row="0" x:Name="ChatScroll" Padding="0,22,0,24" VerticalScrollBarVisibility="Auto"
+          <!-- 하단 Padding 을 입력창 높이(~76)보다 크게 둬, 스크롤/레이아웃 오차와 무관하게
+               마지막 메시지가 항상 입력창 위로 밀리도록 한다(가림 물리적 방지). -->
+          <ScrollViewer Grid.Row="0" x:Name="ChatScroll" Padding="0,22,0,90" VerticalScrollBarVisibility="Auto"
                         HorizontalScrollBarVisibility="Disabled">
             <Grid>
               <Grid.ColumnDefinitions>
