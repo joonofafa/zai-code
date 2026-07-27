@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 
 namespace MoaiCode.Gui.Controls;
 
@@ -35,7 +36,29 @@ public sealed class MarkdownBlock : Border
 
     private readonly StackPanel _root = new() { Spacing = 6 };
 
-    public MarkdownBlock() => Child = _root;
+    public MarkdownBlock()
+    {
+        Child = _root;
+        // 스트리밍으로 답변 높이가 커질 때(SizeChanged) 조상 ScrollViewer 가 이미 하단 근처면
+        // 끝으로 따라 스크롤한다(채팅 표준 near-bottom auto-scroll). 사용자가 위로 올려 읽는 중이면
+        // 방해하지 않는다 — 마지막 답변이 입력창에 가리던 문제의 근본 대응.
+        SizeChanged += (_, _) => FollowIfNearBottom();
+    }
+
+    private void FollowIfNearBottom()
+    {
+        var sv = this.FindAncestorOfType<ScrollViewer>();
+        if (sv is null)
+        {
+            return;
+        }
+
+        // 하단에서 48px 이내이면 '따라가는 중'으로 보고 끝으로 스크롤.
+        if (sv.Offset.Y >= sv.Extent.Height - sv.Viewport.Height - 48)
+        {
+            sv.ScrollToEnd();
+        }
+    }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs e)
     {
