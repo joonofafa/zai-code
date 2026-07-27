@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
@@ -16,9 +17,13 @@ public sealed class XlsxCreateTool : ITool
 
     public string Description => """
         Creates a new Excel workbook (.xlsx) with one or more sheets of rows, using the built-in
-        Open XML writer — no dependencies, no Excel install. Cell values that parse as numbers are
-        written as numbers; others as text. Supports native charts (bar/line/pie) and a bold header
-        row — so charts do NOT need Python/openpyxl. ALWAYS use this to produce an .xlsx file. Do NOT
+        Open XML writer — no dependencies, no Excel install. Cell strings are auto-typed: a plain
+        number becomes a number; "12.5%" becomes a real percentage (0.125 with % format);
+        "1,234"/"1,234.5" becomes a number with thousands formatting; a string starting with "="
+        (e.g. "=SUM(B2:B4)", "=B2/C2") becomes a live formula; anything else stays text. Prefer
+        writing percentages, thousands-separated numbers, and formulas this way instead of pre-
+        computing them as plain text. Supports native charts (bar/line/pie) and a bold header row —
+        so charts do NOT need Python/openpyxl. ALWAYS use this to produce an .xlsx file. Do NOT
         install packages (openpyxl, exceljs, etc.) or write scripts to build spreadsheets.
         Charts reference vertical single-column ranges of the same sheet (e.g. categories "A2:A11",
         series values "B2:B11").
@@ -154,7 +159,7 @@ public sealed class XlsxCreateTool : ITool
                 var col = 0;
                 foreach (var value in rowCells)
                 {
-                    row.AppendChild(MakeCell(Reference(col, r), value, bold && r == 1 ? 1u : 0u));
+                    row.AppendChild(MakeCell(Reference(col, r), value, bold && r == 1));
                     col++;
                 }
 
@@ -208,6 +213,13 @@ public sealed class XlsxCreateTool : ITool
         return result;
     }
 
+    // CellFormat 인덱스: 0 기본 · 1 굵게 · 2 퍼센트(0.00%) · 3 천단위 정수(#,##0) · 4 천단위 소수(#,##0.00).
+    // 서식 ID(9/10/3/4)는 모두 스프레드시트 builtin 이라 NumberingFormats 정의가 필요 없다.
+    private const uint StyleBold = 1;
+    private const uint StylePercent = 2;
+    private const uint StyleThousandsInt = 3;
+    private const uint StyleThousandsDec = 4;
+
     private static Stylesheet BuildStylesheet()
     {
         return new Stylesheet(
@@ -217,42 +229,90 @@ public sealed class XlsxCreateTool : ITool
             new Fills(new Fill(new PatternFill { PatternType = PatternValues.None })),
             new Borders(new Border()),
             new CellFormats(
-                new CellFormat(),                             // 0: 기본
-                new CellFormat { FontId = 1, ApplyFont = true }));  // 1: 굵게
+                new CellFormat(),                                                          // 0: 기본
+                new CellFormat { FontId = 1, ApplyFont = true },                           // 1: 굵게
+                new CellFormat { NumberFormatId = 10, ApplyNumberFormat = true },          // 2: 0.00%
+                new CellFormat { NumberFormatId = 3, ApplyNumberFormat = true },           // 3: #,##0
+                new CellFormat { NumberFormatId = 4, ApplyNumberFormat = true }));         // 4: #,##0.00
     }
 
-    private static Cell MakeCell(string reference, string? value, uint styleIndex)
-    {
-        // 숫자로 파싱되면 숫자 셀(InvariantCulture — InvariantGlobalization 대응), 아니면 inline 문자열.
-        if (!string.IsNullOrEmpty(value)
-            && double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var num))
-        {
-            var c = new Cell
-            {
-                CellReference = reference,
-                DataType = CellValues.Number,
-                CellValue = new CellValue(num.ToString(CultureInfo.InvariantCulture)),
-            };
-            if (styleIndex != 0)
-            {
-                c.StyleIndex = styleIndex;
-            }
+    private static readonly Regex PercentRe = new(@"^-?\d+(\.\d+)?%$", RegexOptions.Compiled);
+    private static readonly Regex ThousandsRe = new(@"^-?\d{1,3}(,\d{3})+(\.\d+)?$", RegexOptions.Compiled);
 
-            return c;
+    // 셀 문자열을 자동 타이핑한다: 헤더=라벨(굵게 텍스트), 수식(=)·퍼센트·천단위·순수숫자·텍스트.
+    private static Cell MakeCell(string reference, string? value, bool isHeader)
+    {
+        var v = value ?? string.Empty;
+
+        // 헤더는 라벨로 취급 — 값 자동감지 없이 굵게 텍스트.
+        if (isHeader)
+        {
+            return Str(reference, v, StyleBold);
         }
 
-        var cell = new Cell
+        // 수식: "=..." → 라이브 수식(값은 Excel/LibreOffice 가 열 때 계산).
+        if (v.Length > 1 && v[0] == '=')
+        {
+            return new Cell { CellReference = reference, CellFormula = new CellFormula(v[1..]) };
+        }
+
+        // 퍼센트: "12.5%" → 0.125 + 퍼센트 서식.
+        if (PercentRe.IsMatch(v)
+            && double.TryParse(v[..^1], NumberStyles.Any, CultureInfo.InvariantCulture, out var pct))
+        {
+            return Num(reference, pct / 100.0, StylePercent);
+        }
+
+        // 천단위 구분: "1,234" / "1,234.5" → 숫자 + 천단위 서식.
+        if (ThousandsRe.IsMatch(v))
+        {
+            var stripped = v.Replace(",", string.Empty);
+            if (double.TryParse(stripped, NumberStyles.Any, CultureInfo.InvariantCulture, out var tn))
+            {
+                return Num(reference, tn, stripped.Contains('.') ? StyleThousandsDec : StyleThousandsInt);
+            }
+        }
+
+        // 순수 숫자(InvariantCulture — InvariantGlobalization 대응).
+        if (!string.IsNullOrEmpty(v)
+            && double.TryParse(v, NumberStyles.Any, CultureInfo.InvariantCulture, out var num))
+        {
+            return Num(reference, num, 0u);
+        }
+
+        return Str(reference, v, 0u);
+    }
+
+    private static Cell Num(string reference, double value, uint styleIndex)
+    {
+        var c = new Cell
         {
             CellReference = reference,
-            DataType = CellValues.InlineString,
-            InlineString = new InlineString(new Text(value ?? string.Empty)),
+            DataType = CellValues.Number,
+            CellValue = new CellValue(value.ToString(CultureInfo.InvariantCulture)),
         };
         if (styleIndex != 0)
         {
-            cell.StyleIndex = styleIndex;
+            c.StyleIndex = styleIndex;
         }
 
-        return cell;
+        return c;
+    }
+
+    private static Cell Str(string reference, string value, uint styleIndex)
+    {
+        var c = new Cell
+        {
+            CellReference = reference,
+            DataType = CellValues.InlineString,
+            InlineString = new InlineString(new Text(value)),
+        };
+        if (styleIndex != 0)
+        {
+            c.StyleIndex = styleIndex;
+        }
+
+        return c;
     }
 
     // 0-based col, 1-based row → "A1" 형식.

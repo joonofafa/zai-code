@@ -145,6 +145,51 @@ public sealed class CreateRoundTripTests : IDisposable
     }
 
     [Fact]
+    public async Task Xlsx_auto_types_formula_percent_thousands()
+    {
+        await Run(new XlsxCreateTool(), new
+        {
+            path = "typed.xlsx",
+            sheets = new[]
+            {
+                new
+                {
+                    name = "s",
+                    rows = new[]
+                    {
+                        new[] { "항목", "값" },        // 헤더(텍스트)
+                        new[] { "성장률", "12.5%" },    // 퍼센트
+                        new[] { "매출", "1,234,567" },  // 천단위
+                        new[] { "합계", "=B2+B3" },     // 수식
+                    },
+                    boldHeader = true,
+                },
+            },
+        });
+
+        using var doc = SpreadsheetDocument.Open(Path.Combine(_dir, "typed.xlsx"), false);
+        Assert.Equal(0, Validate(doc));
+        var cells = doc.WorkbookPart!.WorksheetParts.First().Worksheet
+            .Descendants<DocumentFormat.OpenXml.Spreadsheet.Cell>().ToList();
+
+        DocumentFormat.OpenXml.Spreadsheet.Cell C(string reference) =>
+            cells.First(c => c.CellReference == reference);
+
+        // 퍼센트: 값 0.125(문자열 아님) + 서식 스타일 적용.
+        Assert.Equal(DocumentFormat.OpenXml.Spreadsheet.CellValues.Number, C("B2").DataType!.Value);
+        Assert.Equal("0.125", C("B2").CellValue!.InnerText);
+        Assert.NotNull(C("B2").StyleIndex);
+
+        // 천단위: 콤마 제거된 숫자 + 서식.
+        Assert.Equal("1234567", C("B3").CellValue!.InnerText);
+        Assert.NotNull(C("B3").StyleIndex);
+
+        // 수식: 라이브 CellFormula.
+        Assert.NotNull(C("B4").CellFormula);
+        Assert.Equal("B2+B3", C("B4").CellFormula!.InnerText);
+    }
+
+    [Fact]
     public async Task Xlsx_creates_valid_workbook_with_numbers_and_text()
     {
         await Run(new XlsxCreateTool(), new
