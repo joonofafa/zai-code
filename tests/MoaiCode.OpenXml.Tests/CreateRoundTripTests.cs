@@ -44,6 +44,62 @@ public sealed class CreateRoundTripTests : IDisposable
     }
 
     [Fact]
+    public async Task Docx_blocks_headings_lists_table_and_inline_are_valid()
+    {
+        await Run(new DocxCreateTool(), new
+        {
+            path = "rich.docx",
+            title = "분기 실적 **보고서**",
+            blocks = new object[]
+            {
+                new { type = "heading", level = 1, text = "요약" },
+                new { type = "paragraph", text = "본 보고서는 *3분기* 실적을 **요약**한다." },
+                new { type = "bullets", items = new[] { "매출 증가", "비용 절감" } },
+                new { type = "numbered", items = new[] { "첫째", "둘째" } },
+                new
+                {
+                    type = "table",
+                    header = true,
+                    rows = new object[]
+                    {
+                        new[] { "항목", "값" },
+                        new[] { "매출", "120억" },
+                        new[] { "영업이익", "18억" },
+                    },
+                },
+            },
+        });
+
+        var path = Path.Combine(_dir, "rich.docx");
+        using var doc = WordprocessingDocument.Open(path, false);
+        Assert.Equal(0, Validate(doc)); // heading+목록+표+인라인 서식 모두 유효
+        var body = doc.MainDocumentPart!.Document.Body!;
+
+        Assert.NotEmpty(body.Descendants<DocumentFormat.OpenXml.Wordprocessing.Table>()); // 표 존재
+        Assert.Contains("요약", body.InnerText);
+        Assert.Contains("•", body.InnerText);   // 불릿 접두어
+        Assert.Contains("1.", body.InnerText);  // 번호 접두어
+        Assert.Contains("120억", body.InnerText);
+
+        // 인라인 **bold** 가 실제 Bold run 으로 반영됐는지(제목 자체 볼드 외에 본문 강조).
+        var bolds = body.Descendants<DocumentFormat.OpenXml.Wordprocessing.Bold>().Count();
+        Assert.True(bolds > 0);
+        // 헤더 셀 음영이 적용됐는지.
+        Assert.NotEmpty(body.Descendants<DocumentFormat.OpenXml.Wordprocessing.Shading>());
+    }
+
+    [Fact]
+    public async Task Docx_legacy_paragraphs_still_work()
+    {
+        // blocks 없이 기존 title/paragraphs 경로가 그대로 동작(하위호환).
+        await Run(new DocxCreateTool(),
+            new { path = "legacy.docx", title = "T", paragraphs = new[] { "p1", "p2" } });
+        using var doc = WordprocessingDocument.Open(Path.Combine(_dir, "legacy.docx"), false);
+        Assert.Equal(0, Validate(doc));
+        Assert.Contains("p1", doc.MainDocumentPart!.Document.Body!.InnerText);
+    }
+
+    [Fact]
     public async Task Xlsx_creates_valid_workbook_with_numbers_and_text()
     {
         await Run(new XlsxCreateTool(), new
