@@ -177,12 +177,12 @@
                      FontSize="13" Foreground="{DynamicResource TextMutedBrush}" />
         </Grid>
 
-        <!-- 채팅: 상=스크롤(*), 하=입력(Auto). Grid 2행으로 겹침 없이 분리(스크롤 끝까지 보장). -->
-        <Grid IsVisible="{Binding IsChatVisible}" RowDefinitions="*,Auto">
+        <!-- 채팅: DockPanel 로 하단 입력(Dock=Bottom)과 스크롤(Fill)을 물리적으로 분리.
+             Grid RowDefinitions="*,Auto" 가 이 환경에서 스크롤 영역을 입력창까지 확장(겹침)시켰음. -->
+        <DockPanel IsVisible="{Binding IsChatVisible}">
 
-          <!-- 하단 작성 영역: 대칭 star 컬럼으로 채팅 본문과 같은 760 중앙 고정.
-               (Stretch+MaxWidth 는 Avalonia 에서 좌측 편향, Center 는 칩 유무에 폭 쪼그라듦 → 대칭 star 로 해결) -->
-          <Grid Grid.Row="1" Margin="0,8,0,20">
+          <!-- 하단 작성 영역: 대칭 star 컬럼으로 채팅 본문과 같은 760 중앙 고정. -->
+          <Grid DockPanel.Dock="Bottom" Margin="0,8,0,20">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="*" />
               <ColumnDefinition Width="3*" MaxWidth="760" />
@@ -263,7 +263,7 @@
           <!-- 채팅 스크롤 — 입력 영역과 동일한 star 3열(중앙 3*, MaxWidth 760)로 폭·정렬을 맞춘다. -->
           <!-- 하단 Padding 을 입력창 높이(~76)보다 크게 둬, 스크롤/레이아웃 오차와 무관하게
                마지막 메시지가 항상 입력창 위로 밀리도록 한다(가림 물리적 방지). -->
-          <ScrollViewer Grid.Row="0" x:Name="ChatScroll" Padding="0,22,0,90" VerticalScrollBarVisibility="Auto"
+          <ScrollViewer x:Name="ChatScroll" Padding="0,22,0,90" VerticalScrollBarVisibility="Auto"
                         HorizontalScrollBarVisibility="Disabled">
             <Grid>
               <Grid.ColumnDefinitions>
@@ -389,7 +389,7 @@
             </ItemsControl>
             </Grid>
           </ScrollViewer>
-        </Grid>
+        </DockPanel>
       </Panel>
     </Grid>
   </Grid>

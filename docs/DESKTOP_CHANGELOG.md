@@ -5,6 +5,7 @@ Windows 데스크톱(Avalonia, 단일 exe) 릴리스 이력. CLI(`moai`)와 독�
 
 | 버전 | 요약 |
 |------|------|
+| 0.4.40 | **답변 가림 근본 수정**: 채팅 영역을 Grid(RowDefinitions) → **DockPanel(입력=Dock Bottom, 스크롤=Fill)** 로 재구성. Grid 가 스크롤 영역을 입력창까지 확장(겹침)시키던 문제. + 하단 여백 90 유지 |
 | 0.4.39 | 답변 가림 물리적 해결: 채팅 **하단 Padding 90**(입력창보다 크게)로 마지막 메시지 항상 위로 밀기 + near-bottom 추적을 다음 프레임+Offset 강제로 보정 |
 | 0.4.38 | **답변 가림 근본 수정**: MarkdownBlock(스트리밍 답변)에 near-bottom 자동 추적 — 높이가 커질 때 하단 근처면 따라 스크롤, 위로 읽는 중엔 방해 안 함 |
 | 0.4.37 | 대화 기록·열린 문서 항목이 2줄로 wrap되던 것 → **NoWrap+말줄임(…)** 1줄로(전역 TextWrapping=Wrap 오버라이드) |
