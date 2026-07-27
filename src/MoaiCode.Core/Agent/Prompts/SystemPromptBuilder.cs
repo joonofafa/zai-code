@@ -29,6 +29,7 @@ public static class SystemPromptBuilder
             ExecutingActionsWithCare(),
             UsingYourTools(ctx.ToolNames),
             ToneAndOutput(),
+            WorkingWithDocuments(ctx.ToolNames),
             OutputStyles.PromptFor(ctx.OutputStyle),
             Environment(ctx),
             RepoMap(ctx.RepoMap),
@@ -190,6 +191,34 @@ public static class SystemPromptBuilder
         " - Don't put a colon before a tool call (tool calls may not be shown): write \"Let me read the file.\" not \"Let me read the file:\".",
         " - Reserve longer text for decisions needing input, status at milestones, and blockers. One sentence beats three. This doesn't apply to code or tool calls.",
     });
+
+    // 문서 생성/편집 툴이 등록된 세션(예: MoAI Desktop)에서만 포함. 코딩 전용 CLI 세션엔 안 나온다.
+    // 위쪽 코딩/간결성 지침이 문서 본문 품질과 상충하지 않도록 문서 작성 기준을 명시한다.
+    private static string? WorkingWithDocuments(IReadOnlyList<string> toolNames)
+    {
+        var has = new HashSet<string>(toolNames, StringComparer.Ordinal);
+        var hasDocTool =
+            has.Contains("DocxCreate") || has.Contains("XlsxCreate") || has.Contains("PptxCreate")
+            || has.Contains("WordEdit") || has.Contains("ExcelEdit") || has.Contains("PowerPointEdit");
+        if (!hasDocTool)
+        {
+            return null;
+        }
+
+        return string.Join("\n", new[]
+        {
+            "# Working with documents",
+            "",
+            "Some of your tools create or edit real Office documents (Word/Excel/PowerPoint) that the user will deliver as finished work. When the request is to produce or edit a document, you are writing a polished deliverable, not code — for the document's CONTENT (not your chat replies), the guidance below overrides the brevity and minimal-change coding rules above.",
+            "",
+            " - Structure to the document type. Word (report/letter): a clear title, a short lead or summary, then logical sections with headings; use bullet/numbered lists and tables where they aid clarity — never a wall of plain paragraphs. PowerPoint (slides): one idea per slide, a strong title, concise scannable bullets; use tables, two-column layouts, or shapes for visual structure. Excel (data): a labeled header row, consistent columns, and a chart when the data shows a trend or comparison.",
+            " - Write substantive, complete body content in the user's language, with enough detail to be genuinely useful. \"One sentence beats three\" is for your chat messages, not for document body text.",
+            " - Match the audience and tone. Default to a professional, business-appropriate register (this is a financial-company setting) unless the user asks otherwise.",
+            " - Use the richest structure the chosen tool supports (headings, lists, tables, accent colors, charts) instead of dumping unformatted text.",
+            " - Editing an existing document: FIRST inspect it (WordInspect/PowerPointInspect/ExcelInspect) and MATCH its existing tone and formatting (font size, style, color, spacing). Change only what the user asked; leave unrelated content and formatting untouched.",
+            " - Ground the content in any reference documents provided; do not invent facts, figures, or quotations.",
+        });
+    }
 
     private static string Environment(PromptContext ctx)
     {

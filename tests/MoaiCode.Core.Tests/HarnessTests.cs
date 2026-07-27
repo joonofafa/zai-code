@@ -36,6 +36,30 @@ public class SystemPromptBuilderTests
         Assert.Contains("# Coding guidelines", p);             // 전역 기본 행동 지침
         Assert.Contains("Simplicity First", p);
         Assert.Contains("Every changed line should trace directly", p);
+        Assert.DoesNotContain("# Working with documents", p);  // 문서 툴 없으면 문서 섹션 제외
+    }
+
+    [Fact]
+    public void Includes_document_section_only_when_doc_tools_present()
+    {
+        var baseCtx = new PromptContext
+        {
+            WorkingDirectory = "/proj",
+            Platform = "windows",
+            ToolNames = new[] { "Read", "DocxCreate", "XlsxCreate", "PptxCreate" },
+        };
+
+        var withDocs = SystemPromptBuilder.Build(baseCtx);
+        Assert.Contains("# Working with documents", withDocs);
+        Assert.Contains("polished deliverable", withDocs);
+        Assert.Contains("not for document body text", withDocs); // 간결성 예외 명시
+
+        var codingOnly = SystemPromptBuilder.Build(new PromptContext
+        {
+            WorkingDirectory = "/proj",
+            ToolNames = new[] { "Read", "Edit", "Bash" },
+        });
+        Assert.DoesNotContain("# Working with documents", codingOnly);
     }
 }
 
