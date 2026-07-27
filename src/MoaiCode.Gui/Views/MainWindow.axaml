@@ -263,8 +263,11 @@
           <!-- 채팅 스크롤 — 입력 영역과 동일한 star 3열(중앙 3*, MaxWidth 760)로 폭·정렬을 맞춘다. -->
           <!-- 하단 Padding 을 입력창 높이(~76)보다 크게 둬, 스크롤/레이아웃 오차와 무관하게
                마지막 메시지가 항상 입력창 위로 밀리도록 한다(가림 물리적 방지). -->
+          <!-- AllowAutoHide=False: Fluent 오버레이 스크롤바가 마지막 줄 위에 겹쳐 그려지는 것 방지.
+               하단 Padding 90: sticky 가 Extent-Viewport 로 스크롤하므로 이 여백만큼 마지막 메시지가
+               입력창 위로 밀린다(이 환경의 미세 뷰포트 겹침 보상). -->
           <ScrollViewer x:Name="ChatScroll" Padding="0,22,0,90" VerticalScrollBarVisibility="Auto"
-                        HorizontalScrollBarVisibility="Disabled">
+                        HorizontalScrollBarVisibility="Disabled" AllowAutoHide="False">
             <Grid>
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />

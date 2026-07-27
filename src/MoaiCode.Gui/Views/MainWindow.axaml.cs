@@ -3,7 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform.Storage;
-using Avalonia.Threading;
+using MoaiCode.Gui.Controls;
 using MoaiCode.Gui.ViewModels;
 
 namespace MoaiCode.Gui.Views;
@@ -11,62 +11,38 @@ namespace MoaiCode.Gui.Views;
 public partial class MainWindow : Window
 {
     private MainViewModel? _hooked;
+    private StickyBottomScroll? _sticky;
 
     public MainWindow()
     {
         AvaloniaXamlLoader.Load(this);
         DataContextChanged += OnDataContextChanged;
+
+        // 채팅 스크롤을 하단 고정(sticky) — ScrollChanged 기반. 스트리밍/새 항목에 정확히 따라가고
+        // 사용자가 위로 올리면 멈춘다(Avalonia 정석; ScrollToEnd 프레임 세기·Offset 강제 폐기).
+        var sv = this.FindControl<ScrollViewer>("ChatScroll");
+        if (sv is not null)
+        {
+            _sticky = StickyBottomScroll.Attach(sv);
+        }
     }
 
-    // 자동 스크롤 — ViewModel 의 요청마다 채팅을 맨 아래로.
+    // ViewModel 이 스크롤을 요청하면(메시지 전송 등) 하단에 강제 재고정.
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
         if (_hooked is not null)
         {
-            _hooked.ScrollToEndRequested -= ScrollChatToEnd;
+            _hooked.ScrollToEndRequested -= StickToBottom;
         }
 
         _hooked = DataContext as MainViewModel;
         if (_hooked is not null)
         {
-            _hooked.ScrollToEndRequested += ScrollChatToEnd;
+            _hooked.ScrollToEndRequested += StickToBottom;
         }
     }
 
-    private void ScrollChatToEnd()
-    {
-        var sv = this.FindControl<ScrollViewer>("ChatScroll");
-        if (sv is null)
-        {
-            return;
-        }
-
-        // 새 콘텐츠(마지막 카드/스트리밍 중인 MarkdownBlock)는 이 호출 시점엔 아직 배치 전이라
-        // 즉시 ScrollToEnd 하면 끝까지 못 간다. 스트리밍 중 높이는 여러 레이아웃 패스에 걸쳐
-        // 늘어나므로, 몇 프레임 동안 LayoutUpdated 마다 ScrollToEnd 한 뒤 해제한다.
-        var passes = 0;
-        void OnLayoutUpdated(object? sender, EventArgs e)
-        {
-            ScrollToBottom(sv);
-            if (++passes >= 6)
-            {
-                sv.LayoutUpdated -= OnLayoutUpdated;
-            }
-        }
-
-        sv.LayoutUpdated -= OnLayoutUpdated; // 중복 구독 방지
-        passes = 0;
-        sv.LayoutUpdated += OnLayoutUpdated;
-        ScrollToBottom(sv);
-    }
-
-    // ScrollToEnd() 만으로는 배치 타이밍상 끝까지 못 가는 경우가 있어, Offset 을 콘텐츠 최대
-    // 높이로 직접 설정한다(ScrollViewer 가 유효 범위로 자동 clamp).
-    private static void ScrollToBottom(ScrollViewer sv)
-    {
-        sv.ScrollToEnd();
-        sv.Offset = new Avalonia.Vector(sv.Offset.X, sv.Extent.Height);
-    }
+    private void StickToBottom() => _sticky?.StickToBottom();
 
     // 참조 문서 첨부(모드 B) — 로컬 파일 다중 선택 → ViewModel 에 원문 추출 위임.
     private async void OnAttachClick(object? sender, RoutedEventArgs e)
