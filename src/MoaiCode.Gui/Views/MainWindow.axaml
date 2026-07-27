@@ -92,7 +92,7 @@
                                 Data="{Binding App, Converter={x:Static vm:Converters.AppIcon}}"
                                 Stroke="{Binding App, Converter={x:Static vm:Converters.AppBrush}}" />
                           <TextBlock Grid.Column="1" Text="{Binding Display}" FontSize="12"
-                                     TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                     TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                         </Grid>
                       </Button>
                     </DataTemplate>
@@ -125,10 +125,10 @@
                               Data="{Binding KindIcon, Converter={x:Static vm:Converters.IconKey}}"
                               VerticalAlignment="Center" />
                         <StackPanel Grid.Column="1">
-                          <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Text="{Binding Title}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
                           <TextBlock Text="{Binding Subtitle}" FontSize="11"
                                      Foreground="{DynamicResource TextMutedBrush}" Margin="0,2,0,0"
-                                     TextTrimming="CharacterEllipsis" />
+                                     TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
                         </StackPanel>
                       </Grid>
                     </Button>
