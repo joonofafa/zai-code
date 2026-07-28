@@ -51,43 +51,11 @@ public sealed class PowerPointSession
         {
             dynamic slide = pres.Slides[i];
             var shapes = new List<ShapeInfo>();
-            int shapeCount = (int)slide.Shapes.Count;
-            for (var j = 1; j <= shapeCount && shapes.Count < maxShapesPerSlide; j++)
-            {
-                dynamic shape = slide.Shapes[j];
-                bool hasTextFrame = TriBool(shape.HasTextFrame);
-                bool hasText = hasTextFrame && TriBool(shape.TextFrame.HasText);
-                string? text = hasText ? (string?)shape.TextFrame.TextRange.Text : null;
 
-                // 텍스트 도형이면 대표 서식(크기·글꼴·굵기·색) — 모델이 슬라이드 톤을 보고 판단하도록.
-                double? fontSize = null;
-                string? fontName = null;
-                bool? bold = null;
-                string? fontColor = null;
-                if (hasText)
-                {
-                    dynamic font = shape.TextFrame.TextRange.Font;
-                    fontSize = TryGet(() => (double?)Convert.ToDouble(font.Size));
-                    fontName = TryGet(() => (string?)font.Name);
-                    var b = TryGet(() => (int?)font.Bold); // MsoTriState
-                    bold = b is -1 ? true : b is 0 ? false : null;
-                    fontColor = ColorHex(TryGet(() => (int?)font.Color.RGB));
-                }
-
-                shapes.Add(new ShapeInfo(
-                    ShapeId: (int)shape.Id,
-                    Name: (string)shape.Name,
-                    Text: text,
-                    Left: Convert.ToDouble(shape.Left),
-                    Top: Convert.ToDouble(shape.Top),
-                    Width: Convert.ToDouble(shape.Width),
-                    Height: Convert.ToDouble(shape.Height),
-                    HasTextFrame: hasTextFrame,
-                    FontSize: fontSize,
-                    FontName: fontName,
-                    Bold: bold,
-                    FontColor: fontColor));
-            }
+            // 본문 도형 + 레이아웃/마스터 배경 도형(전체 테마 색 변경 등에서 대상이 되도록).
+            AddShapes(shapes, TryGet(() => slide.Shapes), "slide", maxShapesPerSlide);
+            AddShapes(shapes, TryGet(() => slide.CustomLayout.Shapes), "layout", maxShapesPerSlide);
+            AddShapes(shapes, TryGet(() => slide.CustomLayout.SlideMaster.Shapes), "master", maxShapesPerSlide);
 
             slides.Add(new SlideInfo(
                 Index: (int)slide.SlideIndex,
@@ -102,6 +70,61 @@ public sealed class PowerPointSession
             SlideCount: slideCount,
             CurrentSlideIndex: current,
             Slides: slides);
+    }
+
+    // 한 Shapes 컬렉션(본문/레이아웃/마스터)을 ShapeInfo 로 변환해 목록에 추가한다.
+    private static void AddShapes(List<ShapeInfo> shapes, dynamic? comShapes, string scope, int max)
+    {
+        if (comShapes is null)
+        {
+            return;
+        }
+
+        int count = TryGet(() => (int?)comShapes.Count) ?? 0;
+        var added = 0;
+        for (var j = 1; j <= count && added < max; j++)
+        {
+            dynamic? shape = TryGet(() => comShapes[j]);
+            if (shape is null)
+            {
+                continue;
+            }
+
+            bool hasTextFrame = TriBool(shape.HasTextFrame);
+            bool hasText = hasTextFrame && TriBool(shape.TextFrame.HasText);
+            string? text = hasText ? (string?)shape.TextFrame.TextRange.Text : null;
+
+            // 텍스트 도형이면 대표 서식(크기·글꼴·굵기·색) — 모델이 슬라이드 톤을 보고 판단하도록.
+            double? fontSize = null;
+            string? fontName = null;
+            bool? bold = null;
+            string? fontColor = null;
+            if (hasText)
+            {
+                dynamic font = shape.TextFrame.TextRange.Font;
+                fontSize = TryGet(() => (double?)Convert.ToDouble(font.Size));
+                fontName = TryGet(() => (string?)font.Name);
+                var b = TryGet(() => (int?)font.Bold); // MsoTriState
+                bold = b is -1 ? true : b is 0 ? false : null;
+                fontColor = ColorHex(TryGet(() => (int?)font.Color.RGB));
+            }
+
+            shapes.Add(new ShapeInfo(
+                ShapeId: (int)shape.Id,
+                Name: (string)shape.Name,
+                Text: text,
+                Left: Convert.ToDouble(shape.Left),
+                Top: Convert.ToDouble(shape.Top),
+                Width: Convert.ToDouble(shape.Width),
+                Height: Convert.ToDouble(shape.Height),
+                HasTextFrame: hasTextFrame,
+                FontSize: fontSize,
+                FontName: fontName,
+                Bold: bold,
+                FontColor: fontColor,
+                Scope: scope));
+            added++;
+        }
     }
 
     // Office COM 색(BGR int) → "#RRGGBB". 음수/특수값은 null.

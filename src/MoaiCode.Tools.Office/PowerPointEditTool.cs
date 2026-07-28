@@ -39,8 +39,12 @@ public sealed class PowerPointEditTool : ITool
           - set_line: set border line color/weight (any of "color", "line_weight")
         Target the shape by shape_id (from PowerPointInspect) on slide_index; shape_name is a fallback.
         If no shape target is given, the action applies to the CURRENTLY SELECTED shape(s).
-        Colors are "#RRGGBB" hex or a basic name (red, blue, green, yellow, black, white, ...).
-        Re-verifies targets immediately before writing. Windows only.
+        "scope" selects where the shape lives: "slide" (default, body shapes), "layout" (the slide's
+        layout background shapes), or "master" (the slide master's background shapes). Use layout/master
+        to recolor template decorations (banners, sidebars) that stay unchanged when only body shapes are
+        edited — e.g. an overall theme color change. NOTE: editing a master/layout shape affects EVERY
+        slide sharing it. Colors are "#RRGGBB" hex or a basic name (red, blue, green, yellow, black,
+        white, ...). Re-verifies targets immediately before writing. Windows only.
         """;
 
     public bool IsReadOnly => false;
@@ -54,6 +58,7 @@ public sealed class PowerPointEditTool : ITool
           "properties": {
             "action": { "type": "string", "enum": ["set_text", "set_fill", "set_font", "set_line"], "description": "Edit action" },
             "slide_index": { "type": "integer", "description": "1-based slide index (omit to target current selection)" },
+            "scope": { "type": "string", "enum": ["slide", "layout", "master"], "description": "Where the target shape lives: slide (default), layout, or master. layout/master require slide_index + shape_id/shape_name." },
             "shape_id": { "type": "integer", "description": "Shape id from PowerPointInspect (preferred)" },
             "shape_name": { "type": "string", "description": "Shape name (fallback if shape_id absent)" },
             "text": { "type": "string", "description": "New text (set_text)" },
@@ -69,6 +74,7 @@ public sealed class PowerPointEditTool : ITool
     private sealed record Input(
         [property: JsonPropertyName("action")] string? Action,
         [property: JsonPropertyName("slide_index")] int? SlideIndex,
+        [property: JsonPropertyName("scope")] string? Scope,
         [property: JsonPropertyName("shape_id")] int? ShapeId,
         [property: JsonPropertyName("shape_name")] string? ShapeName,
         [property: JsonPropertyName("text")] string? Text,
@@ -134,6 +140,18 @@ public sealed class PowerPointEditTool : ITool
             return "shape_id/shape_name 을 쓰려면 slide_index 도 필요합니다.";
         }
 
+        var scope = inp.Scope ?? "slide";
+        if (scope is not ("slide" or "layout" or "master"))
+        {
+            return "scope 는 slide|layout|master 중 하나여야 합니다.";
+        }
+
+        // layout/master 도형은 현재 선택으로 못 잡으므로 명시 지정(slide_index+shape)이 필수.
+        if (scope is not "slide" && !hasShapeRef)
+        {
+            return "scope=layout/master 는 slide_index 와 shape_id/shape_name 지정이 필요합니다.";
+        }
+
         return inp.Action switch
         {
             "set_text" when inp.Text is null => "set_text 에는 text 가 필요합니다.",
@@ -168,10 +186,10 @@ public sealed class PowerPointEditTool : ITool
             ApplyToShape(shape, inp);
         }
 
-        var scope = inp.SlideIndex is not null
-            ? $"슬라이드 {inp.SlideIndex}"
+        var where = inp.SlideIndex is not null
+            ? $"슬라이드 {inp.SlideIndex}" + ((inp.Scope ?? "slide") is var sc && sc != "slide" ? $"({sc})" : string.Empty)
             : "현재 선택";
-        return $"OK: {scope} 도형 {targets.Count}개에 {inp.Action} 적용.";
+        return $"OK: {where} 도형 {targets.Count}개에 {inp.Action} 적용.";
     }
 
     // 대상 도형 목록을 만든다: 지정(slide_index+shape) 하나, 또는 현재 선택 전체.
@@ -189,7 +207,16 @@ public sealed class PowerPointEditTool : ITool
             }
 
             dynamic slide = pres.Slides[inp.SlideIndex.Value];
-            dynamic? shape = FindShape(slide, inp.ShapeId, inp.ShapeName);
+
+            // scope 에 따라 검색할 Shapes 컬렉션 선택: 본문 / 레이아웃 배경 / 마스터 배경.
+            dynamic shapesCol = (inp.Scope ?? "slide") switch
+            {
+                "layout" => slide.CustomLayout.Shapes,
+                "master" => slide.CustomLayout.SlideMaster.Shapes,
+                _ => slide.Shapes,
+            };
+
+            dynamic? shape = FindShape(shapesCol, inp.ShapeId, inp.ShapeName);
             if (shape is not null)
             {
                 list.Add(shape);
@@ -298,12 +325,12 @@ public sealed class PowerPointEditTool : ITool
         }
     }
 
-    private static dynamic? FindShape(dynamic slide, int? shapeId, string? name)
+    private static dynamic? FindShape(dynamic shapes, int? shapeId, string? name)
     {
-        int count = (int)slide.Shapes.Count;
+        int count = (int)shapes.Count;
         for (var i = 1; i <= count; i++)
         {
-            dynamic s = slide.Shapes[i];
+            dynamic s = shapes[i];
             if (shapeId is not null && (int)s.Id == shapeId.Value)
             {
                 return s;

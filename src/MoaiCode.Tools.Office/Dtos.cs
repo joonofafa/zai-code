@@ -32,4 +32,7 @@ public sealed record ShapeInfo(
     double? FontSize = null,
     string? FontName = null,
     bool? Bold = null,
-    string? FontColor = null);
+    string? FontColor = null,
+    // 도형 소속: "slide"(본문) · "layout"(레이아웃 배경) · "master"(마스터 배경).
+    // 레이아웃/마스터 도형은 편집 시 같은 scope 를 지정해야 대상이 된다(전체 테마 색 변경 등).
+    string Scope = "slide");
