@@ -25,12 +25,13 @@ public sealed class PowerPointInspectTool : ITool
 
     public string Description => """
         Inspects the running PowerPoint: active presentation, slides, and shapes (read-only) — shape ids,
-        text, positions, and font (font_size, font_name, bold, font_color). Each shape has a "scope":
-        "slide" (body), "layout", or "master". Template decorations (banners, sidebars, backgrounds) live
-        in layout/master shapes — for an overall theme/color change, recolor those too via PowerPointEdit
-        with the matching scope, not just the slide-scope shapes. Use BEFORE editing, and MATCH the slide's
-        existing tone (size/color/font) so edits fit the design. Windows only; requires PowerPoint running
-        with an open presentation.
+        text, positions, font (font_size, font_name, bold, font_color) and shape fill_color. Each shape has
+        a "scope": "slide" (body), "layout", or "master". Template decorations (banners, sidebars) live in
+        layout/master shapes — for an overall theme/color change, recolor those too via PowerPointEdit with
+        the matching scope. The top-level "dominant_colors" lists the document's most-used colors (fill +
+        text) by frequency — use it to match the existing tone/palette (e.g. "make it match the document
+        tone") from the ACTUAL document rather than relying on earlier conversation. Use BEFORE editing so
+        edits fit the design. Windows only; requires PowerPoint running with an open presentation.
         """;
 
     public bool IsReadOnly => true;

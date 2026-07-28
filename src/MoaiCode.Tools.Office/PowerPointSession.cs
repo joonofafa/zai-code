@@ -69,7 +69,8 @@ public sealed class PowerPointSession
             Path: TryGet(() => (string?)pres.FullName),
             SlideCount: slideCount,
             CurrentSlideIndex: current,
-            Slides: slides);
+            Slides: slides,
+            DominantColors: DominantColors(slides));
     }
 
     // 한 Shapes 컬렉션(본문/레이아웃/마스터)을 ShapeInfo 로 변환해 목록에 추가한다.
@@ -109,6 +110,14 @@ public sealed class PowerPointSession
                 fontColor = ColorHex(TryGet(() => (int?)font.Color.RGB));
             }
 
+            // 도형 채우기 색 — 채우기가 보이는 경우만(Fill.Visible 은 MsoTriState).
+            string? fillColor = null;
+            var fillVisible = TryGet(() => (int?)shape.Fill.Visible);
+            if (fillVisible == -1) // msoTrue
+            {
+                fillColor = ColorHex(TryGet(() => (int?)shape.Fill.ForeColor.RGB));
+            }
+
             shapes.Add(new ShapeInfo(
                 ShapeId: (int)shape.Id,
                 Name: (string)shape.Name,
@@ -122,9 +131,33 @@ public sealed class PowerPointSession
                 FontName: fontName,
                 Bold: bold,
                 FontColor: fontColor,
+                FillColor: fillColor,
                 Scope: scope));
             added++;
         }
+    }
+
+    // 문서에서 가장 많이 쓰인 색(도형 채우기 + 글자)을 빈도순으로. "톤앤매너"의 실제 근거.
+    private static List<string> DominantColors(List<SlideInfo> slides)
+    {
+        var freq = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var slide in slides)
+        {
+            foreach (var shape in slide.Shapes)
+            {
+                if (shape.FillColor is { } fill)
+                {
+                    freq[fill] = freq.GetValueOrDefault(fill) + 1;
+                }
+
+                if (shape.FontColor is { } font)
+                {
+                    freq[font] = freq.GetValueOrDefault(font) + 1;
+                }
+            }
+        }
+
+        return freq.OrderByDescending(kv => kv.Value).Take(8).Select(kv => kv.Key).ToList();
     }
 
     // Office COM 색(BGR int) → "#RRGGBB". 음수/특수값은 null.

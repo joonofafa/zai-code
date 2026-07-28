@@ -9,7 +9,10 @@ public sealed record PresentationInfo(
     string? Path,
     int SlideCount,
     int? CurrentSlideIndex,
-    IReadOnlyList<SlideInfo> Slides);
+    IReadOnlyList<SlideInfo> Slides,
+    // 문서에서 가장 많이 쓰인 색(도형 채우기+글자), 빈도 내림차순. "톤앤매너"를 대화 맥락이 아니라
+    // 실제 문서에서 읽어 맞추도록 하는 요약. 비어 있을 수 있다.
+    IReadOnlyList<string>? DominantColors = null);
 
 /// <summary>슬라이드 스냅샷. SlideId 는 인덱스와 달리 안정적 식별자(순서 변경에도 유지).</summary>
 public sealed record SlideInfo(
@@ -33,6 +36,8 @@ public sealed record ShapeInfo(
     string? FontName = null,
     bool? Bold = null,
     string? FontColor = null,
+    // 도형 채우기 색(#RRGGBB). 채우기 없음/읽기 실패면 null. "톤앤매너 맞춰"의 색 근거.
+    string? FillColor = null,
     // 도형 소속: "slide"(본문) · "layout"(레이아웃 배경) · "master"(마스터 배경).
     // 레이아웃/마스터 도형은 편집 시 같은 scope 를 지정해야 대상이 된다(전체 테마 색 변경 등).
     string Scope = "slide");
