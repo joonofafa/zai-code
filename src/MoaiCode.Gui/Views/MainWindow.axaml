@@ -245,11 +245,14 @@
                   <Border Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource AccentHoverBrush}"
                           BorderThickness="1" CornerRadius="14" Padding="16,13" HorizontalAlignment="Left" MaxWidth="560">
                     <StackPanel Spacing="12">
-                      <StackPanel Orientation="Horizontal" Spacing="10">
-                        <Path Classes="icon" Data="{StaticResource Icon.Pencil}" VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding Text}" FontSize="13.5" TextWrapping="Wrap"
-                                   VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
-                      </StackPanel>
+                      <!-- 아이콘 Auto + 텍스트 star 로 제약해야 긴 문구가 상자 안에서 줄바꿈된다.
+                           (가로 StackPanel 은 자식에 무한 너비를 줘서 wrap 이 동작하지 않음) -->
+                      <Grid ColumnDefinitions="Auto,*">
+                        <Path Grid.Column="0" Classes="icon" Data="{StaticResource Icon.Pencil}"
+                              VerticalAlignment="Top" Margin="0,2,10,0" />
+                        <TextBlock Grid.Column="1" Text="{Binding Text}" FontSize="13.5" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                      </Grid>
                       <StackPanel Orientation="Horizontal" Spacing="9" HorizontalAlignment="Right"
                                   IsVisible="{Binding !Decided}">
                         <Button Classes="ghost" Content="취소" Command="{Binding RejectCommand}" />
