@@ -121,6 +121,12 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>좌패널 하단: 대화 기록.</summary>
     public ObservableCollection<SessionMeta> Sessions { get; } = new();
 
+    /// <summary>홈 화면 '최근 작업' 카드(상위 6개). 없으면 첫 실행(교육형) 홈을 보인다.</summary>
+    public ObservableCollection<SessionMeta> RecentItems { get; } = new();
+
+    /// <summary>재방문 여부 — 최근 작업이 하나라도 있으면 true(홈 상태 분기).</summary>
+    public bool HasRecent => RecentItems.Count > 0;
+
     /// <summary>모드 B: 이번 작업에 첨부된 참조 문서(로컬/조직).</summary>
     public ObservableCollection<ReferenceItem> References { get; } = new();
     public bool HasReferences => References.Count > 0;
@@ -432,6 +438,15 @@ public sealed partial class MainViewModel : ObservableObject
         {
             Sessions.Add(m);
         }
+
+        // 홈 '최근 작업' 카드(상위 6). 첫 실행/재방문 분기용.
+        RecentItems.Clear();
+        foreach (var m in Sessions.Take(6))
+        {
+            RecentItems.Add(m);
+        }
+
+        OnPropertyChanged(nameof(HasRecent));
     }
 
     private void SaveCurrent()

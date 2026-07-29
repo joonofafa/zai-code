@@ -190,6 +190,29 @@
     <Setter Property="BorderBrush" Value="{DynamicResource AccentHoverBrush}" />
   </Style>
 
+  <!-- 홈 재방문: 작은 타일(최근 작업 아래 '새로 시작') -->
+  <Style Selector="Button.tile.sm">
+    <Setter Property="Width" Value="158" />
+    <Setter Property="Height" Value="92" />
+    <Setter Property="CornerRadius" Value="14" />
+  </Style>
+
+  <!-- 홈 재방문: '최근 작업' 카드 -->
+  <Style Selector="Button.recentcard">
+    <Setter Property="Background" Value="{DynamicResource BgCardBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSoftBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="Padding" Value="14" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.recentcard:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentHoverBrush}" />
+  </Style>
+
   <!-- 입력 TextBox -->
   <Style Selector="TextBox.composer">
     <Setter Property="Background" Value="Transparent" />

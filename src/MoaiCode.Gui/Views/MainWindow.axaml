@@ -148,35 +148,103 @@
         <!-- 설정 패널 -->
         <views:SettingsView Grid.Column="1" Grid.Row="0" IsVisible="{Binding ShowSettings}" />
 
-        <!-- 홈(시작) 화면: 창문 모양 버튼 2개 (패널 중앙) -->
-        <Grid Grid.Column="1" Grid.Row="0" IsVisible="{Binding IsHomeVisible}" RowDefinitions="*,Auto,Auto,*">
-          <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="22">
+        <!-- 홈(시작) 화면: 첫 실행(교육형) / 재방문(최근 작업)으로 상태 분기 -->
+        <Grid Grid.Column="1" Grid.Row="0" IsVisible="{Binding IsHomeVisible}">
 
-            <!-- 새로운 대화 -->
-            <Button Classes="tile" Command="{Binding NewConversationCommand}">
-              <StackPanel Spacing="14" HorizontalAlignment="Center">
-                <Path Data="{StaticResource Icon.MessageSquare}" Stroke="{DynamicResource AccentHoverBrush}"
-                      StrokeThickness="1.8" StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                      Width="46" Height="46" Stretch="Uniform" HorizontalAlignment="Center" />
-                <TextBlock Text="새로운 대화" FontSize="14.5" FontWeight="SemiBold" HorizontalAlignment="Center"
-                           Foreground="{DynamicResource TextPrimaryBrush}" />
+          <!-- ── 첫 실행: 중앙 타일 2개 + 시작 예시 칩 ── -->
+          <Grid IsVisible="{Binding !HasRecent}" RowDefinitions="*,Auto,Auto,Auto,*">
+            <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="22">
+              <Button Classes="tile" Command="{Binding NewConversationCommand}">
+                <StackPanel Spacing="14" HorizontalAlignment="Center">
+                  <Path Data="{StaticResource Icon.MessageSquare}" Stroke="{DynamicResource AccentHoverBrush}"
+                        StrokeThickness="1.8" StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                        Width="46" Height="46" Stretch="Uniform" HorizontalAlignment="Center" />
+                  <TextBlock Text="새로운 대화" FontSize="14.5" FontWeight="SemiBold" HorizontalAlignment="Center"
+                             Foreground="{DynamicResource TextPrimaryBrush}" />
+                </StackPanel>
+              </Button>
+              <Button Classes="tile" Click="OnOfficeDocClick">
+                <StackPanel Spacing="14" HorizontalAlignment="Center">
+                  <Path Data="{StaticResource Icon.Presentation}" Stroke="{DynamicResource AccentHoverBrush}"
+                        StrokeThickness="1.8" StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                        Width="46" Height="46" Stretch="Uniform" HorizontalAlignment="Center" />
+                  <TextBlock Text="새로운 오피스 문서 작업" FontSize="14.5" FontWeight="SemiBold" HorizontalAlignment="Center"
+                             Foreground="{DynamicResource TextPrimaryBrush}" />
+                </StackPanel>
+              </Button>
+            </StackPanel>
+
+            <TextBlock Grid.Row="2" Text="이렇게 시작해보세요" HorizontalAlignment="Center" Margin="0,34,0,14"
+                       FontSize="12.5" Foreground="{DynamicResource TextMutedBrush}" />
+            <WrapPanel Grid.Row="3" HorizontalAlignment="Center" MaxWidth="640">
+              <Button Classes="chip" Margin="5" Command="{Binding UseSuggestionCommand}"
+                      CommandParameter="이 견적서 요약해줘">이 견적서 요약해줘</Button>
+              <Button Classes="chip" Margin="5" Command="{Binding UseSuggestionCommand}"
+                      CommandParameter="3분기 실적 슬라이드 만들어줘">3분기 실적 슬라이드 만들어줘</Button>
+              <Button Classes="chip" Margin="5" Command="{Binding UseSuggestionCommand}"
+                      CommandParameter="예산안 엑셀에 증감률 넣어줘">예산안 엑셀에 증감률 넣어줘</Button>
+              <Button Classes="chip" Margin="5" Command="{Binding UseSuggestionCommand}"
+                      CommandParameter="이 계약서 초안 만들어줘">이 계약서 초안 만들어줘</Button>
+            </WrapPanel>
+          </Grid>
+
+          <!-- ── 재방문: 최근 작업 카드 + 새로 시작 ── -->
+          <ScrollViewer IsVisible="{Binding HasRecent}" HorizontalScrollBarVisibility="Disabled" Padding="36,32,36,32">
+            <StackPanel MaxWidth="760" HorizontalAlignment="Center" Spacing="12">
+              <TextBlock Text="최근 작업" FontSize="12.5" FontWeight="SemiBold"
+                         Foreground="{DynamicResource TextSecondaryBrush}" />
+              <ItemsControl ItemsSource="{Binding RecentItems}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Button Classes="recentcard" Width="232" Margin="0,0,12,12"
+                            Command="{Binding $parent[ItemsControl].DataContext.LoadSessionCommand}"
+                            CommandParameter="{Binding}">
+                      <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" Width="196">
+                        <Border Grid.RowSpan="2" Width="30" Height="30" CornerRadius="8" Margin="0,0,11,0"
+                                Background="{DynamicResource AccentSoftBrush}" VerticalAlignment="Top">
+                          <Path Classes="icon" Data="{Binding KindIcon, Converter={x:Static vm:Converters.IconKey}}"
+                                Stroke="{DynamicResource AccentHoverBrush}"
+                                HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                   TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Grid.Column="1" Grid.Row="1" Text="{Binding Subtitle}" FontSize="11.5" Margin="0,3,0,0"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+              <TextBlock Text="새로 시작" FontSize="12.5" FontWeight="SemiBold" Margin="0,20,0,0"
+                         Foreground="{DynamicResource TextSecondaryBrush}" />
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <Button Classes="tile sm" Command="{Binding NewConversationCommand}">
+                  <StackPanel Spacing="9" HorizontalAlignment="Center">
+                    <Path Data="{StaticResource Icon.MessageSquare}" Stroke="{DynamicResource AccentHoverBrush}"
+                          StrokeThickness="1.7" StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                          Width="26" Height="26" Stretch="Uniform" HorizontalAlignment="Center" />
+                    <TextBlock Text="새로운 대화" FontSize="12.5" FontWeight="SemiBold" HorizontalAlignment="Center"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                  </StackPanel>
+                </Button>
+                <Button Classes="tile sm" Click="OnOfficeDocClick">
+                  <StackPanel Spacing="9" HorizontalAlignment="Center">
+                    <Path Data="{StaticResource Icon.Presentation}" Stroke="{DynamicResource AccentHoverBrush}"
+                          StrokeThickness="1.7" StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                          Width="26" Height="26" Stretch="Uniform" HorizontalAlignment="Center" />
+                    <TextBlock Text="오피스 문서 작업" FontSize="12.5" FontWeight="SemiBold" HorizontalAlignment="Center"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                  </StackPanel>
+                </Button>
               </StackPanel>
-            </Button>
-
-            <!-- 새로운 오피스 문서 작업 -->
-            <Button Classes="tile" Click="OnOfficeDocClick">
-              <StackPanel Spacing="14" HorizontalAlignment="Center">
-                <Path Data="{StaticResource Icon.Presentation}" Stroke="{DynamicResource AccentHoverBrush}"
-                      StrokeThickness="1.8" StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                      Width="46" Height="46" Stretch="Uniform" HorizontalAlignment="Center" />
-                <TextBlock Text="새로운 오피스 문서 작업" FontSize="14.5" FontWeight="SemiBold" HorizontalAlignment="Center"
-                           Foreground="{DynamicResource TextPrimaryBrush}" />
-              </StackPanel>
-            </Button>
-          </StackPanel>
-
-          <TextBlock Grid.Row="2" Text="새로운 작업을 시작하세요." HorizontalAlignment="Center" Margin="0,26,0,0"
-                     FontSize="13" Foreground="{DynamicResource TextMutedBrush}" />
+            </StackPanel>
+          </ScrollViewer>
         </Grid>
 
           <!-- 채팅 스크롤 (앱 Grid Row0 직속; 입력은 앱 Grid 하단 Row1 로 물리 분리).
