@@ -165,20 +165,20 @@
           <Grid IsVisible="{Binding !HasRecent}" RowDefinitions="*,Auto,Auto,Auto,*">
             <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="22">
               <Button Classes="tile" Command="{Binding NewConversationCommand}">
-                <StackPanel Spacing="14" HorizontalAlignment="Center">
+                <StackPanel Orientation="Horizontal" Spacing="9" HorizontalAlignment="Center" VerticalAlignment="Center">
                   <Path Data="{StaticResource Icon.MessageSquare}" Stroke="{DynamicResource AccentHoverBrush}"
                         StrokeThickness="1.8" StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                        Width="46" Height="46" Stretch="Uniform" HorizontalAlignment="Center" />
-                  <TextBlock Text="새로운 대화" FontSize="14.5" FontWeight="SemiBold" HorizontalAlignment="Center"
+                        Width="18" Height="18" Stretch="Uniform" VerticalAlignment="Center" />
+                  <TextBlock Text="새로운 대화" FontSize="14.5" FontWeight="SemiBold" VerticalAlignment="Center"
                              Foreground="{DynamicResource TextPrimaryBrush}" />
                 </StackPanel>
               </Button>
               <Button Classes="tile" Click="OnOfficeDocClick">
-                <StackPanel Spacing="14" HorizontalAlignment="Center">
+                <StackPanel Orientation="Horizontal" Spacing="9" HorizontalAlignment="Center" VerticalAlignment="Center">
                   <Path Data="{StaticResource Icon.Presentation}" Stroke="{DynamicResource AccentHoverBrush}"
                         StrokeThickness="1.8" StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                        Width="46" Height="46" Stretch="Uniform" HorizontalAlignment="Center" />
-                  <TextBlock Text="새로운 오피스 문서 작업" FontSize="14.5" FontWeight="SemiBold" HorizontalAlignment="Center"
+                        Width="18" Height="18" Stretch="Uniform" VerticalAlignment="Center" />
+                  <TextBlock Text="새로운 오피스 문서 작업" FontSize="14.5" FontWeight="SemiBold" VerticalAlignment="Center"
                              Foreground="{DynamicResource TextPrimaryBrush}" />
                 </StackPanel>
               </Button>
@@ -244,20 +244,20 @@
                          Foreground="{DynamicResource TextSecondaryBrush}" />
               <StackPanel Orientation="Horizontal" Spacing="12">
                 <Button Classes="tile sm" Command="{Binding NewConversationCommand}">
-                  <StackPanel Spacing="9" HorizontalAlignment="Center">
+                  <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center">
                     <Path Data="{StaticResource Icon.MessageSquare}" Stroke="{DynamicResource AccentHoverBrush}"
                           StrokeThickness="1.7" StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                          Width="26" Height="26" Stretch="Uniform" HorizontalAlignment="Center" />
-                    <TextBlock Text="새로운 대화" FontSize="12.5" FontWeight="SemiBold" HorizontalAlignment="Center"
+                          Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" />
+                    <TextBlock Text="새로운 대화" FontSize="12.5" FontWeight="SemiBold" VerticalAlignment="Center"
                                Foreground="{DynamicResource TextPrimaryBrush}" />
                   </StackPanel>
                 </Button>
                 <Button Classes="tile sm" Click="OnOfficeDocClick">
-                  <StackPanel Spacing="9" HorizontalAlignment="Center">
+                  <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center">
                     <Path Data="{StaticResource Icon.Presentation}" Stroke="{DynamicResource AccentHoverBrush}"
                           StrokeThickness="1.7" StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                          Width="26" Height="26" Stretch="Uniform" HorizontalAlignment="Center" />
-                    <TextBlock Text="오피스 문서 작업" FontSize="12.5" FontWeight="SemiBold" HorizontalAlignment="Center"
+                          Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" />
+                    <TextBlock Text="오피스 문서 작업" FontSize="12.5" FontWeight="SemiBold" VerticalAlignment="Center"
                                Foreground="{DynamicResource TextPrimaryBrush}" />
                   </StackPanel>
                 </Button>
