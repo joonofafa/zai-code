@@ -9,8 +9,10 @@ namespace MoaiCode.Gui.Sessions;
 /// <summary>대화 한 줄(role: user | assistant).</summary>
 public sealed record TurnLine(string Role, string Text);
 
-/// <summary>세션 목록 표시용 메타. Kind: chat(일반) | generate(문서 생성) | edit(열린 문서 편집).</summary>
-public sealed record SessionMeta(string Id, string Title, string When, string Kind = "chat", string? TargetDoc = null)
+/// <summary>세션 목록 표시용 메타. Kind: chat(일반) | generate(문서 생성) | edit(열린 문서 편집).
+/// DocId: 연결된 문서의 MoAI 고유 식별자(MoaiDocId) — 같은 문서 = 같은 대화 재연결용.</summary>
+public sealed record SessionMeta(
+    string Id, string Title, string When, string Kind = "chat", string? TargetDoc = null, string? DocId = null)
 {
     /// <summary>히스토리 행 배지 아이콘(lucide 리소스 키).</summary>
     public string KindIcon => Kind switch
@@ -30,7 +32,8 @@ public static class SessionStore
     private static string Dir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".moai", "desktop-sessions");
 
-    public static void Save(string id, IReadOnlyList<TurnLine> lines, string kind = "chat", string? targetDoc = null)
+    public static void Save(string id, IReadOnlyList<TurnLine> lines, string kind = "chat",
+        string? targetDoc = null, string? docId = null)
     {
         if (lines.Count == 0)
         {
@@ -42,7 +45,7 @@ public static class SessionStore
             Directory.CreateDirectory(Dir);
             var title = lines.FirstOrDefault(l => l.Role == "user")?.Text?.Trim() ?? "새 대화";
             title = title.Length > 40 ? title[..40] : title;
-            var obj = new { id, title, kind, targetDoc, savedAt = DateTimeOffset.Now.ToString("o"), lines };
+            var obj = new { id, title, kind, targetDoc, docId, savedAt = DateTimeOffset.Now.ToString("o"), lines };
             File.WriteAllText(Path.Combine(Dir, id + ".json"),
                 JsonSerializer.Serialize(obj, new JsonSerializerOptions { WriteIndented = false }));
         }
@@ -72,7 +75,8 @@ public static class SessionStore
                     var title = r.TryGetProperty("title", out var t) ? t.GetString() ?? "대화" : "대화";
                     var kind = r.TryGetProperty("kind", out var k) ? k.GetString() ?? "chat" : "chat";
                     var target = r.TryGetProperty("targetDoc", out var td) ? td.GetString() : null;
-                    result.Add(new SessionMeta(id, title, FormatWhen(File.GetLastWriteTime(f)), kind, target));
+                    var docId = r.TryGetProperty("docId", out var di) ? di.GetString() : null;
+                    result.Add(new SessionMeta(id, title, FormatWhen(File.GetLastWriteTime(f)), kind, target, docId));
                 }
                 catch
                 {

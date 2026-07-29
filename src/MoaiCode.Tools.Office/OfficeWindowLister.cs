@@ -4,8 +4,10 @@ using MoaiCode.Config;
 
 namespace MoaiCode.Tools.Office;
 
-/// <summary>열린 Office 문서 하나(앱·이름·ProgId).</summary>
-public sealed record OfficeDoc(string App, string Name, string ProgId)
+/// <summary>열린 Office 문서 하나(앱·이름·ProgId·전체경로).
+/// Path 는 COM 의 FullName(전체 경로) — 저장 안 된 새 문서는 이름만 올 수 있고, 실패 시 null.
+/// MoaiDocId 조회·경로 기반 대화 재연결에 쓰인다.</summary>
+public sealed record OfficeDoc(string App, string Name, string ProgId, string? Path = null)
 {
     public string Display => $"{App} · {Name}";
 }
@@ -45,7 +47,7 @@ public static class OfficeWindowLister
             {
                 try
                 {
-                    list.Add(new OfficeDoc(appName, (string)item.Name, progId));
+                    list.Add(new OfficeDoc(appName, (string)item.Name, progId, TryFullName(item)));
                 }
                 catch (Exception ex)
                 {
@@ -56,6 +58,21 @@ public static class OfficeWindowLister
         catch (Exception ex)
         {
             MoaiLog.Debug($"OfficeList: {appName} not available: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    // COM 문서의 FullName(전체 경로). 저장 안 된 새 문서는 이름만 오거나 실패 → null.
+    private static string? TryFullName(dynamic item)
+    {
+        try
+        {
+            var full = (string?)item.FullName;
+            // 저장 전 문서는 FullName 이 Name 과 같음(경로 구분자 없음) → 경로로 취급하지 않는다.
+            return !string.IsNullOrEmpty(full) && (full.Contains('\\') || full.Contains('/')) ? full : null;
+        }
+        catch
+        {
+            return null;
         }
     }
 

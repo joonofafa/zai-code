@@ -326,7 +326,20 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        StartFreshSession();
+        // 재연결: 이 문서(MoaiDocId 정확 일치)에 연결된 기존 대화가 있으면 이어간다(1:1).
+        // 없으면 새 대화. MoaiDocId 는 우리가 생성한 문서에만 있어, 기존 외부 문서는 항상 새 대화.
+        var docId = doc.Path is { Length: > 0 } p ? OfficeDocId.Read(p) : null;
+        var prior = docId is not null ? Sessions.FirstOrDefault(s => s.DocId == docId) : null;
+        var reconnected = prior is not null && prior.Id != _sessionId;
+
+        if (reconnected)
+        {
+            LoadSession(prior); // 기존 대화 로드(transcript 복원, ShowHome=false)
+        }
+        else
+        {
+            StartFreshSession();
+        }
 
         // 좌패널 목록에도 반영하고 활성화(OnSelectedOfficeDocChanged 가 Activate 호출).
         if (!OfficeDocs.Contains(doc))
@@ -340,11 +353,19 @@ public sealed partial class MainViewModel : ObservableObject
 
         // 활성 대상 바인딩(세션 = 편집 모드). 칩으로 표시.
         BindActiveDoc(doc);
+        _sessionDocId = docId; // 재연결/신규 모두 문서 식별자 기록(다음에 또 1:1 로 찾도록)
 
         ShowSettings = false;
         ShowHome = false; // 채팅 화면 표시
 
-        if (connected)
+        if (reconnected)
+        {
+            Items.Add(new AssistantItem
+            {
+                Text = $"**{doc.Display}** 의 이전 대화를 이어갑니다. 그대로 계속 편집하세요.",
+            });
+        }
+        else if (connected)
         {
             Items.Add(new AssistantItem { Text = $"**{doc.Display}** 에 연결했어요. 무엇을 할까요?" });
             Items.Add(new SuggestionItem { Suggestions = SuggestionsFor(doc.App) });
@@ -548,7 +569,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_transcript.Count > 0)
         {
-            SessionStore.Save(_sessionId, _transcript, _sessionKind, _sessionTargetDoc);
+            SessionStore.Save(_sessionId, _transcript, _sessionKind, _sessionTargetDoc, _sessionDocId);
             RefreshSessions();
         }
     }
@@ -573,6 +594,7 @@ public sealed partial class MainViewModel : ObservableObject
             _sessionId = NewSessionId();
             _sessionKind = "chat";
             _sessionTargetDoc = null;
+            _sessionDocId = null;
             DetachDoc();
             ShowHome = true;
         }
@@ -593,6 +615,7 @@ public sealed partial class MainViewModel : ObservableObject
         _sessionId = meta.Id;
         _sessionKind = meta.Kind;
         _sessionTargetDoc = meta.TargetDoc;
+        _sessionDocId = meta.DocId;
         _transcript.Clear();
         Items.Clear();
         foreach (var l in SessionStore.Load(meta.Id))
@@ -1021,6 +1044,7 @@ public sealed partial class MainViewModel : ObservableObject
         _sessionId = NewSessionId();
         _sessionKind = "chat";
         _sessionTargetDoc = null;
+        _sessionDocId = null;
         DetachDoc(); // 활성 대상 칩 해제
         _transcript.Clear();
         Items.Clear();
