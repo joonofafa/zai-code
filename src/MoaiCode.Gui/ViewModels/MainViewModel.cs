@@ -107,6 +107,8 @@ public sealed partial class MainViewModel : ObservableObject
     // 현재 세션 분류(저장 메타). generate 는 문서 생성이 일어나면 승격.
     private string _sessionKind = "chat";
     private string? _sessionTargetDoc;
+    // 이 세션이 연결된 문서의 MoAI 고유 식별자(생성 문서에서 읽음). 나중에 같은 문서=같은 대화 매칭용.
+    private string? _sessionDocId;
 
     // 라이브 편집 확인 자동 승인('계속 허용' 선택 시). 새 세션·연결 해제 시 리셋.
     private bool _autoApproveEdits;
@@ -413,6 +415,99 @@ public sealed partial class MainViewModel : ObservableObject
         ActiveDocName = doc.Name;
         ActiveDocApp = doc.App;
         IsDocConnected = true;
+    }
+
+    /// <summary>생성 결과 카드의 [열어서 편집] — 파일을 Office 로 열고 같은 대화를 편집 세션으로 전환.
+    /// COM 은 Windows 전용이라 타이밍(폴링)은 Windows 실기에서 조정한다.</summary>
+    [RelayCommand]
+    private async Task OpenGeneratedDoc(DocumentItem? item)
+    {
+        if (item is null || string.IsNullOrWhiteSpace(item.Path))
+        {
+            return;
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            Items.Add(new AssistantItem
+            {
+                Text = "'열어서 편집'은 Windows + Office 에서 동작합니다. 생성된 파일 위치:\n" + item.Path,
+            });
+            RequestScroll();
+            return;
+        }
+
+        // 생성 문서의 MoaiDocId 를 세션에 연결(같은 문서 = 같은 대화 매칭 기반).
+        _sessionDocId = OfficeDocId.Read(item.Path);
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(item.Path) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            Items.Add(new AssistantItem { Text = "문서를 여는 데 실패했어요: " + ex.Message });
+            RequestScroll();
+            return;
+        }
+
+        // Office 가 문서를 로드해 COM 목록에 나타날 때까지 잠깐 기다렸다가 잡아 편집 세션으로 전환.
+        var stem = System.IO.Path.GetFileNameWithoutExtension(item.FileName);
+        for (var i = 0; i < 10; i++)
+        {
+            await Task.Delay(700).ConfigureAwait(true);
+            RefreshOffice();
+            var match = OfficeDocs.FirstOrDefault(d => string.Equals(
+                stem, System.IO.Path.GetFileNameWithoutExtension(d.Name), StringComparison.OrdinalIgnoreCase));
+            if (match is not null)
+            {
+                SelectedOfficeDoc = match;
+                OfficeWindowLister.Activate(match);
+                BindActiveDoc(match); // 현재 대화를 유지한 채 편집 모드로 전환
+                Items.Add(new AssistantItem
+                {
+                    Text = $"'{match.Name}' 을 열어 편집 모드로 전환했어요. 이제 \"제목 더 크게\"처럼 편집을 요청하세요.",
+                });
+                RequestScroll();
+                return;
+            }
+        }
+
+        Items.Add(new AssistantItem
+        {
+            Text = "문서를 열었지만 편집 연결을 찾지 못했어요. 문서가 열렸는지 확인한 뒤 좌측 '열린 문서'에서 선택해 주세요.",
+        });
+        RequestScroll();
+    }
+
+    /// <summary>생성 결과 카드의 [폴더 열기] — 파일이 있는 폴더를 연다.</summary>
+    [RelayCommand]
+    private void RevealDoc(DocumentItem? item)
+    {
+        if (item is null || string.IsNullOrWhiteSpace(item.Path))
+        {
+            return;
+        }
+
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{item.Path}\"") { UseShellExecute = true });
+            }
+            else
+            {
+                var dir = System.IO.Path.GetDirectoryName(item.Path);
+                if (!string.IsNullOrEmpty(dir))
+                {
+                    Process.Start(new ProcessStartInfo(dir) { UseShellExecute = true });
+                }
+            }
+        }
+        catch
+        {
+            // 폴더 열기 실패는 치명적 아님.
+        }
     }
 
     /// <summary>활성 대상 칩의 [✕] — 문서 연결을 해제하고 일반/생성 모드로 되돌린다.</summary>
