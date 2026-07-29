@@ -458,6 +458,33 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>대화 기록 삭제. 현재 열려있는 세션을 지우면 저장 없이 새 세션으로 초기화한다
+    /// (SaveCurrent 를 타면 방금 지운 파일이 되살아나므로 우회).</summary>
+    [RelayCommand]
+    private void DeleteSession(SessionMeta? meta)
+    {
+        if (IsBusy || meta is null)
+        {
+            return;
+        }
+
+        var isCurrent = meta.Id == _sessionId;
+        SessionStore.Delete(meta.Id);
+
+        if (isCurrent)
+        {
+            _transcript.Clear();
+            Items.Clear();
+            _sessionId = NewSessionId();
+            _sessionKind = "chat";
+            _sessionTargetDoc = null;
+            DetachDoc();
+            ShowHome = true;
+        }
+
+        RefreshSessions();
+    }
+
     [RelayCommand]
     private void LoadSession(SessionMeta? meta)
     {

@@ -197,6 +197,26 @@
     <Setter Property="CornerRadius" Value="14" />
   </Style>
 
+  <!-- 행/카드 위 삭제(✕) 버튼 — 평소 흐리게, 호버 시 진하게 -->
+  <Style Selector="Button.rowdel">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="4" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Width" Value="22" />
+    <Setter Property="Height" Value="22" />
+    <Setter Property="Opacity" Value="0.3" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.rowdel:pointerover">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+  <Style Selector="Button.rowdel:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource HoverOverlayBrush}" />
+  </Style>
+
   <!-- 홈 재방문: '최근 작업' 카드 -->
   <Style Selector="Button.recentcard">
     <Setter Property="Background" Value="{DynamicResource BgCardBrush}" />

@@ -88,6 +88,23 @@ public static class SessionStore
         return result;
     }
 
+    /// <summary>대화 기록 파일을 삭제한다. 없거나 실패해도 조용히 넘어간다.</summary>
+    public static void Delete(string id)
+    {
+        try
+        {
+            var path = Path.Combine(Dir, id + ".json");
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+            // 삭제 실패는 치명적 아님.
+        }
+    }
+
     public static IReadOnlyList<TurnLine> Load(string id)
     {
         try

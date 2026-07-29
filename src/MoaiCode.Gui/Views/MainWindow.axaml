@@ -118,22 +118,32 @@
               <ItemsControl ItemsSource="{Binding Sessions}" Margin="0,0,10,0">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
-                    <Button Classes="sideitem" Margin="0,1"
-                            Command="{Binding $parent[ItemsControl].DataContext.LoadSessionCommand}"
-                            CommandParameter="{Binding}">
-                      <!-- Grid(Auto,*): 제목/부제가 남은 폭으로 제한돼 …말줄임 작동(스크롤바 침범 방지) -->
-                      <Grid ColumnDefinitions="Auto,*">
-                        <Path Grid.Column="0" Classes="icon sm" Margin="0,0,8,0"
-                              Data="{Binding KindIcon, Converter={x:Static vm:Converters.IconKey}}"
-                              VerticalAlignment="Center" />
-                        <StackPanel Grid.Column="1">
-                          <TextBlock Text="{Binding Title}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
-                          <TextBlock Text="{Binding Subtitle}" FontSize="11"
-                                     Foreground="{DynamicResource TextMutedBrush}" Margin="0,2,0,0"
-                                     TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
-                      </Grid>
-                    </Button>
+                    <!-- 행(로드) 버튼과 삭제(✕) 버튼을 Grid 형제로 — 버튼 중첩 클릭 충돌 방지 -->
+                    <Grid Margin="0,1">
+                      <Button Classes="sideitem"
+                              Command="{Binding $parent[ItemsControl].DataContext.LoadSessionCommand}"
+                              CommandParameter="{Binding}">
+                        <!-- Grid(Auto,*,Auto): 제목/부제가 남은 폭으로 제한돼 …말줄임(오른쪽 ✕ 자리 확보) -->
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                          <Path Grid.Column="0" Classes="icon sm" Margin="0,0,8,0"
+                                Data="{Binding KindIcon, Converter={x:Static vm:Converters.IconKey}}"
+                                VerticalAlignment="Center" />
+                          <StackPanel Grid.Column="1">
+                            <TextBlock Text="{Binding Title}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding Subtitle}" FontSize="11"
+                                       Foreground="{DynamicResource TextMutedBrush}" Margin="0,2,0,0"
+                                       TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                          </StackPanel>
+                          <Border Grid.Column="2" Width="22" Margin="6,0,0,0" />
+                        </Grid>
+                      </Button>
+                      <Button Classes="rowdel" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,6,0"
+                              ToolTip.Tip="대화 삭제"
+                              Command="{Binding $parent[ItemsControl].DataContext.DeleteSessionCommand}"
+                              CommandParameter="{Binding}">
+                        <Path Classes="icon sm" Data="{StaticResource Icon.X}" />
+                      </Button>
+                    </Grid>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
@@ -199,24 +209,33 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
-                    <Button Classes="recentcard" Width="232" Margin="0,0,12,12"
-                            Command="{Binding $parent[ItemsControl].DataContext.LoadSessionCommand}"
-                            CommandParameter="{Binding}">
-                      <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" Width="196">
-                        <Border Grid.RowSpan="2" Width="30" Height="30" CornerRadius="8" Margin="0,0,11,0"
-                                Background="{DynamicResource AccentSoftBrush}" VerticalAlignment="Top">
-                          <Path Classes="icon" Data="{Binding KindIcon, Converter={x:Static vm:Converters.IconKey}}"
-                                Stroke="{DynamicResource AccentHoverBrush}"
-                                HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
-                        <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource TextPrimaryBrush}"
-                                   TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Grid.Column="1" Grid.Row="1" Text="{Binding Subtitle}" FontSize="11.5" Margin="0,3,0,0"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
-                      </Grid>
-                    </Button>
+                    <!-- 카드(로드) 버튼 위에 삭제(✕) 버튼을 형제로 겹침 -->
+                    <Grid Width="232" Margin="0,0,12,12">
+                      <Button Classes="recentcard"
+                              Command="{Binding $parent[ItemsControl].DataContext.LoadSessionCommand}"
+                              CommandParameter="{Binding}">
+                        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" Width="196">
+                          <Border Grid.RowSpan="2" Width="30" Height="30" CornerRadius="8" Margin="0,0,11,0"
+                                  Background="{DynamicResource AccentSoftBrush}" VerticalAlignment="Top">
+                            <Path Classes="icon" Data="{Binding KindIcon, Converter={x:Static vm:Converters.IconKey}}"
+                                  Stroke="{DynamicResource AccentHoverBrush}"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center" />
+                          </Border>
+                          <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
+                                     Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,20,0"
+                                     TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Grid.Column="1" Grid.Row="1" Text="{Binding Subtitle}" FontSize="11.5" Margin="0,3,0,0"
+                                     Foreground="{DynamicResource TextMutedBrush}"
+                                     TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                        </Grid>
+                      </Button>
+                      <Button Classes="rowdel" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,8,8,0"
+                              ToolTip.Tip="대화 삭제"
+                              Command="{Binding $parent[ItemsControl].DataContext.DeleteSessionCommand}"
+                              CommandParameter="{Binding}">
+                        <Path Classes="icon sm" Data="{StaticResource Icon.X}" />
+                      </Button>
+                    </Grid>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
