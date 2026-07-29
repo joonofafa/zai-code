@@ -125,6 +125,9 @@ public sealed class DocxCreateTool : ITool
         main.Document = new Document();
         var body = main.Document.AppendChild(new Body());
 
+        // MoAI 고유 식별자를 심어 나중에 같은 대화로 되찾을 수 있게 한다(생성 문서 한정).
+        doc.AddCustomFilePropertiesPart().Properties = OfficeDocId.Build(OfficeDocId.NewId());
+
         if (!string.IsNullOrWhiteSpace(inp.Title))
         {
             body.AppendChild(Heading(inp.Title!, 0)); // level 0 = 문서 제목(가장 큼)

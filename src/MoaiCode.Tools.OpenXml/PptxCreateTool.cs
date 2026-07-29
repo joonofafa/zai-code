@@ -179,6 +179,9 @@ public sealed class PptxCreateTool : ITool
         var presPart = doc.AddPresentationPart();
         presPart.Presentation = new P.Presentation();
 
+        // MoAI 고유 식별자를 심어 나중에 같은 대화로 되찾을 수 있게 한다(생성 문서 한정).
+        doc.AddCustomFilePropertiesPart().Properties = OfficeDocId.Build(OfficeDocId.NewId());
+
         // slide master + layout (최소 1개 필요).
         var masterPart = presPart.AddNewPart<SlideMasterPart>();
         var layoutPart = masterPart.AddNewPart<SlideLayoutPart>();

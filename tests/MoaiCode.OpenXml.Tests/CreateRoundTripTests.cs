@@ -134,6 +134,30 @@ public sealed class CreateRoundTripTests : IDisposable
     }
 
     [Fact]
+    public async Task Created_docs_embed_readable_moai_docid()
+    {
+        // 생성 3종 모두 MoaiDocId(GUID)를 심고, 다시 읽어낼 수 있어야 한다(같은 대화 되찾기용).
+        await Run(new DocxCreateTool(), new { path = "id.docx", title = "T", paragraphs = new[] { "p" } });
+        await Run(new XlsxCreateTool(), new { path = "id.xlsx", sheets = new[] { new { name = "s", rows = new[] { new[] { "a" } } } } });
+        await Run(new PptxCreateTool(), new { path = "id.pptx", slides = new[] { new { title = "t", bullets = new[] { "b" } } } });
+
+        foreach (var f in new[] { "id.docx", "id.xlsx", "id.pptx" })
+        {
+            var id = OfficeDocId.Read(Path.Combine(_dir, f));
+            Assert.False(string.IsNullOrWhiteSpace(id), $"{f}: MoaiDocId 없음");
+            Assert.True(System.Guid.TryParse(id, out _), $"{f}: GUID 형식 아님 ({id})");
+        }
+
+        // 서로 다른 문서는 서로 다른 id.
+        Assert.NotEqual(OfficeDocId.Read(Path.Combine(_dir, "id.docx")),
+                        OfficeDocId.Read(Path.Combine(_dir, "id.xlsx")));
+
+        // 외부(우리가 안 심은) 파일은 null.
+        await File.WriteAllTextAsync(Path.Combine(_dir, "plain.txt"), "hi");
+        Assert.Null(OfficeDocId.Read(Path.Combine(_dir, "plain.txt")));
+    }
+
+    [Fact]
     public async Task Docx_legacy_paragraphs_still_work()
     {
         // blocks 없이 기존 title/paragraphs 경로가 그대로 동작(하위호환).

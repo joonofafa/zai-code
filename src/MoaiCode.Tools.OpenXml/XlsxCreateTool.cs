@@ -144,6 +144,9 @@ public sealed class XlsxCreateTool : ITool
         var wbPart = doc.AddWorkbookPart();
         wbPart.Workbook = new Workbook();
 
+        // MoAI 고유 식별자를 심어 나중에 같은 대화로 되찾을 수 있게 한다(생성 문서 한정).
+        doc.AddCustomFilePropertiesPart().Properties = OfficeDocId.Build(OfficeDocId.NewId());
+
         // 모든 시트의 열 서식(formats)을 먼저 수집해 커스텀 numFmt/스타일로 등록한다.
         // (스타일시트는 시트 기록 전에 한 번만 만들어지므로 사전 수집이 필요.)
         var customCodes = new List<string>();
