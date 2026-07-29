@@ -65,6 +65,19 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private LanguageOption? _settingsLanguage;
     [ObservableProperty] private bool _isDark = true;
     [ObservableProperty] private bool _confirmLogout;
+    [ObservableProperty] private bool _skillsEnabled = GuiSettings.Load().SkillsEnabled;
+
+    // 스킬 마스터 스위치 — 저장하고 엔진을 재구성해 즉시 반영(SkillTool 등록/해제).
+    partial void OnSkillsEnabledChanged(bool value)
+    {
+        var gs = GuiSettings.Load();
+        gs.SkillsEnabled = value;
+        gs.Save();
+        if (IsAuthed)
+        {
+            BuildBackend();
+        }
+    }
 
     public string SettingsTitleText => L10n.Get("gui.settings.title");
     public string SettingsAccountText => L10n.Get("gui.settings.account");

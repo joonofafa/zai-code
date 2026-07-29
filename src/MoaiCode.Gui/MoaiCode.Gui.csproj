@@ -24,6 +24,8 @@
     <ProjectReference Include="..\MoaiCode.Config\MoaiCode.Config.csproj" />
     <ProjectReference Include="..\MoaiCode.Localization\MoaiCode.Localization.csproj" />
     <ProjectReference Include="..\MoaiCode.Providers\MoaiCode.Providers.csproj" />
+    <!-- 스킬 지원(SkillTool/SkillLoader/BundledSkills/PluginLoader) — CLI 와 동일한 스킬 배선. -->
+    <ProjectReference Include="..\MoaiCode.Mcp\MoaiCode.Mcp.csproj" />
     <ProjectReference Include="..\MoaiCode.Tools\MoaiCode.Tools.csproj" />
     <ProjectReference Include="..\MoaiCode.Tools.OpenXml\MoaiCode.Tools.OpenXml.csproj" />
     <!-- COM Office 편집 툴('열려있는 문서 편집') — Desktop 전용. net10.0-windows 필요. -->

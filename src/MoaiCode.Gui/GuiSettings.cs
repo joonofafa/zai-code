@@ -10,6 +10,9 @@ public sealed class GuiSettings
 {
     public string? Theme { get; set; } // "light" | "dark" | null(미선택)
 
+    /// <summary>스킬 기능 마스터 스위치. off 면 SkillTool 을 아예 등록하지 않는다. 기본 on.</summary>
+    public bool SkillsEnabled { get; set; } = true;
+
     /// <summary>문서함과 연결된 공유 폴더 목록(동기화 대상).</summary>
     public List<Sync.ConnectedFolder> ConnectedFolders { get; set; } = new();
 

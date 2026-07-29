@@ -8,6 +8,7 @@ using MoaiCode.Core.Agent;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Messages;
 using MoaiCode.Core.Tools;
+using MoaiCode.Mcp.Skills;
 using MoaiCode.Providers;
 using MoaiCode.Tools;
 using MoaiCode.Tools.OpenXml;
@@ -89,7 +90,45 @@ public static class GuiBootstrap
 
         // COM Office 편집 툴('열려있는 문서 편집') — Desktop 전용. Windows·Office 없으면 빈 목록.
         list.AddRange(MoaiCode.Tools.Office.OfficeTools.CreateIfAvailable());
+
+        // 스킬(마스터 스위치 on 일 때만) — 우선순위: 사용자 > 팀 공유. 오버헤드 최소화:
+        // GUI 는 팀 스킬을 재동기화하지 않고 이미 받아둔 ~/.moai/team-skills 를 로드만 한다
+        // (동기화는 CLI/로그인 플로우 담당). 실패는 non-fatal.
+        // NOTE(핸드오프): 기본 번들 스킬(BundledSkills)은 CLI 어셈블리의 임베드 zip 에 묶여 있어
+        //   GUI 에서 아직 제외. 공유 어셈블리로 옮기면 GUI 에도 추가 예정.
+        if (GuiSettings.Load().SkillsEnabled && CollectSkillTool() is { } skillTool)
+        {
+            list.Add(skillTool);
+        }
+
         return list;
+    }
+
+    // 스킬을 모아 SkillTool 로. 스킬이 없으면 null(호출부에서 걸러짐).
+    private static ITool? CollectSkillTool()
+    {
+        try
+        {
+            var cwd = Workspace;
+            var skills = new List<Skill>(SkillLoader.Discover(cwd));
+            skills.AddRange(PluginLoader.Discover(cwd));
+            var have = new HashSet<string>(skills.Select(s => s.Name), StringComparer.OrdinalIgnoreCase);
+
+            // 팀 공유 스킬(이미 동기화된 디렉터리 로드).
+            foreach (var s in SkillLoader.LoadFromDir(MoaiCode.Cli.TeamSkills.Dir))
+            {
+                if (have.Add(s.Name))
+                {
+                    skills.Add(s);
+                }
+            }
+
+            return skills.Count > 0 ? new SkillTool(skills) : null;
+        }
+        catch
+        {
+            return null; // 스킬 수집 실패는 non-fatal — 앱 기동을 막지 않는다.
+        }
     }
 
     private static void ApplySettingsToEnv(Settings s)

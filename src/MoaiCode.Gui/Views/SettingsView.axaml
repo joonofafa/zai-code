@@ -82,6 +82,21 @@
 
         <Border Height="1" Background="{DynamicResource BorderSoftBrush}" />
 
+        <!-- 스킬 -->
+        <StackPanel Spacing="8">
+          <TextBlock Classes="section" Text="스킬" />
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <ToggleSwitch IsChecked="{Binding SkillsEnabled}" OnContent="켜짐" OffContent="꺼짐" />
+            <TextBlock Text="사용자·팀 공유 스킬을 에이전트가 사용하도록 허용합니다."
+                       FontSize="12.5" VerticalAlignment="Center"
+                       Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" MaxWidth="380" />
+          </StackPanel>
+          <TextBlock Text="끄면 이번 세션부터 스킬 기능이 비활성화됩니다."
+                     FontSize="11.5" Foreground="{DynamicResource TextMutedBrush}" />
+        </StackPanel>
+
+        <Border Height="1" Background="{DynamicResource BorderSoftBrush}" />
+
         <!-- 테마 -->
         <StackPanel Spacing="8">
           <TextBlock Classes="section" Text="{Binding SettingsThemeText}" />
