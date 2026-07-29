@@ -109,6 +109,8 @@ public sealed partial class MainViewModel : ObservableObject
     private string? _sessionTargetDoc;
     // 이 세션이 연결된 문서의 MoAI 고유 식별자(생성 문서에서 읽음). 나중에 같은 문서=같은 대화 매칭용.
     private string? _sessionDocId;
+    // 연결 문서의 마지막 전체 경로 — 파일 존재 확인/재연결 후보 탐색용.
+    private string? _sessionDocPath;
 
     // 라이브 편집 확인 자동 승인('계속 허용' 선택 시). 새 세션·연결 해제 시 리셋.
     private bool _autoApproveEdits;
@@ -433,6 +435,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         _sessionKind = "edit";
         _sessionTargetDoc = doc.Name;
+        _sessionDocPath = doc.Path; // 파일 존재 확인/재연결 후보 탐색용
         ActiveDocName = doc.Name;
         ActiveDocApp = doc.App;
         IsDocConnected = true;
@@ -569,7 +572,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_transcript.Count > 0)
         {
-            SessionStore.Save(_sessionId, _transcript, _sessionKind, _sessionTargetDoc, _sessionDocId);
+            SessionStore.Save(_sessionId, _transcript, _sessionKind, _sessionTargetDoc, _sessionDocId, _sessionDocPath);
             RefreshSessions();
         }
     }
@@ -595,6 +598,7 @@ public sealed partial class MainViewModel : ObservableObject
             _sessionKind = "chat";
             _sessionTargetDoc = null;
             _sessionDocId = null;
+            _sessionDocPath = null;
             DetachDoc();
             ShowHome = true;
         }
@@ -616,6 +620,7 @@ public sealed partial class MainViewModel : ObservableObject
         _sessionKind = meta.Kind;
         _sessionTargetDoc = meta.TargetDoc;
         _sessionDocId = meta.DocId;
+        _sessionDocPath = meta.DocPath;
         _transcript.Clear();
         Items.Clear();
         foreach (var l in SessionStore.Load(meta.Id))
@@ -634,6 +639,17 @@ public sealed partial class MainViewModel : ObservableObject
         else
         {
             DetachDoc();
+        }
+
+        // 파일 없음(orphaned): 연결 문서가 사라졌으면 대화는 살리되 편집이 불가함을 안내.
+        if (meta.IsMissing)
+        {
+            IsDocConnected = false; // 편집 대상 없음 — 칩 해제
+            Items.Add(new AssistantItem
+            {
+                Text = $"연결된 문서 '{meta.TargetDoc}' 를 원래 위치에서 찾을 수 없어요(이동/삭제된 것 같아요). " +
+                       "대화 기록은 그대로 있으니 계속 볼 수 있고, 문서를 다시 열면 이어서 편집할 수 있어요.",
+            });
         }
 
         RequestScroll();

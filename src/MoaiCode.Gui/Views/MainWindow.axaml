@@ -224,9 +224,16 @@
                           <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
                                      Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,20,0"
                                      TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
-                          <TextBlock Grid.Column="1" Grid.Row="1" Text="{Binding Subtitle}" FontSize="11.5" Margin="0,3,0,0"
-                                     Foreground="{DynamicResource TextMutedBrush}"
-                                     TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                          <StackPanel Grid.Column="1" Grid.Row="1" Margin="0,3,0,0">
+                            <TextBlock Text="{Binding Subtitle}" FontSize="11.5"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       IsVisible="{Binding !IsMissing}"
+                                       TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="⚠ 파일을 찾을 수 없음" FontSize="11.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource WarnBrush}"
+                                       IsVisible="{Binding IsMissing}"
+                                       TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                          </StackPanel>
                         </Grid>
                       </Button>
                       <Button Classes="rowdel" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,8,8,0"

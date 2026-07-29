@@ -42,6 +42,7 @@
           <SolidColorBrush x:Key="AccentHoverBrush" Color="#60A5FA" />
           <SolidColorBrush x:Key="AccentSoftBrush" Color="#172554" />
           <SolidColorBrush x:Key="GoodBrush" Color="#22C55E" />
+          <SolidColorBrush x:Key="WarnBrush" Color="#F0B155" />
           <SolidColorBrush x:Key="HoverOverlayBrush" Color="#1EFFFFFF" />
           <SolidColorBrush x:Key="ActivityBgBrush" Color="#12FFFFFF" />
           <LinearGradientBrush x:Key="UserBubbleBrush" StartPoint="0%,0%" EndPoint="100%,100%">
@@ -65,6 +66,7 @@
           <SolidColorBrush x:Key="AccentHoverBrush" Color="#2563EB" />
           <SolidColorBrush x:Key="AccentSoftBrush" Color="#EFF6FF" />
           <SolidColorBrush x:Key="GoodBrush" Color="#16A34A" />
+          <SolidColorBrush x:Key="WarnBrush" Color="#B45309" />
           <SolidColorBrush x:Key="HoverOverlayBrush" Color="#0E000000" />
           <SolidColorBrush x:Key="ActivityBgBrush" Color="#F1F5F9" />
           <LinearGradientBrush x:Key="UserBubbleBrush" StartPoint="0%,0%" EndPoint="100%,100%">

@@ -10,10 +10,16 @@ namespace MoaiCode.Gui.Sessions;
 public sealed record TurnLine(string Role, string Text);
 
 /// <summary>세션 목록 표시용 메타. Kind: chat(일반) | generate(문서 생성) | edit(열린 문서 편집).
-/// DocId: 연결된 문서의 MoAI 고유 식별자(MoaiDocId) — 같은 문서 = 같은 대화 재연결용.</summary>
+/// DocId: 연결된 문서의 MoAI 고유 식별자(MoaiDocId) — 같은 문서 = 같은 대화 재연결용.
+/// DocPath: 연결된 문서의 마지막 전체 경로 — 파일 존재 확인/재연결 후보 탐색용.</summary>
 public sealed record SessionMeta(
-    string Id, string Title, string When, string Kind = "chat", string? TargetDoc = null, string? DocId = null)
+    string Id, string Title, string When, string Kind = "chat",
+    string? TargetDoc = null, string? DocId = null, string? DocPath = null)
 {
+    /// <summary>연결된 문서 경로가 있는데 그 파일이 사라졌으면 true(이동/삭제 → orphaned).</summary>
+    public bool IsMissing =>
+        !string.IsNullOrEmpty(DocPath) && !System.IO.File.Exists(DocPath);
+
     /// <summary>히스토리 행 배지 아이콘(lucide 리소스 키).</summary>
     public string KindIcon => Kind switch
     {
@@ -33,7 +39,7 @@ public static class SessionStore
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".moai", "desktop-sessions");
 
     public static void Save(string id, IReadOnlyList<TurnLine> lines, string kind = "chat",
-        string? targetDoc = null, string? docId = null)
+        string? targetDoc = null, string? docId = null, string? docPath = null)
     {
         if (lines.Count == 0)
         {
@@ -45,7 +51,7 @@ public static class SessionStore
             Directory.CreateDirectory(Dir);
             var title = lines.FirstOrDefault(l => l.Role == "user")?.Text?.Trim() ?? "새 대화";
             title = title.Length > 40 ? title[..40] : title;
-            var obj = new { id, title, kind, targetDoc, docId, savedAt = DateTimeOffset.Now.ToString("o"), lines };
+            var obj = new { id, title, kind, targetDoc, docId, docPath, savedAt = DateTimeOffset.Now.ToString("o"), lines };
             File.WriteAllText(Path.Combine(Dir, id + ".json"),
                 JsonSerializer.Serialize(obj, new JsonSerializerOptions { WriteIndented = false }));
         }
@@ -76,7 +82,8 @@ public static class SessionStore
                     var kind = r.TryGetProperty("kind", out var k) ? k.GetString() ?? "chat" : "chat";
                     var target = r.TryGetProperty("targetDoc", out var td) ? td.GetString() : null;
                     var docId = r.TryGetProperty("docId", out var di) ? di.GetString() : null;
-                    result.Add(new SessionMeta(id, title, FormatWhen(File.GetLastWriteTime(f)), kind, target, docId));
+                    var docPath = r.TryGetProperty("docPath", out var dp) ? dp.GetString() : null;
+                    result.Add(new SessionMeta(id, title, FormatWhen(File.GetLastWriteTime(f)), kind, target, docId, docPath));
                 }
                 catch
                 {
