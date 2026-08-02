@@ -9,7 +9,7 @@ namespace MoaiCode.Cli;
 /// </summary>
 public static class BundledSkills
 {
-    private const string Version = "2";              // 번들 내용 갱신 시 올림 → 재추출 (v2: docx/pptx/xlsx 제거 — 네이티브 툴 사용)
+    private const string Version = "3";              // 번들 내용 갱신 시 올림 → 재추출 (v3: org-data-query·xunit-test-writer·business-report 추가)
     private const string ResourceName = "bundled-skills.zip";
 
     public static string Dir => Path.Combine(
