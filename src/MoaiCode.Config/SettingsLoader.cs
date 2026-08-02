@@ -19,27 +19,42 @@ public static class SettingsLoader
     public static Settings Load(string workingDirectory)
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var layers = new[]
-        {
-            Path.Combine(home, ".claude", "settings.json"),
-            Path.Combine(home, ".moai", "settings.json"),
-            Path.Combine(workingDirectory, ".claude", "settings.json"),
-        };
 
         var settings = Settings.Default;
-        foreach (var path in layers)
-        {
-            if (File.Exists(path))
-            {
-                settings = ApplyJson(settings, File.ReadAllText(path));
-            }
-        }
+        settings = ApplyLayer(
+            settings,
+            Path.Combine(home, ".claude", "settings.json"),
+            allowSensitive: true,
+            allowAutomation: true,
+            allowPermissionRules: true);
+        settings = ApplyLayer(
+            settings,
+            Path.Combine(home, ".moai", "settings.json"),
+            allowSensitive: true,
+            allowAutomation: true,
+            allowPermissionRules: true);
+
+        // 보안: 프로젝트 레이어는 민감/실행/권한 관련 키를 덮어쓰지 못한다.
+        settings = ApplyLayer(
+            settings,
+            Path.Combine(workingDirectory, ".claude", "settings.json"),
+            allowSensitive: false,
+            allowAutomation: false,
+            allowPermissionRules: false);
 
         return ApplyEnv(settings);
     }
 
     /// <summary>JSON 한 레이어를 머지 (없는 키는 기존 값 유지). 순수 함수 — 테스트 용이.</summary>
     public static Settings ApplyJson(Settings baseline, string json)
+        => ApplyJson(baseline, json, allowSensitive: true, allowAutomation: true, allowPermissionRules: true);
+
+    private static Settings ApplyJson(
+        Settings baseline,
+        string json,
+        bool allowSensitive,
+        bool allowAutomation,
+        bool allowPermissionRules)
     {
         JsonDocument doc;
         try
@@ -62,30 +77,39 @@ public static class SettingsLoader
             return baseline with
             {
                 Model = GetString(root, "model", "model_id") ?? baseline.Model,
-                Provider = GetString(root, "provider") ?? baseline.Provider,
-                BaseUrl = GetString(root, "baseUrl", "base_url") ?? baseline.BaseUrl,
+                Provider = allowSensitive ? GetString(root, "provider") ?? baseline.Provider : baseline.Provider,
+                BaseUrl = allowSensitive ? GetString(root, "baseUrl", "base_url") ?? baseline.BaseUrl : baseline.BaseUrl,
                 Language = L10n.NormalizeLanguage(GetString(root, "language", "locale", "uiLanguage", "ui_language"))
                            ?? baseline.Language,
                 ReasoningEffort = NormalizeEffort(GetString(root, "reasoningEffort", "reasoning_effort", "effort"))
                                   ?? baseline.ReasoningEffort,
-                Host = GetString(root, "host") ?? baseline.Host,
-                Account = GetString(root, "account", "email") ?? baseline.Account,
-                LoginAt = GetString(root, "loginAt", "login_at") ?? baseline.LoginAt,
-                OrgName = GetString(root, "orgName", "org_name") ?? baseline.OrgName,
-                Name = GetString(root, "name", "userName") ?? baseline.Name,
-                AvailableModels = GetString(root, "availableModels") ?? baseline.AvailableModels,
-                ProxyUrl = GetString(root, "proxyUrl", "proxy_url", "proxy") ?? baseline.ProxyUrl,
-                ProxyUser = GetString(root, "proxyUser", "proxy_user") ?? baseline.ProxyUser,
-                ProxyBypass = GetString(root, "proxyBypass", "proxy_bypass", "noProxy") ?? baseline.ProxyBypass,
-                Permission = ParsePermission(GetString(root, "permission", "permissionMode"))
-                             ?? baseline.Permission,
+                Host = allowSensitive ? GetString(root, "host") ?? baseline.Host : baseline.Host,
+                Account = allowSensitive ? GetString(root, "account", "email") ?? baseline.Account : baseline.Account,
+                LoginAt = allowSensitive ? GetString(root, "loginAt", "login_at") ?? baseline.LoginAt : baseline.LoginAt,
+                OrgName = allowSensitive ? GetString(root, "orgName", "org_name") ?? baseline.OrgName : baseline.OrgName,
+                Name = allowSensitive ? GetString(root, "name", "userName") ?? baseline.Name : baseline.Name,
+                AvailableModels = allowSensitive ? GetString(root, "availableModels") ?? baseline.AvailableModels : baseline.AvailableModels,
+                ProxyUrl = allowSensitive ? GetString(root, "proxyUrl", "proxy_url", "proxy") ?? baseline.ProxyUrl : baseline.ProxyUrl,
+                ProxyUser = allowSensitive ? GetString(root, "proxyUser", "proxy_user") ?? baseline.ProxyUser : baseline.ProxyUser,
+                ProxyBypass = allowSensitive ? GetString(root, "proxyBypass", "proxy_bypass", "noProxy") ?? baseline.ProxyBypass : baseline.ProxyBypass,
+                Permission = allowSensitive
+                    ? ParsePermission(GetString(root, "permission", "permissionMode")) ?? baseline.Permission
+                    : baseline.Permission,
                 LogLevel = GetString(root, "logLevel", "log_level") ?? baseline.LogLevel,
                 MaxTurns = GetInt(root, "maxTurns", "max_turns") ?? baseline.MaxTurns,
                 OutputStyle = GetString(root, "outputStyle", "output_style") ?? baseline.OutputStyle,
-                LintCommand = GetString(root, "lintCommand", "lint_cmd", "lintCmd") ?? baseline.LintCommand,
-                TestCommand = GetString(root, "testCommand", "test_cmd", "testCmd") ?? baseline.TestCommand,
-                AutoLint = GetBool(root, "autoLint", "auto_lint") ?? baseline.AutoLint,
-                AutoTest = GetBool(root, "autoTest", "auto_test") ?? baseline.AutoTest,
+                LintCommand = allowAutomation
+                    ? GetString(root, "lintCommand", "lint_cmd", "lintCmd") ?? baseline.LintCommand
+                    : baseline.LintCommand,
+                TestCommand = allowAutomation
+                    ? GetString(root, "testCommand", "test_cmd", "testCmd") ?? baseline.TestCommand
+                    : baseline.TestCommand,
+                AutoLint = allowAutomation
+                    ? GetBool(root, "autoLint", "auto_lint") ?? baseline.AutoLint
+                    : baseline.AutoLint,
+                AutoTest = allowAutomation
+                    ? GetBool(root, "autoTest", "auto_test") ?? baseline.AutoTest
+                    : baseline.AutoTest,
                 RepoMapTokens = GetInt(root, "repoMapTokens", "repo_map_tokens") ?? baseline.RepoMapTokens,
                 Checkpoints = GetBool(root, "checkpoints", "autoCheckpoint", "auto_checkpoint")
                               ?? baseline.Checkpoints,
@@ -93,11 +117,31 @@ public static class SettingsLoader
                               ?? baseline.ConfineToWorkspace,
                 ContextWindowTokens = GetInt(root, "contextWindow", "context_window", "contextWindowTokens")
                                       ?? baseline.ContextWindowTokens,
-                // 규칙은 레이어 간 합집합(user + project 누적). permissions.allow/deny 또는 top-level allow/deny.
-                AllowRules = MergeRules(baseline.AllowRules, GetRuleList(root, "allow")),
-                DenyRules = MergeRules(baseline.DenyRules, GetRuleList(root, "deny")),
+                // 규칙은 사용자 레이어에서만 수용한다. 프로젝트 레이어는 권한 승격 방지.
+                AllowRules = allowPermissionRules ? MergeRules(baseline.AllowRules, GetRuleList(root, "allow")) : baseline.AllowRules,
+                DenyRules = allowPermissionRules ? MergeRules(baseline.DenyRules, GetRuleList(root, "deny")) : baseline.DenyRules,
             };
         }
+    }
+
+    private static Settings ApplyLayer(
+        Settings baseline,
+        string path,
+        bool allowSensitive,
+        bool allowAutomation,
+        bool allowPermissionRules)
+    {
+        if (!File.Exists(path))
+        {
+            return baseline;
+        }
+
+        return ApplyJson(
+            baseline,
+            File.ReadAllText(path),
+            allowSensitive,
+            allowAutomation,
+            allowPermissionRules);
     }
 
     public static Settings ApplyEnv(Settings baseline)

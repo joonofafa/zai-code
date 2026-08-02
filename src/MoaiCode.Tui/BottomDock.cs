@@ -17,6 +17,7 @@ public sealed class BottomDock
     private readonly Func<string> _status;
     private int _reserved;      // 현재 예약된 하단 줄 수(상태 1 + 입력행)
     private bool _installed;    // 스크롤 영역이 설정돼 있는가
+    private IReadOnlyList<string> _slash = Array.Empty<string>();  // ghost 자동완성용 명령 목록
 
     public BottomDock(Func<string> status) => _status = status;
 
@@ -59,6 +60,13 @@ public sealed class BottomDock
         // 프롬프트+버퍼를 폭 w 셀 단위로 직접 분할해 각 행을 절대 좌표로 그린다.
         var rows = SplitByCells(LineEditor.PromptText + buf.ToString(), w);
         var inputRows = rows.Count;
+
+        // 인라인 자동완성(ghost): 입력이 한 줄이고 커서가 끝이며 프롬프트+버퍼+ghost 가 폭에 들어갈 때만
+        // 첫 행 버퍼 뒤에 연한 글자로 덧그린다(예약 행수·wrap 계산은 버퍼 기준 그대로 — 레이아웃 안정).
+        var ghost = LineEditor.GhostSuffix(buf.ToString(), _slash);
+        var blen = LineEditor.DisplayWidth(buf.ToString());
+        var showGhost = ghost.Length > 0 && pos == buf.Length && inputRows == 1
+                        && plen + blen + LineEditor.DisplayWidth(ghost) <= w;
         // 레이아웃(위→아래): 입력행(배경색으로 구분) / 상태줄("act mode"). 구분선 없음.
         var reserved = inputRows + 1;
         var scrollBottom = h - reserved;              // 마지막 스크롤 행(1-기반)
@@ -102,6 +110,7 @@ public sealed class BottomDock
                     ? rows[0][LineEditor.PromptText.Length..]
                     : "";
                 sb.Append("\x1b[32m").Append(LineEditor.PromptText).Append("\x1b[39m").Append(rest);
+                if (showGhost) sb.Append(LineEditor.GhostColor).Append(ghost).Append("\x1b[39m");
             }
             else
             {
@@ -147,6 +156,7 @@ public sealed class BottomDock
         IReadOnlyList<string> slashCommands,
         Func<string>? cycleMode)
     {
+        _slash = slashCommands;
         var buf = new StringBuilder();
         var pos = 0;
         var histIdx = history.Count;
@@ -303,34 +313,12 @@ public sealed class BottomDock
         buf.Clear(); buf.Append(text); pos = buf.Length;
     }
 
-    // 단일 후보/공통 접두사만 완성(하단 고정에선 후보 목록 출력은 생략 — 레이아웃 안정).
+    // Tab 자동완성: 보이는 ghost(= 첫 매치)를 그대로 확정. LineEditor 와 동일 규칙 공유.
     private static bool TryComplete(StringBuilder buf, ref int pos, IReadOnlyList<string> slash)
     {
-        var text = buf.ToString();
-        if (!text.StartsWith('/') || text.Contains(' ')) return false;
-        var token = text[1..];
-        var matches = slash
-            .Where(c => c.StartsWith(token, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(c => c, StringComparer.Ordinal).ToList();
-        if (matches.Count == 0) return false;
-        if (matches.Count == 1) { SetBuffer(buf, ref pos, "/" + matches[0] + " "); return true; }
-        var common = LongestCommonPrefix(matches);
-        if (common.Length > token.Length) { SetBuffer(buf, ref pos, "/" + common); return true; }
-        return false;
-    }
-
-    private static string LongestCommonPrefix(IReadOnlyList<string> items)
-    {
-        if (items.Count == 0) return "";
-        var prefix = items[0];
-        foreach (var s in items)
-        {
-            var n = 0;
-            while (n < prefix.Length && n < s.Length
-                   && char.ToLowerInvariant(prefix[n]) == char.ToLowerInvariant(s[n])) n++;
-            prefix = prefix[..n];
-            if (prefix.Length == 0) break;
-        }
-        return prefix;
+        var best = LineEditor.FirstMatch(buf.ToString(), slash);
+        if (best is null) return false;
+        SetBuffer(buf, ref pos, "/" + best + " ");
+        return true;
     }
 }

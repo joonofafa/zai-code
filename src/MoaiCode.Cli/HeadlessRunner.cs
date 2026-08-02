@@ -57,11 +57,23 @@ public static class HeadlessRunner
                 }
             }
         }
+        catch (OperationCanceledException)
+        {
+            FlushText();
+            Console.Error.WriteLine("execution canceled.");
+            return 130;
+        }
         catch (ProviderException ex)
         {
             FlushText();
             Console.Error.WriteLine($"provider error: {ex.Message}");
             return 2;
+        }
+        catch (Exception ex)
+        {
+            FlushText();
+            Console.Error.WriteLine($"execution error: {ex.Message}");
+            return 1;
         }
 
         FlushText();

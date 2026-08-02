@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="..\MoaiCode.Core\MoaiCode.Core.csproj" />
+    <ProjectReference Include="..\MoaiCode.Localization\MoaiCode.Localization.csproj" />
     <ProjectReference Include="..\MoaiCode.Persistence\MoaiCode.Persistence.csproj" />
   </ItemGroup>
   <ItemGroup>

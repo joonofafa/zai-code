@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Security;
 using MoaiCode.Config;
 using MoaiCode.Core.Agent;
 using MoaiCode.Core.Agent.Prompts;
@@ -7,6 +8,7 @@ using MoaiCode.Core.Security;
 using MoaiCode.Core.Tools;
 using MoaiCode.Mcp;
 using MoaiCode.Mcp.Skills;
+using MoaiCode.Localization;
 using MoaiCode.Persistence;
 using MoaiCode.Providers;
 using MoaiCode.Tools;
@@ -39,6 +41,7 @@ public static class AppBootstrap
 
         // 1) 설정 머지 (user → project → env)
         var settings = SettingsLoader.Load(cwd);
+        L10n.SetLanguage(settings.Language);
         ApplySettingsToEnv(settings);
 
         // 2) 자격증명: env에 없으면 저장소에서 주입
@@ -77,8 +80,15 @@ public static class AppBootstrap
                 Console.WriteLine($"connecting {mcpConfigs.Count} MCP server(s)…");
             }
 
-            await mcp.ConnectAllAsync(mcpConfigs, ct).ConfigureAwait(false);
-            toolList.AddRange(mcp.Tools);
+            try
+            {
+                await mcp.ConnectAllAsync(mcpConfigs, ct).ConfigureAwait(false);
+                toolList.AddRange(mcp.Tools);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"mcp error: failed to connect mcp servers: {ex.Message}");
+            }
 
             if (verbose)
             {
@@ -89,23 +99,31 @@ public static class AppBootstrap
             }
         }
 
-        // 4) 스킬 (+ 플러그인 스킬 + 기본 번들 스킬)
-        var skills = new List<Skill>(SkillLoader.Discover(cwd));
-        skills.AddRange(PluginLoader.Discover(cwd));
-
-        // 기본 번들 스킬은 최저 우선순위 — 같은 이름의 사용자 스킬이 있으면 그쪽을 우선.
-        BundledSkills.EnsureExtracted();
-        var haveSkills = new HashSet<string>(skills.Select(s => s.Name), StringComparer.OrdinalIgnoreCase);
-        foreach (var s in SkillLoader.LoadFromDir(BundledSkills.Dir))
+        // 4) 스킬 — 우선순위 user > plugin > team > bundled. 로컬 비활성(/skills)로 끈 스킬은 제외.
+        // 팀 공유 스킬은 로그인 상태에서만 sync. 네트워크/인증 실패는 non-fatal(로컬/번들 스킬은 계속 동작).
+        var teamApiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+        var teamBaseUrl = Environment.GetEnvironmentVariable("OPENAI_BASE_URL");
+        if (!string.IsNullOrWhiteSpace(teamApiKey) && !string.IsNullOrWhiteSpace(teamBaseUrl))
         {
-            if (haveSkills.Add(s.Name))
+            var sync = await TeamSkills.SyncAsync(teamBaseUrl!, teamApiKey!, ct).ConfigureAwait(false);
+            if (sync.Error is not null)
             {
-                skills.Add(s);
+                // 사용자에겐 친화 메시지(빨강)만. 원문 오류는 콘솔에 찍지 않고 로그 파일로만 남긴다.
+                Console.WriteLine($"\x1b[31m{L10n.Get("cli.skills.teamLoadFailed")}\x1b[0m");
+                MoaiLog.Warn($"team skills sync failed: {sync.Error}");
             }
         }
+        BundledSkills.EnsureExtracted();
+
+        var disabledSkills = SkillState.LoadDisabled();
+        var skills = SkillCatalog.DiscoverAll(cwd)
+            .Where(x => !disabledSkills.Contains(x.Skill.Name))
+            .Select(x => x.Skill)
+            .ToList();
+        var skillTool = new SkillTool(skills);
         if (skills.Count > 0)
         {
-            toolList.Add(new SkillTool(skills));
+            toolList.Add(skillTool);
         }
 
         // 4b) Agent/Task 툴 (서브에이전트는 현재 툴 스냅샷을 사용 — 재귀 방지)
@@ -143,9 +161,7 @@ public static class AppBootstrap
         };
         if (!interactive && settings.Permission == PermissionMode.Ask && !headlessApprove)
         {
-            Console.Error.WriteLine(
-                "moai: 비대화형이라 쓰기/실행 툴을 자동 거부합니다. " +
-                "자동 승인하려면 MOAI_YES=1 (또는 설정 permission=auto).");
+            Console.Error.WriteLine(L10n.Get("permission.headlessDenied"));
         }
         // 확인 프롬프트(원격 실행/파괴적 명령/워크스페이스 밖 쓰기). 대화형에서만; 비대화형이면 거부.
         // "항상 허용"은 명령 prefix 스코프(Bash(ssh moai-ec2))로만 저장되므로 무차별 통과가 되지 않는다.
@@ -194,6 +210,54 @@ public static class AppBootstrap
             {
                 SettingsWriter.Set(new Dictionary<string, string?> { ["reasoningEffort"] = effort });
                 Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", effort);
+            },
+            settings.Language,
+            language =>
+            {
+                L10n.SetLanguage(language);
+                SettingsWriter.Set(new Dictionary<string, string?> { ["language"] = language });
+                Environment.SetEnvironmentVariable("MOAI_LANGUAGE", language);
+            },
+            // /skills sync: 팀 공유 스킬을 다시 받아 디스크에 기록하고 라이브 SkillTool 을 재적재.
+            SyncTeamSkills: async token =>
+            {
+                var key = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+                var burl = Environment.GetEnvironmentVariable("OPENAI_BASE_URL");
+                if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(burl))
+                {
+                    return L10n.Get("slash.skills.loginRequired");
+                }
+
+                var res = await TeamSkills.SyncAsync(burl!, key!, token).ConfigureAwait(false);
+                if (res.Error is not null)
+                {
+                    return L10n.Get("slash.skills.syncFailed", res.Error);
+                }
+
+                // 로컬 비활성 필터를 유지한 채 라이브 SkillTool 재적재.
+                var dis = SkillState.LoadDisabled();
+                var reloaded = SkillCatalog.DiscoverAll(cwd)
+                    .Where(x => !dis.Contains(x.Skill.Name)).Select(x => x.Skill).ToList();
+                skillTool.Reload(reloaded);
+                return L10n.Get("slash.skills.synced", res.Written, reloaded.Count);
+            },
+            // /skills: 전체 스킬(이름·출처·현재 활성) 조회.
+            GetSkillChoices: () =>
+            {
+                var dis = SkillState.LoadDisabled();
+                return SkillCatalog.DiscoverAll(cwd)
+                    .Select(x => (x.Skill.Name, x.Source, Enabled: !dis.Contains(x.Skill.Name)))
+                    .ToList();
+            },
+            // /skills: 비활성 목록 저장 + 라이브 SkillTool 재적재.
+            SetDisabledSkills: disabledNames =>
+            {
+                SkillState.SaveDisabled(disabledNames);
+                var dis = new HashSet<string>(disabledNames, StringComparer.OrdinalIgnoreCase);
+                var active = SkillCatalog.DiscoverAll(cwd)
+                    .Where(x => !dis.Contains(x.Skill.Name)).Select(x => x.Skill).ToList();
+                skillTool.Reload(active);
+                return L10n.Get("slash.skills.toggleSaved", active.Count, dis.Count);
             });
 
         return new AppRuntime(
@@ -263,9 +327,9 @@ public static class AppBootstrap
                 parts.Add($"## {path}\n{text}");
                 total += text.Length;
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or PathTooLongException)
             {
-                // skip unreadable
+                // skip unreadable or restricted files safely
             }
         }
 

@@ -25,6 +25,33 @@ public class SettingsLoaderTests
         Assert.Equal(7, s.MaxTurns);
     }
 
+    [Theory]
+    [InlineData("en", "en")]
+    [InlineData("en-US", "en")]
+    [InlineData("ko_KR", "ko")]
+    [InlineData("ja", "ko")]
+    public void ApplyJson_reads_and_normalizes_language(string input, string expected)
+    {
+        var s = SettingsLoader.ApplyJson(Settings.Default, $$"""{ "language": "{{input}}" }""");
+        Assert.Equal(expected, s.Language);
+    }
+
+    [Fact]
+    public void Env_language_overrides_json_language()
+    {
+        var previous = Environment.GetEnvironmentVariable("MOAI_LANGUAGE");
+        try
+        {
+            Environment.SetEnvironmentVariable("MOAI_LANGUAGE", "en-GB");
+            var s = SettingsLoader.ApplyEnv(Settings.Default with { Language = "ko" });
+            Assert.Equal("en", s.Language);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("MOAI_LANGUAGE", previous);
+        }
+    }
+
     [Fact]
     public void ApplyJson_merges_harness_keys()
     {
@@ -74,6 +101,50 @@ public class SettingsLoaderTests
     {
         var baseline = Settings.Default with { Model = "x" };
         Assert.Equal("x", SettingsLoader.ApplyJson(baseline, "{ not json").Model);
+    }
+
+    [Fact]
+    public void ApplyJson_reads_reasoning_effort_aliases_and_normalizes()
+    {
+        var a = SettingsLoader.ApplyJson(Settings.Default, """{ "reasoning_effort": " HIGH " }""");
+        var b = SettingsLoader.ApplyJson(Settings.Default, """{ "effort": "medium" }""");
+        var c = SettingsLoader.ApplyJson(Settings.Default, """{ "reasoningEffort": "fast" }""");
+
+        Assert.Equal("high", a.ReasoningEffort);
+        Assert.Equal("medium", b.ReasoningEffort);
+        Assert.Null(c.ReasoningEffort);
+    }
+
+    [Fact]
+    public void Env_reasoning_effort_overrides_and_invalid_value_is_ignored()
+    {
+        var prevA = Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT");
+        var prevB = Environment.GetEnvironmentVariable("OPENAI_REASONING_EFFORT");
+        var prevC = Environment.GetEnvironmentVariable("MOAI_EFFORT");
+        try
+        {
+            Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", "LOW");
+            Environment.SetEnvironmentVariable("OPENAI_REASONING_EFFORT", null);
+            Environment.SetEnvironmentVariable("MOAI_EFFORT", null);
+            Assert.Equal("low", SettingsLoader.ApplyEnv(Settings.Default).ReasoningEffort);
+
+            Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", "invalid");
+            Assert.Null(SettingsLoader.ApplyEnv(Settings.Default).ReasoningEffort);
+
+            Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", null);
+            Environment.SetEnvironmentVariable("OPENAI_REASONING_EFFORT", "medium");
+            Assert.Equal("medium", SettingsLoader.ApplyEnv(Settings.Default).ReasoningEffort);
+
+            Environment.SetEnvironmentVariable("OPENAI_REASONING_EFFORT", null);
+            Environment.SetEnvironmentVariable("MOAI_EFFORT", "high");
+            Assert.Equal("high", SettingsLoader.ApplyEnv(Settings.Default).ReasoningEffort);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", prevA);
+            Environment.SetEnvironmentVariable("OPENAI_REASONING_EFFORT", prevB);
+            Environment.SetEnvironmentVariable("MOAI_EFFORT", prevC);
+        }
     }
 
     [Fact]

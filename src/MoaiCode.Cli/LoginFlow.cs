@@ -1,4 +1,5 @@
 using MoaiCode.Config;
+using MoaiCode.Localization;
 using MoaiCode.Tui;
 using Spectre.Console;
 
@@ -48,13 +49,13 @@ public static class LoginFlow
     {
         host = host.TrimEnd('/');
         AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine($"[aqua]MoAI Code 로그인[/] [grey70]· {Markup.Escape(host)}[/]");
+        AnsiConsole.MarkupLine($"[aqua]{Markup.Escape(L10n.Get("cli.login.title"))}[/] [grey70]· {Markup.Escape(host)}[/]");
 
         Console.Write("email: ");
         var email = (Console.ReadLine() ?? string.Empty).Trim();
         if (email.Length == 0)
         {
-            AnsiConsole.MarkupLine("[yellow]취소됨[/]");
+            AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(L10n.Get("cli.login.cancelled"))}[/]");
             return false;
         }
 
@@ -68,14 +69,14 @@ public static class LoginFlow
 
         if (r.Status == "mfa_required" && !string.IsNullOrEmpty(r.MfaToken))
         {
-            Console.Write("MFA 코드: ");
+            Console.Write(L10n.Get("cli.login.mfaPrompt"));
             var code = (Console.ReadLine() ?? string.Empty).Trim();
             r = await client.LoginMfaAsync(r.MfaToken, code, ct).ConfigureAwait(false);
         }
 
         if (r.Status != "ok" || string.IsNullOrEmpty(r.ApiKey))
         {
-            AnsiConsole.MarkupLine($"[red]로그인 실패: {Markup.Escape(r.Error ?? "알 수 없는 오류")}[/]");
+            AnsiConsole.MarkupLine($"[red]{Markup.Escape(L10n.Get("cli.login.failed", r.Error ?? L10n.Get("common.unknownError")))}[/]");
             return false;
         }
 
@@ -89,7 +90,7 @@ public static class LoginFlow
         {
             var defIdx = Math.Max(0, r.Models.ToList().FindIndex(m =>
                 string.Equals(m, r.DefaultModel, StringComparison.OrdinalIgnoreCase)));
-            var pick = SelectList.Prompt("사용할 모델을 선택하세요:", r.Models, defIdx);
+            var pick = SelectList.Prompt(L10n.Get("slash.model.pickTitle"), r.Models, defIdx);
             if (pick >= 0)
             {
                 model = r.Models[pick];
@@ -107,7 +108,51 @@ public static class LoginFlow
             ["orgName"] = r.OrgName,
         });
 
-        AnsiConsole.MarkupLine($"[green]✓ 로그인 완료[/] [grey70]· {Markup.Escape(model ?? "(모델 미선택)")} · {Markup.Escape(host)}[/]");
+        AnsiConsole.MarkupLine($"[green]{Markup.Escape(L10n.Get("cli.login.done"))}[/] [grey70]· {Markup.Escape(model ?? L10n.Get("cli.login.noModel"))} · {Markup.Escape(host)}[/]");
+
+        // 팀 공유 스킬 선동기화 (best-effort — 실패해도 로그인은 성공 처리; 시작 시에도 다시 시도).
+        try
+        {
+            var sync = await TeamSkills.SyncAsync(baseUrl, r.ApiKey!, ct).ConfigureAwait(false);
+            if (sync.Error is null && sync.Written > 0)
+            {
+                AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(L10n.Get("cli.login.teamSkillsSynced", sync.Written))}[/]");
+            }
+        }
+        catch
+        {
+            // non-fatal.
+        }
+
+        // 로그인 직후 사용할 스킬을 바로 고르게 한다(자동). Esc 로 건너뛰면 기존 상태 유지. non-fatal.
+        try
+        {
+            var cwd = Directory.GetCurrentDirectory();
+            var catalog = SkillCatalog.DiscoverAll(cwd);
+            if (catalog.Count > 0 && !Console.IsInputRedirected)
+            {
+                var disabled = MoaiCode.Mcp.Skills.SkillState.LoadDisabled();
+                var labels = catalog.Select(x => $"{x.Skill.Name}  ({x.Source})").ToList();
+                var initial = catalog.Select(x => !disabled.Contains(x.Skill.Name)).ToList();
+                var picked = MultiSelectList.Prompt(L10n.Get("cli.login.skillsTitle"), labels, initial);
+                if (picked is not null)
+                {
+                    var on = picked.ToHashSet();
+                    var newDisabled = catalog.Where((x, i) => !on.Contains(i)).Select(x => x.Skill.Name).ToList();
+                    MoaiCode.Mcp.Skills.SkillState.SaveDisabled(newDisabled);
+                }
+                else
+                {
+                    // Esc(건너뛰기): 당황하지 않도록 나중에 바꿀 수 있음을 안내하고 진행.
+                    AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(L10n.Get("cli.login.skillsSkipped"))}[/]");
+                }
+            }
+        }
+        catch
+        {
+            // non-fatal.
+        }
+
         return true;
     }
 
@@ -116,29 +161,29 @@ public static class LoginFlow
     {
         var existing = SettingsLoader.Load(Directory.GetCurrentDirectory()).ProxyUrl;
         var prompt = string.IsNullOrWhiteSpace(existing)
-            ? "사내 프록시 설정이 필요합니까?"
-            : $"사내 프록시가 이미 설정돼 있습니다 ({Markup.Escape(existing!)}). 변경할까요?";
+            ? L10n.Get("cli.proxy.askNeed")
+            : L10n.Get("cli.proxy.askChange", Markup.Escape(existing!));
         if (!AnsiConsole.Confirm(prompt, defaultValue: false))
         {
             return;
         }
 
-        Console.Write("프록시 URL (예: http://proxy.corp:8080): ");
+        Console.Write(L10n.Get("cli.proxy.urlPrompt"));
         var url = (Console.ReadLine() ?? string.Empty).Trim();
         if (url.Length == 0)
         {
-            AnsiConsole.MarkupLine("[grey70]프록시 미설정[/]");
+            AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(L10n.Get("cli.proxy.notSet"))}[/]");
             return;
         }
 
-        Console.Write("프록시 사용자 (없으면 Enter): ");
+        Console.Write(L10n.Get("cli.proxy.userPrompt"));
         var user = (Console.ReadLine() ?? string.Empty).Trim();
-        string? pass = user.Length > 0 ? PasswordPrompt.Read("프록시 비밀번호: ") : null;
+        string? pass = user.Length > 0 ? PasswordPrompt.Read(L10n.Get("cli.proxy.passwordPrompt")) : null;
 
         var applied = ProxyConfig.Save(url, user, pass);
         AnsiConsole.MarkupLine(applied is not null
-            ? $"[green]프록시 적용됨[/] [grey70]· {Markup.Escape(url)}[/]"
-            : "[yellow]프록시 URL 형식이 올바르지 않습니다[/]");
+            ? $"[green]{Markup.Escape(L10n.Get("cli.proxy.applied"))}[/] [grey70]· {Markup.Escape(url)}[/]"
+            : $"[yellow]{Markup.Escape(L10n.Get("cli.proxy.invalidUrl"))}[/]");
     }
 
     public static void Logout()
@@ -150,7 +195,7 @@ public static class LoginFlow
         {
             ["baseUrl"] = null, ["host"] = null, ["account"] = null, ["loginAt"] = null,
         });
-        AnsiConsole.MarkupLine("[grey70]로그아웃됨 (저장된 키 제거)[/]");
+        AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(L10n.Get("cli.login.loggedOut"))}[/]");
     }
 
     /// <summary>인증돼 있는지 (키 존재 여부). 첫 실행 자동 로그인 판단용.</summary>

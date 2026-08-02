@@ -11,15 +11,11 @@ namespace MoaiCode.Mcp.Skills;
 /// </summary>
 public sealed class SkillTool : ITool
 {
-    private readonly Dictionary<string, Skill> _skills;
+    private readonly Dictionary<string, Skill> _skills = new(StringComparer.OrdinalIgnoreCase);
 
     public SkillTool(IReadOnlyList<Skill> skills)
     {
-        _skills = skills.ToDictionary(s => s.Name, StringComparer.OrdinalIgnoreCase);
-        var names = string.Join(", ", skills.Select(s => $"{s.Name} — {s.Description}"));
-        Description = skills.Count == 0
-            ? "Invoke a skill by name. (no skills installed)"
-            : $"Invoke a skill by name. Available: {names}";
+        Reload(skills);
         InputSchema = Parse(
             """
             {
@@ -30,8 +26,23 @@ public sealed class SkillTool : ITool
             """);
     }
 
+    /// <summary>스킬 목록을 교체한다(예: /skills sync 로 팀 공유 스킬을 라이브 갱신). Description 도 갱신.</summary>
+    public void Reload(IReadOnlyList<Skill> skills)
+    {
+        _skills.Clear();
+        foreach (var s in skills)
+        {
+            _skills[s.Name] = s;
+        }
+
+        var names = string.Join(", ", skills.Select(s => $"{s.Name} — {s.Description}"));
+        Description = skills.Count == 0
+            ? "Invoke a skill by name. (no skills installed)"
+            : $"Invoke a skill by name. Available: {names}";
+    }
+
     public string Name => "Skill";
-    public string Description { get; }
+    public string Description { get; private set; } = string.Empty;
     public JsonElement InputSchema { get; }
     public bool IsReadOnly => true;
     public bool IsConcurrencySafe => true;

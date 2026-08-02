@@ -2,6 +2,7 @@ using System.Text.Json;
 using MoaiCode.Core.Messages;
 using MoaiCode.Core.Security;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 using MoaiCode.Tools;
 using MoaiCode.Tools.Bash;
 using MoaiCode.Tui.Commands;
@@ -50,7 +51,7 @@ public sealed class ModeAwarePermissionGate : IPermissionGate
         switch (_rules?.Evaluate(tool, call))
         {
             case RuleMatch.Deny:
-                Console.Error.WriteLine("moai: 거부됨 — 권한 규칙(deny)");
+                Console.Error.WriteLine(L10n.Get("permission.denyRule"));
                 return false;
             case RuleMatch.Allow:
                 return true;
@@ -67,7 +68,7 @@ public sealed class ModeAwarePermissionGate : IPermissionGate
         // terraform destroy…)은 모드와 무관하게 항상 확인. 차단이 아니라 사람이 한 번 보게 하는 것.
         if (TryConfirmReason(tool, call) is { } reason)
         {
-            Console.Error.WriteLine($"moai: 확인이 필요한 명령 — {reason}");
+            Console.Error.WriteLine(L10n.Get("permission.confirmNeeded", reason));
             return await ConfirmAsync(tool, call, ct).ConfigureAwait(false);
         }
 
@@ -101,7 +102,7 @@ public sealed class ModeAwarePermissionGate : IPermissionGate
         if (verdict is null)
         {
             Console.Error.WriteLine(
-                "moai: 위험 판정 실패(게이트웨이 오류/타임아웃) — 안전하게 확인으로 전환합니다.");
+                L10n.Get("permission.classifierFailed"));
             return await ConfirmAsync(tool, call, ct).ConfigureAwait(false);
         }
 
@@ -111,11 +112,11 @@ public sealed class ModeAwarePermissionGate : IPermissionGate
                 return true;
 
             case RiskDecision.Deny:
-                Console.Error.WriteLine($"moai: 거부됨 — {verdict.Reason}");
+                Console.Error.WriteLine(L10n.Get("permission.deniedReason", verdict.Reason));
                 return false;
 
             default:
-                Console.Error.WriteLine($"moai: 확인이 필요합니다 — {verdict.Reason}");
+                Console.Error.WriteLine(L10n.Get("permission.confirmReason", verdict.Reason));
                 return await ConfirmAsync(tool, call, ct).ConfigureAwait(false);
         }
     }

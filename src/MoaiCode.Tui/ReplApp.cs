@@ -4,6 +4,7 @@ using System.Text.Json;
 using MoaiCode.Core.Agent;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Messages;
+using MoaiCode.Localization;
 using MoaiCode.Tui.Commands;
 using Spectre.Console;
 
@@ -58,8 +59,8 @@ public sealed class ReplApp
         // 시그니처 배너: 그라데이션 ASCII (Banner.Render)
         Banner.Render();
         AnsiConsole.MarkupLine("[grey70]MoAI Code — Enterprise Coding Agent[/]");
-        AnsiConsole.MarkupLine("[grey70]도움말: /help · 진행 중 ESC 또는 Ctrl+C=중단 · ↑/↓ 히스토리 · Tab 자동완성[/]");
-        AnsiConsole.MarkupLine($"[grey70]session: {Markup.Escape(_sessionId)} (자동 저장 · /resume {Markup.Escape(_sessionId)} 로 복원)[/]");
+        AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(L10n.Get("repl.help"))}[/]");
+        AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(L10n.Get("repl.session", _sessionId))}[/]");
         // 배너~프롬프트 사이 공백 2줄.
         AnsiConsole.WriteLine();
         AnsiConsole.WriteLine();
@@ -166,7 +167,7 @@ public sealed class ReplApp
 
         if (!_slash.TryGet(name, out var cmd))
         {
-            AnsiConsole.MarkupLine($"[red]알 수 없는 명령: /{Markup.Escape(name)}[/]");
+            AnsiConsole.MarkupLine($"[red]{Markup.Escape(L10n.Get("repl.unknownCommand", name))}[/]");
             return false;
         }
 
@@ -182,7 +183,7 @@ public sealed class ReplApp
         catch (Exception ex)
         {
             // 슬래시 명령 하나의 오류가 REPL 전체를 죽이지 않게 한다.
-            AnsiConsole.MarkupLine($"[red]/{Markup.Escape(name)} 실행 오류: {Markup.Escape(ex.Message)}[/]");
+            AnsiConsole.MarkupLine($"[red]{Markup.Escape(L10n.Get("repl.commandError", name, ex.Message))}[/]");
             return false;
         }
 
@@ -221,7 +222,7 @@ public sealed class ReplApp
             _producedOutputInTurn = false;
 
             await using var e = _ctx.Engine.SubmitAsync(userInput, tct).GetAsyncEnumerator(tct);
-            var has = await MoveNextWithSpinnerAsync(e, "생각 중", tct).ConfigureAwait(false);
+            var has = await MoveNextWithSpinnerAsync(e, L10n.Get("repl.spinner.thinking"), tct).ConfigureAwait(false);
 
             while (has)
             {
@@ -234,12 +235,12 @@ public sealed class ReplApp
                         pendingCalls[t.Block.Id] = t.Block;
                         _producedOutputInTurn = true;
                         RenderToolCall(t);
-                        has = await MoveNextWithSpinnerAsync(e, "처리 중", tct).ConfigureAwait(false);
+                        has = await MoveNextWithSpinnerAsync(e, L10n.Get("repl.spinner.working"), tct).ConfigureAwait(false);
                         continue;
                     case ToolExecuted x:
                         pendingCalls.TryGetValue(x.ToolUseId, out var callBlock);
                         RenderToolResult(x, callBlock);
-                        has = await MoveNextWithSpinnerAsync(e, "처리 중", tct).ConfigureAwait(false);
+                        has = await MoveNextWithSpinnerAsync(e, L10n.Get("repl.spinner.working"), tct).ConfigureAwait(false);
                         continue;
                     case TurnCompleted:
                         // 이 턴의 토큰을 현재 모델에 누적(로컬 /usage 집계).
@@ -250,10 +251,10 @@ public sealed class ReplApp
                             cu.OutputTokens - startUsage.OutputTokens);
                         // 토큰 수치 대신 빈 줄 하나 — 응답과 다음 입력 프롬프트 사이 margin.
                         AnsiConsole.WriteLine();
-                        has = await MoveNextWithSpinnerAsync(e, "처리 중", tct).ConfigureAwait(false);
+                        has = await MoveNextWithSpinnerAsync(e, L10n.Get("repl.spinner.working"), tct).ConfigureAwait(false);
                         continue;
                     default:
-                        has = await MoveNextWithSpinnerAsync(e, "처리 중", tct).ConfigureAwait(false);
+                        has = await MoveNextWithSpinnerAsync(e, L10n.Get("repl.spinner.working"), tct).ConfigureAwait(false);
                         continue;
                 }
             }
@@ -261,14 +262,14 @@ public sealed class ReplApp
             // 턴이 정상 종료됐는데 화면에 아무것도 안 나왔으면(빈 응답) 사용자에게 알린다.
             if (!_producedOutputInTurn)
             {
-                AnsiConsole.MarkupLine("[grey70](빈 응답 — 모델이 콘텐츠를 반환하지 않았습니다. /model 로 다른 모델을 선택해 보세요.)[/]");
+                AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(L10n.Get("repl.emptyResponse"))}[/]");
             }
         }
         catch (OperationCanceledException) when (turnCts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
             // Ctrl+C로 사용자가 중단 — 프로세스는 유지하고 다음 입력으로 복귀.
             ClearSpinnerLine();
-            AnsiConsole.MarkupLine("[yellow]⊘ 중단됨[/]");
+            AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(L10n.Get("repl.aborted"))}[/]");
         }
         catch (OperationCanceledException)
         {
@@ -277,7 +278,7 @@ public sealed class ReplApp
         catch (Exception ex)
         {
             // 프로바이더/툴 오류로 REPL이 죽지 않도록 표시 후 계속.
-            AnsiConsole.MarkupLine($"[red]오류: {Markup.Escape(ex.Message)}[/]");
+            AnsiConsole.MarkupLine($"[red]{Markup.Escape(L10n.Get("repl.error", ex.Message))}[/]");
         }
         finally
         {
@@ -482,7 +483,7 @@ public sealed class ReplApp
             var nowMs = sw.ElapsedMilliseconds;
             if (nowMs - lastDrawMs >= 100)
             {
-                DrawSpinner(frame++, "응답 작성 중", sw.Elapsed.TotalSeconds);
+                DrawSpinner(frame++, L10n.Get("repl.spinner.writing"), sw.Elapsed.TotalSeconds);
                 lastDrawMs = nowMs;
             }
         }
@@ -630,7 +631,7 @@ public sealed class ReplApp
             _ => null,
         };
 
-        return string.IsNullOrWhiteSpace(arg) ? $"{name} 실행 중" : $"{name} {arg}";
+        return string.IsNullOrWhiteSpace(arg) ? L10n.Get("repl.spinner.toolRunning", name) : $"{name} {arg}";
     }
 
     private static string? Clip(string? s, int max)

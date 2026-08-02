@@ -9,8 +9,29 @@ using Xunit;
 
 namespace MoaiCode.Core.Tests;
 
+[Collection("EnvMutating")]
 public class OpenAiChatModelTests
 {
+    private sealed class CaptureRequestHandler(string sse) : HttpMessageHandler
+    {
+        public string? LastRequestBody { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            LastRequestBody = request.Content is null
+                ? null
+                : await request.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+            var resp = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StreamContent(new MemoryStream(Encoding.UTF8.GetBytes(sse))),
+            };
+            resp.Content.Headers.ContentType = new MediaTypeHeaderValue("text/event-stream");
+            return resp;
+        }
+    }
+
     private sealed class FakeSseHandler(string sse) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
@@ -38,6 +59,20 @@ public class OpenAiChatModelTests
         }
 
         return events;
+    }
+
+    private static async Task<string?> CaptureRequestBodyAsync(string sse)
+    {
+        var handler = new CaptureRequestHandler(sse);
+        var http = new HttpClient(handler);
+        var model = new OpenAiChatModel(http, "http://test/v1", "key", "gpt-test");
+        var history = new List<Message> { new UserMessage("hi") };
+
+        await foreach (var _ in model.StreamAsync(history, Array.Empty<ITool>(), default))
+        {
+        }
+
+        return handler.LastRequestBody;
     }
 
     [Fact]
@@ -142,5 +177,47 @@ public class OpenAiChatModelTests
         var text = string.Concat(events.OfType<TextDelta>().Select(d => d.Text));
         Assert.Equal("final answer", text);
         Assert.DoesNotContain("thinking", text);
+    }
+
+    [Fact]
+    public async Task Includes_reasoning_effort_when_env_is_set()
+    {
+        var prev = Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT");
+        try
+        {
+            Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", "high");
+
+            var body = await CaptureRequestBodyAsync(
+                "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}]}\n\n" +
+                "data: [DONE]\n\n");
+
+            Assert.NotNull(body);
+            Assert.Contains("\"reasoning_effort\":\"high\"", body, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", prev);
+        }
+    }
+
+    [Fact]
+    public async Task Omits_reasoning_effort_when_value_is_invalid()
+    {
+        var prev = Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT");
+        try
+        {
+            Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", "max");
+
+            var body = await CaptureRequestBodyAsync(
+                "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}]}\n\n" +
+                "data: [DONE]\n\n");
+
+            Assert.NotNull(body);
+            Assert.DoesNotContain("\"reasoning_effort\"", body, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", prev);
+        }
     }
 }

@@ -1,5 +1,6 @@
 using MoaiCode.Core.Messages;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 using Spectre.Console;
 
 namespace MoaiCode.Tui;
@@ -28,11 +29,11 @@ public sealed class SpectrePermissionGate : IPermissionGate
         var display = ToolDisplay.Describe(tool.Name, call.Input);
         if (display.Length > 2000)
         {
-            display = display[..2000] + "\n… (생략)";
+            display = display[..2000] + L10n.Get("permission.truncated");
         }
 
         var panel = new Panel(new Markup(Markup.Escape(display)))
-            .Header($"[yellow]권한 요청[/] · [bold]{Markup.Escape(tool.Name)}[/]")
+            .Header($"[yellow]{Markup.Escape(L10n.Get("permission.header"))}[/] · [bold]{Markup.Escape(tool.Name)}[/]")
             .BorderColor(Color.Yellow);
         AnsiConsole.Write(panel);
 
@@ -40,14 +41,16 @@ public sealed class SpectrePermissionGate : IPermissionGate
         var canAlways = scope is not null;
         // 정확 일치(Bash(=cmd))는 '이 명령 그대로'라고 표기, prefix 스코프는 그 패턴을 보여준다.
         var alwaysLabel = scope is not null && scope.StartsWith("Bash(=", StringComparison.Ordinal)
-            ? "항상 허용 (이 명령 그대로 저장)"
-            : $"항상 허용 (저장) — {scope}";
+            ? L10n.Get("permission.alwaysSaveThis")
+            : L10n.Get("permission.alwaysSaveScope", scope!);
+        var allowOnce = L10n.Get("permission.allowOnce");
+        var deny = L10n.Get("permission.deny");
         var choices = canAlways
-            ? new[] { "허용 (한 번)", alwaysLabel, "거부" }
-            : new[] { "허용 (한 번)", "거부" };
+            ? new[] { allowOnce, alwaysLabel, deny }
+            : new[] { allowOnce, deny };
 
         // 화살표 선택 위젯(SelectList). Spectre SelectionPrompt 는 단일 파일에서 크래시하므로 미사용.
-        var choice = SelectList.Prompt($"툴 {tool.Name} 실행을 허용할까요?", choices);
+        var choice = SelectList.Prompt(L10n.Get("permission.prompt", tool.Name), choices);
 
         if (choice == 0)
         {

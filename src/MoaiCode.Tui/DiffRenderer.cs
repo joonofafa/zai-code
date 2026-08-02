@@ -1,3 +1,4 @@
+using MoaiCode.Localization;
 using Spectre.Console;
 
 namespace MoaiCode.Tui;
@@ -35,7 +36,7 @@ internal static class DiffRenderer
 
         if (removed.Length == 0 && added.Length == 0)
         {
-            AnsiConsole.MarkupLine("[grey70]  (변경 없음)[/]");
+            AnsiConsole.MarkupLine($"[grey70]  {Markup.Escape(L10n.Get("common.noChanges"))}[/]");
             return;
         }
 

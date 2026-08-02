@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 using Spectre.Console;
 
 namespace MoaiCode.Tui;
@@ -76,7 +77,7 @@ public sealed class AskUserQuestionTool : ITool
 
         AnsiConsole.WriteLine();
         AnsiConsole.Write(new Panel(new Markup(Markup.Escape(question)))
-            .Header("[aqua]질문[/]")
+            .Header($"[aqua]{Markup.Escape(L10n.Get("common.question"))}[/]")
             .BorderColor(Color.Aqua));
 
         // 화살표 선택 위젯. label + (설명) 을 항목으로.

@@ -32,6 +32,8 @@ public sealed class SlashRegistry
         {
             new ToolsCommand(),
             new ModelCommand(),
+            new EffortCommand(),
+            new LanguageCommand(),
             new SkillsCommand(),
             new McpCommand(),
             new CostCommand(),

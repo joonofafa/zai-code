@@ -1,5 +1,6 @@
 using MoaiCode.Core.Agent;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 using MoaiCode.Persistence;
 
 namespace MoaiCode.Tui.Commands;
@@ -37,7 +38,19 @@ public sealed record SlashContext(
     UsageStore? Usage = null,
     AccountInfo? Account = null,
     // /permissions: 영속 allow/deny 규칙 조회·편집.
-    IPermissionRuleStore? Rules = null);
+    IPermissionRuleStore? Rules = null,
+    // /effort: 추론 강도(low|medium|high) 조회·변경. PersistEffort는 선택값을 settings/env에 저장.
+    string? ReasoningEffort = null,
+    Action<string>? PersistEffort = null,
+    // /language: UI 언어를 즉시 바꾸고 사용자 설정에 저장.
+    string Language = L10n.DefaultLanguage,
+    Action<string>? PersistLanguage = null,
+    // /skills sync: 팀 공유 스킬을 서버에서 다시 받아 디스크·라이브 스킬 목록을 갱신. 결과 메시지 반환.
+    Func<CancellationToken, Task<string>>? SyncTeamSkills = null,
+    // /skills: 로컬 활성/비활성 토글. GetSkillChoices=전체 스킬(이름·출처·현재 활성),
+    // SetDisabledSkills=비활성 이름 목록을 저장하고 라이브 SkillTool 재적재 후 상태 메시지 반환.
+    Func<IReadOnlyList<(string Name, string Source, bool Enabled)>>? GetSkillChoices = null,
+    Func<IReadOnlyList<string>, string>? SetDisabledSkills = null);
 
 /// <summary>
 /// 슬래시 명령 실행 결과. Output은 호출측이 렌더, Quit이면 REPL 종료.

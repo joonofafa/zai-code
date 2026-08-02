@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tui;
 
@@ -14,7 +15,7 @@ public static class ToolDisplay
         {
             case "Bash":
                 var cmd = Str(input, "command");
-                return string.IsNullOrWhiteSpace(cmd) ? "(빈 명령)" : "$ " + cmd.Trim();
+                return string.IsNullOrWhiteSpace(cmd) ? L10n.Get("tool.emptyCommand") : "$ " + cmd.Trim();
 
             case "Read":
                 return "Read " + (Str(input, "path") ?? "");

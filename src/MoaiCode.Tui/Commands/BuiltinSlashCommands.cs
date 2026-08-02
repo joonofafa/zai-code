@@ -1,4 +1,5 @@
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 using MoaiCode.Persistence;
 
 namespace MoaiCode.Tui.Commands;
@@ -6,7 +7,7 @@ namespace MoaiCode.Tui.Commands;
 internal sealed class ExitCommand : ISlashCommand
 {
     public string Name => "exit";
-    public string Description => "REPL 종료";
+    public string Description => L10n.Get("slash.exit.description");
     public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
         => Task.FromResult(new SlashResult("", Quit: true));
 }
@@ -14,18 +15,18 @@ internal sealed class ExitCommand : ISlashCommand
 internal sealed class ClearCommand : ISlashCommand
 {
     public string Name => "clear";
-    public string Description => "대화 초기화";
+    public string Description => L10n.Get("slash.clear.description");
     public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
         ctx.Engine.Reset();
-        return Task.FromResult(new SlashResult("(대화 초기화됨)"));
+        return Task.FromResult(new SlashResult(L10n.Get("slash.clear.done")));
     }
 }
 
 internal sealed class ToolsCommand : ISlashCommand
 {
     public string Name => "tools";
-    public string Description => "사용 가능한 툴 목록";
+    public string Description => L10n.Get("slash.tools.description");
     public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
         => Task.FromResult(new SlashResult($"tools: {string.Join(", ", ctx.ToolNames)}"));
 }
@@ -33,7 +34,7 @@ internal sealed class ToolsCommand : ISlashCommand
 internal sealed class ModelCommand : ISlashCommand
 {
     public string Name => "model";
-    public string Description => "모델 변경 (목록에서 선택)";
+    public string Description => L10n.Get("slash.model.description");
 
     // 로그인 직후 모델 선택과 동일한 화살표 선택 화면을 띄워 라이브 세션의 모델을 교체한다.
     public async Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
@@ -41,14 +42,14 @@ internal sealed class ModelCommand : ISlashCommand
         var mc = ctx.Models;
         if (mc is null)
         {
-            return new SlashResult($"이 프로바이더는 모델 전환을 지원하지 않습니다. ({ctx.ProviderDesc})");
+            return new SlashResult(L10n.Get("slash.model.unsupported", ctx.ProviderDesc));
         }
 
-        Spectre.Console.AnsiConsole.MarkupLine("[grey70]모델 목록 조회 중…[/]");
+        Spectre.Console.AnsiConsole.MarkupLine($"[grey70]{Spectre.Console.Markup.Escape(L10n.Get("slash.model.fetching"))}[/]");
         var models = await mc.ListModelsAsync(ct).ConfigureAwait(false);
         if (models.Count == 0)
         {
-            return new SlashResult("모델 목록을 가져오지 못했습니다 (로그인/네트워크 확인).");
+            return new SlashResult(L10n.Get("slash.model.fetchFailed"));
         }
 
         // 현재 모델을 기본 선택으로.
@@ -59,41 +60,186 @@ internal sealed class ModelCommand : ISlashCommand
             defIdx = 0;
         }
 
-        var pick = SelectList.Prompt("사용할 모델을 선택하세요:", models, defIdx);
+        var pick = SelectList.Prompt(L10n.Get("slash.model.pickTitle"), models, defIdx);
         if (pick < 0)
         {
-            return new SlashResult("변경 없음");
+            return new SlashResult(L10n.Get("common.unchanged"));
         }
 
         var chosen = models[pick];
         mc.CurrentModel = chosen;          // 라이브 반영 (QueryEngine/서브에이전트/컴팩션 공유 인스턴스)
         ctx.PersistModel?.Invoke(chosen);  // settings.json + env 저장 (다음 실행에도 유지)
-        return new SlashResult($"모델 변경됨: {chosen}");
+        return new SlashResult(L10n.Get("slash.model.changed", chosen));
+    }
+}
+
+internal sealed class EffortCommand : ISlashCommand
+{
+    public string Name => "effort";
+    public string Description => L10n.Get("slash.effort.description");
+
+    public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
+    {
+        var current = (Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT")
+                       ?? Environment.GetEnvironmentVariable("OPENAI_REASONING_EFFORT")
+                       ?? Environment.GetEnvironmentVariable("MOAI_EFFORT")
+                       ?? ctx.ReasoningEffort)
+            ?.Trim().ToLowerInvariant();
+
+        if (args.Length == 0)
+        {
+            return Task.FromResult(new SlashResult($"effort: {current ?? "(unset)"}"));
+        }
+
+        var value = args[0].Trim().ToLowerInvariant();
+        if (value is "select")
+        {
+            if (Console.IsInputRedirected)
+            {
+                return Task.FromResult(new SlashResult(L10n.Get("slash.effort.noSelectNonInteractive")));
+            }
+
+            var persist = ctx.PersistEffort;
+            if (persist is null)
+            {
+                return Task.FromResult(new SlashResult(L10n.Get("slash.effort.unsupported")));
+            }
+
+            var options = new[] { "low", "medium", "high" };
+            var defaultIndex = Array.IndexOf(options, current);
+            if (defaultIndex < 0)
+            {
+                defaultIndex = 1;
+            }
+
+            var pick = SelectList.Prompt(L10n.Get("slash.effort.pickTitle"), options, defaultIndex);
+            if (pick < 0)
+            {
+                return Task.FromResult(new SlashResult(L10n.Get("common.unchanged")));
+            }
+
+            var chosen = options[pick];
+            persist(chosen);
+            return Task.FromResult(new SlashResult(L10n.Get("slash.effort.changed", chosen)));
+        }
+
+        if (value is not ("low" or "medium" or "high"))
+        {
+            return Task.FromResult(new SlashResult(L10n.Get("slash.effort.usage")));
+        }
+
+        var persistSetter = ctx.PersistEffort;
+        if (persistSetter is null)
+        {
+            return Task.FromResult(new SlashResult(L10n.Get("slash.effort.unsupported")));
+        }
+
+        persistSetter(value);
+        return Task.FromResult(new SlashResult(L10n.Get("slash.effort.changed", value)));
+    }
+}
+
+internal sealed class LanguageCommand : ISlashCommand
+{
+    public string Name => "language";
+    public string Description => L10n.Get("slash.language.description");
+
+    public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
+    {
+        if (args.Length == 0)
+        {
+            var current = L10n.CurrentLanguage;
+            return Task.FromResult(new SlashResult(
+                L10n.Get("slash.language.current", current, L10n.GetLanguageDisplayName(current))));
+        }
+
+        if (args.Length != 1)
+        {
+            return Task.FromResult(new SlashResult(L10n.Get("slash.language.usage")));
+        }
+
+        if (string.Equals(args[0], "list", StringComparison.OrdinalIgnoreCase))
+        {
+            var available = string.Join(", ", L10n.SupportedLanguages.Select(x => $"{x.Code} ({x.DisplayName})"));
+            return Task.FromResult(new SlashResult(L10n.Get("slash.language.available", available)));
+        }
+
+        var language = L10n.NormalizeLanguage(args[0]);
+        if (language is null)
+        {
+            return Task.FromResult(new SlashResult(
+                L10n.Get("slash.language.unsupported", args[0]) + Environment.NewLine +
+                L10n.Get("slash.language.usage")));
+        }
+
+        L10n.SetLanguage(language);
+        ctx.PersistLanguage?.Invoke(language);
+        return Task.FromResult(new SlashResult(
+            L10n.Get("slash.language.changed", language, L10n.GetLanguageDisplayName(language))));
     }
 }
 
 internal sealed class SkillsCommand : ISlashCommand
 {
     public string Name => "skills";
-    public string Description => "로드된 스킬 목록";
-    public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
-        => Task.FromResult(new SlashResult(
-            ctx.SkillNames.Count == 0 ? "skills: (없음)" : $"skills: {string.Join(", ", ctx.SkillNames)}"));
+    public string Description => L10n.Get("slash.skills.description");
+
+    public async Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
+    {
+        // /skills sync — 팀 공유 스킬을 서버에서 다시 받아 라이브로 갱신.
+        if (args.Length > 0 && string.Equals(args[0], "sync", StringComparison.OrdinalIgnoreCase))
+        {
+            if (ctx.SyncTeamSkills is null)
+            {
+                return new SlashResult(L10n.Get("slash.skills.syncUnavailable"));
+            }
+
+            return new SlashResult(await ctx.SyncTeamSkills(ct).ConfigureAwait(false));
+        }
+
+        // /skills — 대화형이면 체크박스 피커로 활성/비활성 토글, 아니면 목록만 출력.
+        if (ctx.GetSkillChoices is not null && ctx.SetDisabledSkills is not null && !Console.IsInputRedirected)
+        {
+            var choices = ctx.GetSkillChoices();
+            if (choices.Count == 0)
+            {
+                return new SlashResult(L10n.Get("slash.skills.none"));
+            }
+
+            var labels = choices.Select(c => $"{c.Name}  ({c.Source})").ToList();
+            var initial = choices.Select(c => c.Enabled).ToList();
+            var picked = MultiSelectList.Prompt(L10n.Get("slash.skills.pickerTitle"), labels, initial);
+            if (picked is null)
+            {
+                return new SlashResult(L10n.Get("slash.skills.cancelled"));
+            }
+
+            var on = picked.ToHashSet();
+            var disabled = choices.Where((c, i) => !on.Contains(i)).Select(c => c.Name).ToList();
+            return new SlashResult(ctx.SetDisabledSkills(disabled));
+        }
+
+        return new SlashResult(ctx.SkillNames.Count == 0
+            ? L10n.Get("slash.skills.none")
+            : L10n.Get("slash.skills.list", string.Join(", ", ctx.SkillNames)));
+    }
 }
 
 internal sealed class McpCommand : ISlashCommand
 {
     public string Name => "mcp";
-    public string Description => "연결된 MCP 서버";
+    public string Description => L10n.Get("slash.mcp.description");
     public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
         => Task.FromResult(new SlashResult(
-            ctx.McpServers.Count == 0 ? "mcp: (없음)" : $"mcp servers: {string.Join(", ", ctx.McpServers)}"));
+            ctx.McpServers.Count == 0
+                ? L10n.Get("slash.mcp.none")
+                : L10n.Get("slash.mcp.list", string.Join(", ", ctx.McpServers))));
 }
 
 internal sealed class CostCommand : ISlashCommand
 {
     public string Name => "cost";
-    public string Description => "세션 누적 토큰 사용량";
+    public string Description => L10n.Get("slash.cost.description");
     public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
         var u = ctx.Engine.CumulativeUsage;
@@ -106,14 +252,14 @@ internal sealed class CostCommand : ISlashCommand
 internal sealed class PermissionsCommand : ISlashCommand
 {
     public string Name => "permissions";
-    public string Description => "권한 규칙 조회·추가·삭제 (allow/deny · settings.json 영속)";
+    public string Description => L10n.Get("slash.permissions.description");
 
     public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
         var rules = ctx.Rules;
         if (rules is null)
         {
-            return Task.FromResult(new SlashResult("권한 규칙 저장소를 사용할 수 없습니다."));
+            return Task.FromResult(new SlashResult(L10n.Get("slash.permissions.noStore")));
         }
 
         var sub = args.Length > 0 ? args[0].ToLowerInvariant() : "list";
@@ -123,19 +269,19 @@ internal sealed class PermissionsCommand : ISlashCommand
         {
             case "allow" when rest.Length > 0:
                 rules.AddAllow(rest);
-                return Task.FromResult(new SlashResult($"allow 추가: {rest}"));
+                return Task.FromResult(new SlashResult(L10n.Get("slash.permissions.allowAdded", rest)));
             case "deny" when rest.Length > 0:
                 rules.AddDeny(rest);
-                return Task.FromResult(new SlashResult($"deny 추가: {rest}"));
+                return Task.FromResult(new SlashResult(L10n.Get("slash.permissions.denyAdded", rest)));
             case "remove" when rest.Length > 0:
                 var ok = rules.Remove(rest);
-                return Task.FromResult(new SlashResult(ok ? $"삭제: {rest}" : $"해당 규칙 없음: {rest}"));
+                return Task.FromResult(new SlashResult(ok
+                    ? L10n.Get("slash.permissions.removed", rest)
+                    : L10n.Get("slash.permissions.notFound", rest)));
             case "allow":
             case "deny":
             case "remove":
-                return Task.FromResult(new SlashResult(
-                    "사용법: /permissions allow <패턴> · deny <패턴> · remove <패턴>\n"
-                    + "예: /permissions allow Bash(ssh moai-ec2)"));
+                return Task.FromResult(new SlashResult(L10n.Get("slash.permissions.usage")));
             default:
                 Render(rules);
                 return Task.FromResult(new SlashResult(string.Empty));
@@ -145,21 +291,21 @@ internal sealed class PermissionsCommand : ISlashCommand
     private static void Render(IPermissionRuleStore rules)
     {
         Spectre.Console.AnsiConsole.WriteLine();
-        Spectre.Console.AnsiConsole.MarkupLine("[aqua]권한 규칙[/] [grey70]· settings.json 에 저장됨[/]");
-        Spectre.Console.AnsiConsole.MarkupLine("[green]allow[/] " + (rules.Allow.Count == 0 ? "[grey58](없음)[/]" : ""));
+        Spectre.Console.AnsiConsole.MarkupLine($"[aqua]{Spectre.Console.Markup.Escape(L10n.Get("slash.permissions.title"))}[/] [grey70]· {Spectre.Console.Markup.Escape(L10n.Get("slash.permissions.savedIn"))}[/]");
+        Spectre.Console.AnsiConsole.MarkupLine("[green]allow[/] " + (rules.Allow.Count == 0 ? $"[grey58]{Spectre.Console.Markup.Escape(L10n.Get("common.none"))}[/]" : ""));
         foreach (var r in rules.Allow)
         {
             Spectre.Console.AnsiConsole.MarkupLine($"  [grey85]{Spectre.Console.Markup.Escape(r)}[/]");
         }
 
-        Spectre.Console.AnsiConsole.MarkupLine("[red]deny[/] " + (rules.Deny.Count == 0 ? "[grey58](없음)[/]" : ""));
+        Spectre.Console.AnsiConsole.MarkupLine("[red]deny[/] " + (rules.Deny.Count == 0 ? $"[grey58]{Spectre.Console.Markup.Escape(L10n.Get("common.none"))}[/]" : ""));
         foreach (var r in rules.Deny)
         {
             Spectre.Console.AnsiConsole.MarkupLine($"  [grey85]{Spectre.Console.Markup.Escape(r)}[/]");
         }
 
         Spectre.Console.AnsiConsole.MarkupLine(
-            "[grey58]추가: /permissions allow Bash(git status) · 삭제: /permissions remove <패턴>[/]");
+            $"[grey58]{Spectre.Console.Markup.Escape(L10n.Get("slash.permissions.hint"))}[/]");
     }
 }
 
@@ -167,36 +313,36 @@ internal sealed class PermissionsCommand : ISlashCommand
 internal sealed class UsageCommand : ISlashCommand
 {
     public string Name => "usage";
-    public string Description => "로그인 계정·시간·모델별 토큰 사용량(로컬)";
+    public string Description => L10n.Get("slash.usage.description");
 
     public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
         var ac = ctx.Account;
-        var email = string.IsNullOrWhiteSpace(ac?.Email) ? "(알 수 없음)" : ac!.Email!;
-        var host = string.IsNullOrWhiteSpace(ac?.Host) ? "(미설정)" : ac!.Host!;
+        var email = string.IsNullOrWhiteSpace(ac?.Email) ? L10n.Get("common.unknown") : ac!.Email!;
+        var host = string.IsNullOrWhiteSpace(ac?.Host) ? L10n.Get("common.notSet") : ac!.Host!;
         var org = string.IsNullOrWhiteSpace(ac?.OrgName) ? null : ac!.OrgName!;
 
         Spectre.Console.AnsiConsole.WriteLine();
         Spectre.Console.AnsiConsole.MarkupLine(
-            $"[aqua]계정[/] [grey85]{Spectre.Console.Markup.Escape(email)}[/] [grey70]· {Spectre.Console.Markup.Escape(host)}[/]");
+            $"[aqua]{Spectre.Console.Markup.Escape(L10n.Get("slash.usage.account"))}[/] [grey85]{Spectre.Console.Markup.Escape(email)}[/] [grey70]· {Spectre.Console.Markup.Escape(host)}[/]");
         if (org is not null)
         {
             Spectre.Console.AnsiConsole.MarkupLine(
-                $"[grey70]조직: [/][grey85]{Spectre.Console.Markup.Escape(org)}[/]");
+                $"[grey70]{Spectre.Console.Markup.Escape(L10n.Get("slash.usage.org"))}[/][grey85]{Spectre.Console.Markup.Escape(org)}[/]");
         }
         Spectre.Console.AnsiConsole.MarkupLine(
-            $"[grey70]로그인: {Spectre.Console.Markup.Escape(FormatTime(ac?.LoginAt))} · 현재: {DateTimeOffset.Now:yyyy-MM-dd HH:mm}[/]");
+            $"[grey70]{Spectre.Console.Markup.Escape(L10n.Get("slash.usage.loginNow", FormatTime(ac?.LoginAt), DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm")))}[/]");
 
         var usage = ctx.Usage;
         var rows = usage?.All() ?? System.Array.Empty<ModelUsage>();
-        var since = usage is not null ? $" · {usage.Since:yyyy-MM-dd}부터" : "";
+        var since = usage is not null ? L10n.Get("slash.usage.since", usage.Since.ToString("yyyy-MM-dd")) : "";
 
         Spectre.Console.AnsiConsole.WriteLine();
-        Spectre.Console.AnsiConsole.MarkupLine($"[grey70]모델별 토큰 사용량 (로컬 기준{since})[/]");
+        Spectre.Console.AnsiConsole.MarkupLine($"[grey70]{Spectre.Console.Markup.Escape(L10n.Get("slash.usage.title", since))}[/]");
 
         if (rows.Count == 0)
         {
-            Spectre.Console.AnsiConsole.MarkupLine("[grey70]  (아직 기록 없음 — 대화 후 표시됩니다)[/]");
+            Spectre.Console.AnsiConsole.MarkupLine($"[grey70]{Spectre.Console.Markup.Escape(L10n.Get("slash.usage.empty"))}[/]");
             return Task.FromResult(new SlashResult(""));
         }
 
@@ -215,7 +361,7 @@ internal sealed class UsageCommand : ISlashCommand
         }
 
         Spectre.Console.AnsiConsole.MarkupLine(
-            $"[grey70]  {Spectre.Console.Markup.Escape("합계".PadRight(nameW))}[/] " +
+            $"[grey70]  {Spectre.Console.Markup.Escape(L10n.Get("slash.usage.total").PadRight(nameW))}[/] " +
             $"[grey70]in[/] [white]{ti,11:N0}[/]  " +
             $"[grey70]out[/] [white]{to,10:N0}[/]  " +
             $"[grey70]turns {tt}[/]");
@@ -226,25 +372,25 @@ internal sealed class UsageCommand : ISlashCommand
     private static string FormatTime(string? iso)
         => !string.IsNullOrWhiteSpace(iso) && DateTimeOffset.TryParse(iso, out var t)
             ? t.ToString("yyyy-MM-dd HH:mm")
-            : "(알 수 없음)";
+            : L10n.Get("common.unknown");
 }
 
 internal sealed class PlanModeCommand : ISlashCommand
 {
     public string Name => "plan";
-    public string Description => "Plan 모드로 전환(읽기 전용)";
+    public string Description => L10n.Get("slash.plan.description");
     public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
         ctx.State.Mode = AgentMode.Plan;
         ctx.Engine.AddSystemReminder(MoaiCode.Core.Agent.Prompts.Reminders.PlanMode);
-        return Task.FromResult(new SlashResult("mode: plan (읽기 전용; /act 또는 Shift+Tab 로 전환)"));
+        return Task.FromResult(new SlashResult(L10n.Get("slash.plan.switched")));
     }
 }
 
 internal sealed class ActModeCommand : ISlashCommand
 {
     public string Name => "act";
-    public string Description => "Act 모드로 전환(파일 수정/명령 허용)";
+    public string Description => L10n.Get("slash.act.description");
     public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
         ctx.State.Mode = AgentMode.Act;
@@ -256,7 +402,7 @@ internal sealed class ActModeCommand : ISlashCommand
 internal sealed class CheckpointCreateCommand : ISlashCommand
 {
     public string Name => "checkpoint";
-    public string Description => "현재 workspace checkpoint 생성";
+    public string Description => L10n.Get("slash.checkpoint.description");
     public async Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
         var subject = args.Length == 0 ? "manual checkpoint" : string.Join(' ', args);
@@ -268,13 +414,13 @@ internal sealed class CheckpointCreateCommand : ISlashCommand
 internal sealed class CheckpointsCommand : ISlashCommand
 {
     public string Name => "checkpoints";
-    public string Description => "최근 checkpoint 목록";
+    public string Description => L10n.Get("slash.checkpoints.description");
     public async Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
         var list = await ctx.Checkpoints.ListAsync(ct).ConfigureAwait(false);
         if (list.Count == 0)
         {
-            return new SlashResult("checkpoints: (없음)");
+            return new SlashResult(L10n.Get("slash.checkpoints.none"));
         }
 
         var lines = list.Select(c => $"{c.Id}\t{c.CreatedAt:yyyy-MM-dd HH:mm:ss}\t{c.Subject}");
@@ -285,7 +431,7 @@ internal sealed class CheckpointsCommand : ISlashCommand
 internal sealed class CheckpointDiffCommand : ISlashCommand
 {
     public string Name => "checkpoint-diff";
-    public string Description => "checkpoint 대비 현재 변경 요약: /checkpoint-diff [id]";
+    public string Description => L10n.Get("slash.checkpointDiff.description");
     public async Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
         var diff = await ctx.Checkpoints.DiffAsync(args.FirstOrDefault(), ct).ConfigureAwait(false);
@@ -296,12 +442,12 @@ internal sealed class CheckpointDiffCommand : ISlashCommand
 internal sealed class RestoreCommand : ISlashCommand
 {
     public string Name => "restore";
-    public string Description => "checkpoint 파일 상태 복원: /restore <id>";
+    public string Description => L10n.Get("slash.restore.description");
     public async Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
         if (args.Length == 0)
         {
-            return new SlashResult("사용법: /restore <checkpoint-id>");
+            return new SlashResult(L10n.Get("slash.restore.usage"));
         }
 
         await ctx.Checkpoints.RestoreAsync(args[0], ct).ConfigureAwait(false);
@@ -312,7 +458,7 @@ internal sealed class RestoreCommand : ISlashCommand
 internal sealed class SessionsCommand : ISlashCommand
 {
     public string Name => "sessions";
-    public string Description => "저장된 세션 선택·복원 (↑/↓ 화살표)";
+    public string Description => L10n.Get("slash.sessions.description");
     public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
         => SessionPicker.RunAsync(ctx, ct);
 }
@@ -320,23 +466,23 @@ internal sealed class SessionsCommand : ISlashCommand
 internal sealed class SaveCommand : ISlashCommand
 {
     public string Name => "save";
-    public string Description => "현재 세션 저장: /save <name>";
+    public string Description => L10n.Get("slash.save.description");
     public async Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
         if (args.Length == 0)
         {
-            return new SlashResult("사용법: /save <name>");
+            return new SlashResult(L10n.Get("slash.save.usage"));
         }
 
         await ctx.Sessions.SaveAsync(args[0], ctx.Engine.Messages, ct).ConfigureAwait(false);
-        return new SlashResult($"저장됨: {args[0]} ({ctx.Engine.Messages.Count} messages)");
+        return new SlashResult(L10n.Get("slash.save.done", args[0], ctx.Engine.Messages.Count));
     }
 }
 
 internal sealed class ResumeCommand : ISlashCommand
 {
     public string Name => "resume";
-    public string Description => "세션 복원: /resume <번호> 또는 /resume <id> (목록은 /sessions)";
+    public string Description => L10n.Get("slash.resume.description");
     public async Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
         // 인자 없으면 화살표 picker (= /sessions).
@@ -352,7 +498,7 @@ internal sealed class ResumeCommand : ISlashCommand
             var infos = await ctx.Sessions.ListInfosAsync(ct).ConfigureAwait(false);
             if (n < 1 || n > infos.Count)
             {
-                return new SlashResult($"잘못된 번호: {n} (1~{infos.Count})");
+                return new SlashResult(L10n.Get("slash.resume.badNumber", n, infos.Count));
             }
 
             id = infos[n - 1].Id;
@@ -365,19 +511,19 @@ internal sealed class ResumeCommand : ISlashCommand
 internal sealed class HistoryCommand : ISlashCommand
 {
     public string Name => "history";
-    public string Description => "최근 입력 히스토리";
+    public string Description => L10n.Get("slash.history.description");
     public async Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
         var recent = await ctx.History.RecentAsync(20, ct).ConfigureAwait(false);
         return new SlashResult(
-            recent.Count == 0 ? "history: (없음)" : string.Join("\n", recent));
+            recent.Count == 0 ? L10n.Get("slash.history.none") : string.Join("\n", recent));
     }
 }
 
 internal sealed class InitCommand : ISlashCommand
 {
     public string Name => "init";
-    public string Description => "프로젝트 분석 후 CLAUDE.md 생성/갱신";
+    public string Description => L10n.Get("slash.init.description");
     public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
         => Task.FromResult(new SlashResult("", SubmitPrompt:
             "Analyze this codebase and create a CLAUDE.md file in the working directory that gives future " +
@@ -393,7 +539,7 @@ internal sealed class InitCommand : ISlashCommand
 internal sealed class ReviewCommand : ISlashCommand
 {
     public string Name => "review";
-    public string Description => "PR 코드 리뷰: /review [PR번호]";
+    public string Description => L10n.Get("slash.review.description");
     public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
         var prArg = args.Length > 0 ? args[0] : "";
@@ -413,7 +559,7 @@ internal sealed class ReviewCommand : ISlashCommand
 internal sealed class SecurityReviewCommand : ISlashCommand
 {
     public string Name => "security-review";
-    public string Description => "변경 코드 보안 리뷰 (OWASP, 고신뢰만)";
+    public string Description => L10n.Get("slash.securityReview.description");
     public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
         => Task.FromResult(new SlashResult("", SubmitPrompt:
             "Perform a security review of the pending changes on this branch.\n" +
@@ -429,7 +575,7 @@ internal sealed class SecurityReviewCommand : ISlashCommand
 internal sealed class BugHunterCommand : ISlashCommand
 {
     public string Name => "bughunter";
-    public string Description => "다단계 버그 헌트 (탐색→검증→수정 제안)";
+    public string Description => L10n.Get("slash.bughunter.description");
     public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
         var scope = args.Length > 0 ? string.Join(' ', args) : "the pending changes on this branch (git diff)";
@@ -448,7 +594,7 @@ internal sealed class BugHunterCommand : ISlashCommand
 internal sealed class SimplifyCommand : ISlashCommand
 {
     public string Name => "simplify";
-    public string Description => "변경 코드 단순화/재사용/효율 리뷰 후 적용";
+    public string Description => L10n.Get("slash.simplify.description");
     public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
         => Task.FromResult(new SlashResult("", SubmitPrompt:
             "Review the changed code (git diff) for quality cleanups — NOT bug hunting. Look for three things:\n" +
@@ -466,7 +612,7 @@ internal sealed class HelpCommand : ISlashCommand
     private readonly IReadOnlyList<ISlashCommand> _all;
     public HelpCommand(IReadOnlyList<ISlashCommand> all) => _all = all;
     public string Name => "help";
-    public string Description => "명령 도움말";
+    public string Description => L10n.Get("slash.help.description");
     public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
         var lines = _all.Select(c => $"/{c.Name} — {c.Description}");

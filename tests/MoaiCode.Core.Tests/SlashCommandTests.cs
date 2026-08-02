@@ -76,6 +76,21 @@ public class SlashCommandTests : IDisposable
     }
 
     [Fact]
+    public void Effort_command_resolves()
+    {
+        Assert.True(_reg.TryGet("effort", out _));
+    }
+
+    [Fact]
+    public async Task Language_command_resolves_and_reports_supported_languages()
+    {
+        Assert.True(_reg.TryGet("language", out _));
+        var result = await Run("language", "list");
+        Assert.Contains("ko", result.Output);
+        Assert.Contains("en", result.Output);
+    }
+
+    [Fact]
     public async Task Exit_signals_quit()
     {
         Assert.True((await Run("exit")).Quit);
@@ -119,4 +134,111 @@ public class SlashCommandTests : IDisposable
         var r = await Run("resume", "nope");
         Assert.Contains("없음", r.Output);
     }
+
+    [Fact]
+    public async Task Effort_without_argument_reports_current_value()
+    {
+        var prevA = Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT");
+        var prevB = Environment.GetEnvironmentVariable("OPENAI_REASONING_EFFORT");
+        var prevC = Environment.GetEnvironmentVariable("MOAI_EFFORT");
+        try
+        {
+            Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", "high");
+            Environment.SetEnvironmentVariable("OPENAI_REASONING_EFFORT", null);
+            Environment.SetEnvironmentVariable("MOAI_EFFORT", null);
+
+            var r = await Run("effort");
+            Assert.Equal("effort: high", r.Output);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", prevA);
+            Environment.SetEnvironmentVariable("OPENAI_REASONING_EFFORT", prevB);
+            Environment.SetEnvironmentVariable("MOAI_EFFORT", prevC);
+        }
+    }
+
+    [Fact]
+    public async Task Effort_without_argument_reports_unset_when_empty()
+    {
+        var prevA = Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT");
+        var prevB = Environment.GetEnvironmentVariable("OPENAI_REASONING_EFFORT");
+        var prevC = Environment.GetEnvironmentVariable("MOAI_EFFORT");
+        try
+        {
+            Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", null);
+            Environment.SetEnvironmentVariable("OPENAI_REASONING_EFFORT", null);
+            Environment.SetEnvironmentVariable("MOAI_EFFORT", null);
+
+            var r = await Run("effort");
+            Assert.Equal("effort: (unset)", r.Output);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", prevA);
+            Environment.SetEnvironmentVariable("OPENAI_REASONING_EFFORT", prevB);
+            Environment.SetEnvironmentVariable("MOAI_EFFORT", prevC);
+        }
+    }
+
+    [Fact]
+    public async Task Effort_invalid_argument_shows_usage()
+    {
+        var r = await Run("effort", "max");
+        Assert.Contains("사용법", r.Output);
+    }
+
+    [Fact]
+    public async Task Effort_valid_argument_persists_to_settings_and_env()
+    {
+        var prevA = Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT");
+        var prevB = Environment.GetEnvironmentVariable("OPENAI_REASONING_EFFORT");
+        var prevC = Environment.GetEnvironmentVariable("MOAI_EFFORT");
+        var tempHome = Path.Combine(Path.GetTempPath(), "occs-home-" + Guid.NewGuid().ToString("n"));
+        var prevHome = Environment.GetEnvironmentVariable("HOME");
+
+        Directory.CreateDirectory(tempHome);
+        try
+        {
+            Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", null);
+            Environment.SetEnvironmentVariable("OPENAI_REASONING_EFFORT", null);
+            Environment.SetEnvironmentVariable("MOAI_EFFORT", null);
+            Environment.SetEnvironmentVariable("HOME", tempHome);
+
+            var ctx = _ctx with
+            {
+                PersistEffort = effort =>
+                {
+                    MoaiCode.Config.SettingsWriter.Set(new Dictionary<string, string?> { ["reasoningEffort"] = effort });
+                    Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", effort);
+                }
+            };
+
+            Assert.True(_reg.TryGet("effort", out var cmd));
+            var r = await cmd.ExecuteAsync(ctx, new[] { "high" }, default);
+
+            Assert.Equal("effort 변경됨: high", r.Output);
+            Assert.Equal("high", Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT"));
+
+            var saved = File.ReadAllText(Path.Combine(tempHome, ".moai", "settings.json"));
+            Assert.Contains("\"reasoningEffort\"", saved);
+            Assert.Contains("\"high\"", saved);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", prevA);
+            Environment.SetEnvironmentVariable("OPENAI_REASONING_EFFORT", prevB);
+            Environment.SetEnvironmentVariable("MOAI_EFFORT", prevC);
+            Environment.SetEnvironmentVariable("HOME", prevHome);
+            try
+            {
+                Directory.Delete(tempHome, recursive: true);
+            }
+            catch
+            {
+                // best-effort
+            }
+        }
+    }
+
 }

@@ -1,4 +1,5 @@
 using MoaiCode.Config;
+using MoaiCode.Localization;
 using MoaiCode.Tui;
 using Spectre.Console;
 
@@ -14,15 +15,15 @@ public static class ProxyFlow
     public static bool RunInteractive()
     {
         AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine("[aqua]MoAI Code 프록시 설정[/] [grey70]· 사내망 HTTP(S) 프록시[/]");
+        AnsiConsole.MarkupLine($"[aqua]{Markup.Escape(L10n.Get("cli.proxy.title"))}[/] [grey70]· {Markup.Escape(L10n.Get("cli.proxy.subtitle"))}[/]");
 
         var cur = SettingsLoader.Load(Directory.GetCurrentDirectory()).ProxyUrl;
         if (!string.IsNullOrWhiteSpace(cur))
         {
-            AnsiConsole.MarkupLine($"[grey70]현재: {Markup.Escape(cur)}  (비우면 유지, 'off' 입력 시 해제)[/]");
+            AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(L10n.Get("cli.proxy.current", cur))}[/]");
         }
 
-        Console.Write("프록시 서버 (예: http://proxy.corp:8080): ");
+        Console.Write(L10n.Get("cli.proxy.serverPrompt"));
         var url = (Console.ReadLine() ?? string.Empty).Trim();
 
         if (url.Equals("off", StringComparison.OrdinalIgnoreCase) ||
@@ -35,22 +36,22 @@ public static class ProxyFlow
         if (url.Length == 0)
         {
             // 입력 없음: 기존 값 유지(취소).
-            AnsiConsole.MarkupLine("[yellow]변경 없음[/]");
+            AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(L10n.Get("common.unchanged"))}[/]");
             return false;
         }
 
         if (!Uri.TryCreate(url, UriKind.Absolute, out _))
         {
-            AnsiConsole.MarkupLine("[red]잘못된 URL 형식입니다 (예: http://proxy.corp:8080)[/]");
+            AnsiConsole.MarkupLine($"[red]{Markup.Escape(L10n.Get("cli.proxy.invalidUrlEx"))}[/]");
             return false;
         }
 
-        Console.Write("프록시 사용자 (선택, 없으면 Enter): ");
+        Console.Write(L10n.Get("cli.proxy.userPromptOpt"));
         var user = (Console.ReadLine() ?? string.Empty).Trim();
         string? password = null;
         if (user.Length > 0)
         {
-            password = PasswordPrompt.Read("프록시 비밀번호: ");
+            password = PasswordPrompt.Read(L10n.Get("cli.proxy.passwordPrompt"));
         }
 
         Set(url, user.Length > 0 ? user : null, password);
@@ -75,8 +76,8 @@ public static class ProxyFlow
             new FileCredentialStore().Set("PROXY_PASSWORD", password);
         }
 
-        var auth = user is null ? "" : $" · 사용자 {Markup.Escape(user)}";
-        AnsiConsole.MarkupLine($"[green]✓ 프록시 설정됨[/] [grey70]· {Markup.Escape(url)}{auth}[/]");
+        var auth = user is null ? "" : L10n.Get("cli.proxy.userSuffix", Markup.Escape(user));
+        AnsiConsole.MarkupLine($"[green]{Markup.Escape(L10n.Get("cli.proxy.configured"))}[/] [grey70]· {Markup.Escape(url)}{auth}[/]");
     }
 
     public static void Clear()
@@ -87,6 +88,6 @@ public static class ProxyFlow
             ["proxyUser"] = null,
         });
         new FileCredentialStore().Set("PROXY_PASSWORD", string.Empty);
-        AnsiConsole.MarkupLine("[grey70]프록시 해제됨[/]");
+        AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(L10n.Get("cli.proxy.cleared"))}[/]");
     }
 }

@@ -1,4 +1,5 @@
 using System.Text;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tui;
 
@@ -30,8 +31,8 @@ public static class SelectList
             Console.WriteLine(title);
         }
 
-        var more = items.Count > MaxVisible ? $" · 총 {items.Count}개" : "";
-        Console.WriteLine($"\x1b[38;5;250m(↑/↓ 이동 · Enter 선택 · Esc 취소 · 숫자 즉시선택{more})\x1b[0m");
+        var more = items.Count > MaxVisible ? L10n.Get("common.select.more", items.Count) : "";
+        Console.WriteLine($"\x1b[38;5;250m{L10n.Get("common.select.help", more)}\x1b[0m");
 
         using (ConsolePrompt.Begin())
         {
@@ -58,7 +59,7 @@ public static class SelectList
                     case ConsoleKey.Enter:
                         return Finish(items, idx);
                     case ConsoleKey.Escape:
-                        Console.WriteLine("\x1b[38;5;250m  (취소됨)\x1b[0m");
+                        // 취소 메시지는 호출측이 맥락에 맞게 출력한다(중복 방지 — SessionPicker/model/effort 등).
                         return -1;
                     default:
                         if (key.KeyChar is 'k')
@@ -92,7 +93,7 @@ public static class SelectList
     // 선택 확정: 최종 강조 줄 아래에 무엇을 골랐는지 명확히 표시 (재그리기 글리치와 무관하게 분명).
     private static int Finish(IReadOnlyList<string> items, int idx)
     {
-        Console.WriteLine($"\x1b[36m  ✓ 선택: {(idx + 1).ToString().PadLeft(_numberWidth, '0')}. {items[idx]}\x1b[0m");
+        Console.WriteLine($"\x1b[36m{L10n.Get("common.select.selected", (idx + 1).ToString().PadLeft(_numberWidth, '0'), items[idx])}\x1b[0m");
         return idx;
     }
 
@@ -129,7 +130,8 @@ public static class SelectList
         }
     }
 
-    private static int SafeWidth()
+    // internal: 멀티셀렉트(MultiSelectList)와 렌더 헬퍼를 공유한다.
+    internal static int SafeWidth()
     {
         try
         {
@@ -142,11 +144,11 @@ public static class SelectList
         }
     }
 
-    private static string OneLine(string s)
+    internal static string OneLine(string s)
         => s.Replace('\r', ' ').Replace('\n', ' ').Replace('\t', ' ');
 
     // 표시 폭(한글/CJK=2칸) 기준으로 maxWidth 이내로 자르고, 잘리면 … 를 붙인다.
-    private static string Clip(string s, int maxWidth)
+    internal static string Clip(string s, int maxWidth)
     {
         if (maxWidth <= 0)
         {

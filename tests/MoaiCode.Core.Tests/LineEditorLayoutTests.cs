@@ -44,4 +44,38 @@ public class LineEditorLayoutTests
         Assert.True(LineEditor.RowOf(total, cols) >= 1);
         Assert.True(LineEditor.ColOf(total, cols) >= 0);
     }
+
+    // ── 슬래시 자동완성 (인라인 ghost + Tab) ──────────────────────────────────
+    private static readonly string[] Cmds = { "act", "checkpoint", "model", "restore", "resume", "review" };
+
+    [Theory]
+    [InlineData("/rev", "iew")]      // 유일 접두 → 나머지 글자
+    [InlineData("/c", "heckpoint")]  // 유일 접두
+    [InlineData("/re", "store")]     // 다중 매치 → 알파벳순 첫 매치(restore)의 나머지
+    [InlineData("/REV", "iew")]      // 대소문자 무시
+    public void GhostSuffix_shows_first_match_remainder(string text, string expected)
+        => Assert.Equal(expected, LineEditor.GhostSuffix(text, Cmds));
+
+    [Theory]
+    [InlineData("/")]                // "/"만 — 아직 표시 안 함(최소 "/x")
+    [InlineData("/zzz")]             // 매치 없음
+    [InlineData("/review")]          // 이미 완전히 침 → 접미 없음
+    [InlineData("/rev arg")]         // 공백 뒤(인자 영역) → 완성 대상 아님
+    [InlineData("hello")]            // 슬래시 아님
+    public void GhostSuffix_empty_when_not_applicable(string text)
+        => Assert.Equal(string.Empty, LineEditor.GhostSuffix(text, Cmds));
+
+    [Theory]
+    [InlineData("/rev", "review")]   // Tab 이 확정할 첫 매치
+    [InlineData("/re", "restore")]   // 다중 매치 → 알파벳순 첫 매치
+    [InlineData("/c", "checkpoint")]
+    public void FirstMatch_is_alphabetical_first(string text, string expected)
+        => Assert.Equal(expected, LineEditor.FirstMatch(text, Cmds));
+
+    [Theory]
+    [InlineData("/zzz")]
+    [InlineData("/rev arg")]
+    [InlineData("plain")]
+    public void FirstMatch_null_when_no_candidate(string text)
+        => Assert.Null(LineEditor.FirstMatch(text, Cmds));
 }

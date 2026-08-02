@@ -1,4 +1,5 @@
 using MoaiCode.Core.Messages;
+using MoaiCode.Localization;
 using Spectre.Console;
 
 namespace MoaiCode.Tui;
@@ -24,8 +25,8 @@ public static class TranscriptRenderer
 
         AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine(skipped > 0
-            ? $"[grey70]──── 이전 대화 (최근 {MaxMessages}개, 앞 {skipped}개 생략) ────[/]"
-            : "[grey70]──── 이전 대화 ────[/]");
+            ? $"[grey70]{Markup.Escape(L10n.Get("transcript.prevWithSkip", MaxMessages, skipped))}[/]"
+            : $"[grey70]{Markup.Escape(L10n.Get("transcript.prev"))}[/]");
 
         foreach (var m in shown)
         {
@@ -56,7 +57,7 @@ public static class TranscriptRenderer
             }
         }
 
-        AnsiConsole.MarkupLine("[grey70]──── 여기서 이어집니다 ────[/]");
+        AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(L10n.Get("transcript.continues"))}[/]");
         AnsiConsole.WriteLine();
     }
 

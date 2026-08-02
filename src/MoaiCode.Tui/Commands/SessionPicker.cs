@@ -1,4 +1,5 @@
 using System.Text;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tui.Commands;
 
@@ -10,7 +11,7 @@ internal static class SessionPicker
         var infos = await ctx.Sessions.ListInfosAsync(ct).ConfigureAwait(false);
         if (infos.Count == 0)
         {
-            return new SlashResult("저장된 세션이 없습니다.");
+            return new SlashResult(L10n.Get("session.none"));
         }
 
         // 메시지 수 자리수를 목록 최대값에 맞춰 정렬.
@@ -20,7 +21,7 @@ internal static class SessionPicker
         if (Console.IsInputRedirected)
         {
             var sb = new StringBuilder();
-            sb.AppendLine("저장된 세션 (최근 순) — /resume <번호> 또는 /resume <id>:");
+            sb.AppendLine(L10n.Get("session.listHeader"));
             for (var i = 0; i < infos.Count; i++)
             {
                 sb.AppendLine($"  {i + 1:00}. {Label(infos[i], countWidth)}");
@@ -33,10 +34,10 @@ internal static class SessionPicker
         var labels = infos.Select(s => Label(s, countWidth)).ToList();
         // 번호를 2자리(01.~99.)로 줄맞춤 — 목록은 최대 99개.
         var numberWidth = Math.Max(2, infos.Count.ToString().Length);
-        var pick = SelectList.Prompt("저장된 세션 — 복원할 세션을 고르세요:", labels, numberWidth: numberWidth);
+        var pick = SelectList.Prompt(L10n.Get("session.pickTitle"), labels, numberWidth: numberWidth);
         if (pick < 0)
         {
-            return new SlashResult("(취소됨)");
+            return new SlashResult(L10n.Get("common.cancelled"));
         }
 
         return await ResumeAsync(ctx, infos[pick].Id, ct).ConfigureAwait(false);
@@ -47,7 +48,7 @@ internal static class SessionPicker
         var loaded = await ctx.Sessions.LoadAsync(id, ct).ConfigureAwait(false);
         if (loaded.Count == 0)
         {
-            return new SlashResult($"세션 없음 또는 비어있음: {id}");
+            return new SlashResult(L10n.Get("session.notFound", id));
         }
 
         ctx.Engine.Restore(loaded);
@@ -58,18 +59,18 @@ internal static class SessionPicker
             TranscriptRenderer.Render(loaded);
         }
 
-        return new SlashResult($"복원됨: {id} ({loaded.Count} messages) — 위 대화에서 이어집니다");
+        return new SlashResult(L10n.Get("session.restored", id, loaded.Count));
     }
 
     private static string Label(MoaiCode.Persistence.SessionInfo s, int countWidth)
     {
-        var title = string.IsNullOrWhiteSpace(s.Title) ? "요약된 이전 세션" : s.Title;
+        var title = string.IsNullOrWhiteSpace(s.Title) ? L10n.Get("session.untitled") : s.Title;
         if (title.Length > 50)
         {
             title = title[..50] + "…";
         }
 
         var count = s.MessageCount.ToString().PadLeft(countWidth);
-        return $"{s.ModifiedAt:MM-dd HH:mm}  {count}개  {title}";
+        return L10n.Get("session.row", s.ModifiedAt.ToString("MM-dd HH:mm"), count, title);
     }
 }

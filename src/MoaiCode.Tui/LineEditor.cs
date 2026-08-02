@@ -18,6 +18,9 @@ public static class LineEditor
     internal const string PromptText = "❯ ";
     public const string CycleModeSignal = "__cycle_mode__";
 
+    // 인라인 자동완성(ghost) 색 — 연한 회색(256색 244). 입력 배경 위에서 흐릿하게 보인다.
+    internal const string GhostColor = "\x1b[38;5;244m";
+
     // 사용자 프롬프트(입력) 라인 배경 — 약간 어두운 회색(256색 236 ≈ #303030). 환경변수
     // MOAI_PROMPT_BG 로 256색 인덱스(0~255)를 지정해 조정, "off" 면 배경 없음. escape 코드는
     // 표시폭 0 이라 wrap 계산에 영향 없음. (BottomDock 도 공유)
@@ -61,7 +64,7 @@ public static class LineEditor
         var pos = 0;
         var histIdx = history.Count;
         var savedCurrent = "";
-        var r = new PromptRenderer(hasStatus);
+        var r = new PromptRenderer(hasStatus, slashCommands);
         r.Refresh(buf, pos);
 
         // 붙여넣기를 ESC[200~ … ESC[201~ 로 감싸 받는다 → 붙여넣은 개행이 Enter 로 오인되지 않는다.
@@ -157,18 +160,9 @@ public static class LineEditor
                         r.Finish();
                         return CycleModeSignal;
                     }
+                    if (TryComplete(buf, ref pos, slashCommands))
                     {
-                        var (changed, listed) = TryComplete(buf, ref pos, slashCommands);
-                        if (listed)
-                        {
-                            // 후보 목록을 새 줄에 출력했으므로 프롬프트를 새 줄에 새로 그린다.
-                            r.ResetFresh();
-                            r.Refresh(buf, pos);
-                        }
-                        else if (changed)
-                        {
-                            r.Refresh(buf, pos);
-                        }
+                        r.Refresh(buf, pos);
                     }
                     break;
 
@@ -244,10 +238,15 @@ public static class LineEditor
     private sealed class PromptRenderer
     {
         private readonly bool _hasStatus;
+        private readonly IReadOnlyList<string> _slash;
         private int _oldRows = 1;   // 직전 렌더가 차지한 물리 행 수(>=1)
         private int _oldOff;        // 직전 렌더에서 커서가 있던 표시폭 오프셋(프롬프트 시작 기준 버퍼 내)
 
-        public PromptRenderer(bool hasStatus) => _hasStatus = hasStatus;
+        public PromptRenderer(bool hasStatus, IReadOnlyList<string> slash)
+        {
+            _hasStatus = hasStatus;
+            _slash = slash;
+        }
 
         private static int Cols()
         {
@@ -257,13 +256,6 @@ public static class LineEditor
             return w < 1 ? 80 : w;
         }
 
-        /// <summary>다음 Refresh 가 빈 줄에서 새로 시작한다고 가정(자동완성 목록 출력 후 등).</summary>
-        public void ResetFresh()
-        {
-            _oldRows = 1;
-            _oldOff = 0;
-        }
-
         public void Refresh(StringBuilder buf, int pos, string? newStatus = null)
         {
             var cols = Cols();
@@ -271,6 +263,11 @@ public static class LineEditor
             var blen = DisplayWidth(buf.ToString());
             var curOff = plen + DisplayWidth(buf.ToString(0, pos)); // 커서까지의 표시폭(프롬프트 포함)
             var total = plen + blen;
+
+            // 인라인 자동완성(ghost): 커서가 버퍼 끝이고 프롬프트+버퍼+ghost 가 한 줄에 들어갈 때만
+            // 버퍼 뒤에 연한 글자로 덧그린다(줄바꿈/커서 계산은 버퍼 기준 그대로 — 리스크 격리).
+            var ghost = GhostSuffix(buf.ToString(), _slash);
+            var showGhost = ghost.Length > 0 && pos == buf.Length && total + DisplayWidth(ghost) <= cols;
 
             var rows = RowCount(total, cols);
             var oldRpos = RowOf(plen + _oldOff, cols); // 직전 커서의 1-기반 행
@@ -304,18 +301,20 @@ public static class LineEditor
             {
                 sb.Append(InputBg)                         // 배경 on
                   .Append("\x1b[32m").Append(PromptText)   // 초록 화살표
-                  .Append("\x1b[39m").Append(buf.ToString()) // 전경 기본(배경 유지) + 버퍼
-                  .Append("\x1b[K")                         // 마지막 행 남은 폭을 배경색으로 채움
+                  .Append("\x1b[39m").Append(buf.ToString()); // 전경 기본(배경 유지) + 버퍼
+                if (showGhost) sb.Append(GhostColor).Append(ghost).Append("\x1b[39m"); // ghost(연한 글자)
+                sb.Append("\x1b[K")                         // 마지막 행 남은 폭을 배경색으로 채움
                   .Append("\x1b[0m");                       // 리셋
             }
             else
             {
                 sb.Append("\x1b[32m").Append(PromptText).Append("\x1b[0m").Append(buf.ToString());
+                if (showGhost) sb.Append(GhostColor).Append(ghost).Append("\x1b[0m"); // ghost(연한 글자)
             }
 
             // 5) exact-fill 보정: 커서가 끝이고 끝이 폭을 정확히 채워 다음 행 0열로 넘어가는 경우,
-            //    deferred-wrap 모호성을 없애기 위해 줄바꿈을 강제한다.
-            if (pos == buf.Length && buf.Length > 0 && total % cols == 0)
+            //    deferred-wrap 모호성을 없앤다. ghost 표시 중엔 커서가 그린 끝이 아니므로 건너뛴다.
+            if (!showGhost && pos == buf.Length && buf.Length > 0 && total % cols == 0)
             {
                 sb.Append("\r\n");
                 rows++;
@@ -364,39 +363,37 @@ public static class LineEditor
         buf.Clear(); buf.Append(text); pos = buf.Length;
     }
 
-    // 자동완성 시도. 반환: changed=버퍼 변경됨, listed=후보 목록을 새 줄에 출력함.
-    private static (bool Changed, bool Listed) TryComplete(
-        StringBuilder buf, ref int pos, IReadOnlyList<string> slashCommands)
+    // Tab 자동완성: 현재 보이는 ghost(= 첫 매치)를 그대로 확정한다. 버퍼가 바뀌면 true.
+    private static bool TryComplete(StringBuilder buf, ref int pos, IReadOnlyList<string> slashCommands)
     {
-        var text = buf.ToString();
-        if (!text.StartsWith('/') || text.Contains(' ')) return (false, false);
-        var token = text[1..];
-        var matches = slashCommands
-            .Where(c => c.StartsWith(token, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(c => c, StringComparer.Ordinal).ToList();
-        if (matches.Count == 0) return (false, false);
-        if (matches.Count == 1) { SetBuffer(buf, ref pos, "/" + matches[0] + " "); return (true, false); }
-        var common = LongestCommonPrefix(matches);
-        if (common.Length > token.Length) { SetBuffer(buf, ref pos, "/" + common); return (true, false); }
-        Console.WriteLine();
-        Console.WriteLine("\x1b[38;5;250m  " +
-            string.Join("   ", matches.Select(m => "/" + m)) + "\x1b[0m");
-        return (false, true);
+        var best = FirstMatch(buf.ToString(), slashCommands);
+        if (best is null) return false;
+        SetBuffer(buf, ref pos, "/" + best + " ");
+        return true;
     }
 
-    private static string LongestCommonPrefix(IReadOnlyList<string> items)
+    /// <summary>버퍼가 "/토큰"(공백 없음)일 때 알파벳순 첫 매치 명령. 없으면 null.</summary>
+    public static string? FirstMatch(string text, IReadOnlyList<string> slash)
     {
-        if (items.Count == 0) return "";
-        var prefix = items[0];
-        foreach (var s in items)
-        {
-            var n = 0;
-            while (n < prefix.Length && n < s.Length
-                   && char.ToLowerInvariant(prefix[n]) == char.ToLowerInvariant(s[n])) n++;
-            prefix = prefix[..n];
-            if (prefix.Length == 0) break;
-        }
-        return prefix;
+        if (!text.StartsWith('/') || text.Contains(' ')) return null;
+        var token = text[1..];
+        return slash
+            .Where(c => c.StartsWith(token, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(c => c, StringComparer.Ordinal)
+            .FirstOrDefault();
+    }
+
+    /// <summary>
+    /// 인라인 ghost 로 흐릿하게 보여줄 접미(첫 매치의 아직 안 친 나머지 글자). 최소 "/x" 부터,
+    /// 매치가 없거나 이미 완전히 친 경우 빈 문자열. 실제 화면 표시 여부(한 줄에 들어가는지)는 렌더러가 판단.
+    /// </summary>
+    public static string GhostSuffix(string text, IReadOnlyList<string> slash)
+    {
+        if (text.Length < 2) return string.Empty;
+        var best = FirstMatch(text, slash);
+        if (best is null) return string.Empty;
+        var token = text[1..];
+        return best.Length > token.Length ? best[token.Length..] : string.Empty;
     }
 
     internal static int DisplayWidth(string s)

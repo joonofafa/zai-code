@@ -25,6 +25,7 @@
     <ProjectReference Include="..\MoaiCode.Tools.OpenXml\MoaiCode.Tools.OpenXml.csproj" />
     <ProjectReference Include="..\MoaiCode.Mcp\MoaiCode.Mcp.csproj" />
     <ProjectReference Include="..\MoaiCode.Config\MoaiCode.Config.csproj" />
+    <ProjectReference Include="..\MoaiCode.Localization\MoaiCode.Localization.csproj" />
     <ProjectReference Include="..\MoaiCode.Persistence\MoaiCode.Persistence.csproj" />
     <ProjectReference Include="..\MoaiCode.Tui\MoaiCode.Tui.csproj" />
     <ProjectReference Include="..\MoaiCode.Sdk\MoaiCode.Sdk.csproj" />
