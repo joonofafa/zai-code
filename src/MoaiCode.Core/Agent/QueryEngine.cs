@@ -94,7 +94,12 @@ public sealed class QueryEngine
     public void Restore(IReadOnlyList<Message> messages)
     {
         _messages.Clear();
-        _messages.AddRange(messages);
+
+        // 저장된 세션의 첫 줄에는 '그때의' 시스템 프롬프트가 들어 있다. 그대로 복원하면 이후 개선된
+        // 지침·현재 환경(cwd/툴/날짜)이 아니라 과거 스냅샷으로 계속 돌게 된다 → 저장분의 시스템
+        // 메시지는 버리고 현재 seed 를 다시 적용한다(대화 내용은 그대로 유지).
+        _messages.AddRange(_seed);
+        _messages.AddRange(messages.Where(m => m is not SystemMessage));
 
         // 복원된 대화에서 이미 Read/Write/Edit 한 파일 경로를 ReadTracker 에 재등록한다.
         // ReadTracker 는 메모리 상태라 /resume 후 비어 있어, 모델은 "이미 읽었다"고 믿는데 write 전
