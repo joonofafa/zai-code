@@ -16,7 +16,7 @@ public sealed class OrgListTool : ITool
 
     public string Description => """
         Lists the organizations the logged-in user belongs to (id, name, role, whether it's the primary
-        org). Use this to obtain the orgId needed by the 문서함 tools (OrgDocsList/OrgDocsUpload/
+        org). Use this to obtain the orgId needed by the knowledge base (조직 문서함) tools (OrgDocsList/OrgDocsUpload/
         OrgDocsDelete). Those tools also auto-resolve orgId from your login when you have exactly one
         organization, so you usually do NOT need to ask the user for it. Read-only, no arguments.
         """;

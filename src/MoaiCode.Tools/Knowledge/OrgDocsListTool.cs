@@ -22,8 +22,8 @@ public sealed class OrgDocsListTool : ITool
     public string Name => "OrgDocsList";
 
     public string Description => """
-        Lists the uploaded documents in an organization's 문서함 (title, filename, type, size,
-        visibility, processing status). This is BROWSING, not search — for semantic search use OrgDocs.
+        Lists the uploaded documents in an organization's knowledge base (조직 문서함): title, filename, type, size,
+        visibility, processing status. This is BROWSING, not search — for semantic search use OrgDocs.
         orgId is optional: if omitted it is auto-resolved from your login (used automatically when you
         belong to exactly one organization; if several, you'll be asked to pick — see OrgList).
         Do NOT ask the user for orgId first. Optional `search` filters by title/filename.

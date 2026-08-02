@@ -154,7 +154,7 @@ public static class SystemPromptBuilder
 
         if (has.Contains("OrgDatas") && has.Contains("OrgDatasList"))
         {
-            dedicated.Add("To answer questions about the org's tabular/record data (sales, metrics, records in the data 문서함), FIRST call OrgDatasList to get table names/columns/samples, THEN write a read-only SELECT and run it with OrgDatas. Do not guess column names — read the schema first. For a chart/spreadsheet from the result, follow up with XlsxCreate.");
+            dedicated.Add("To answer questions about the org's tabular/record data (sales, metrics, records in the organization data warehouse — 데이터 문서함), FIRST call OrgDatasList to get table names/columns/samples, THEN write a read-only SELECT and run it with OrgDatas. Do not guess column names — read the schema first. For a chart/spreadsheet from the result, follow up with XlsxCreate.");
         }
 
         var lines = new List<string> { "# Using your tools" };

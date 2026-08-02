@@ -29,7 +29,7 @@ public sealed class OrgDocsUploadTool : ITool
     public string Name => "OrgDocsUpload";
 
     public string Description => """
-        Uploads local file(s) to the organization's 문서함, where they are embedded for later search.
+        Uploads local file(s) to the organization's knowledge base (조직 문서함), where they are embedded for later search.
         `path` may be a single file OR a directory; `paths` may list several files/directories. When a
         directory is given, only document-type files (.docx/.xlsx/.pptx/.pdf/.txt/.md/.csv) are picked up
         — top-level only unless `recursive: true`. Write action — asks for confirmation.

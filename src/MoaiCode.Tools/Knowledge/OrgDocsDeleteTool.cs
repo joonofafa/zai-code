@@ -20,8 +20,8 @@ public sealed class OrgDocsDeleteTool : ITool
     public string Name => "OrgDocsDelete";
 
     public string Description => """
-        Permanently deletes a document from the organization's 문서함 (removes the file, its chunks and
-        vectors). Irreversible write action — asks for confirmation. Requires the documentId (from
+        Permanently deletes a document from the organization's knowledge base (조직 문서함): removes the file, its chunks and
+        vectors. Irreversible write action — asks for confirmation. Requires the documentId (from
         OrgDocsList). orgId is optional: if omitted it is auto-resolved from your login (used automatically
         when you belong to exactly one organization; if several, you'll be asked to pick — see OrgList).
         Only the uploader, an org manager, or a system admin may delete (enforced by the server).

@@ -28,7 +28,7 @@ public sealed class OrgDatasTool : ITool
     public string Name => "OrgDatas";
 
     public string Description => """
-        Runs a READ-ONLY SQL SELECT against a data table (Record DB collection) in open-moai and
+        Runs a READ-ONLY SQL SELECT against a data table in the organization data warehouse (데이터 문서함) and
         returns the result as a table. First call OrgDatasList to get table names, columns, and
         sample values, then write a SELECT here. Only SELECT/WITH/EXPLAIN/SHOW/DESCRIBE/PRAGMA are
         allowed (no INSERT/UPDATE/DELETE/DROP). Give the collection's id (from OrgDatasList) and the SQL.

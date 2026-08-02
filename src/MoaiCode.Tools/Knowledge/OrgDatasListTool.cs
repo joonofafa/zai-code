@@ -21,7 +21,7 @@ public sealed class OrgDatasListTool : ITool
     public string Name => "OrgDatasList";
 
     public string Description => """
-        Lists the queryable data tables (Record DB collections) in the connected open-moai account,
+        Lists the queryable data tables in the organization data warehouse (데이터 문서함) of the connected account,
         WITH their schema (columns, types, sample values). Call this FIRST — before OrgDatas — to
         learn what tables and columns exist so you can write a correct read-only SELECT for OrgDatas.
         Use when the user asks about tabular/record data (sales, metrics, records) rather than documents.
