@@ -50,7 +50,13 @@ public sealed record SlashContext(
     // /skills: 로컬 활성/비활성 토글. GetSkillChoices=전체 스킬(이름·출처·현재 활성),
     // SetDisabledSkills=비활성 이름 목록을 저장하고 라이브 SkillTool 재적재 후 상태 메시지 반환.
     Func<IReadOnlyList<(string Name, string Source, bool Enabled)>>? GetSkillChoices = null,
-    Func<IReadOnlyList<string>, string>? SetDisabledSkills = null);
+    Func<IReadOnlyList<string>, string>? SetDisabledSkills = null,
+    // /login·/logout: 세션 도중 재로그인(자격증명 만료·손상 시 REPL 을 나가지 않아도 되게).
+    Func<CancellationToken, Task<string>>? Login = null,
+    Func<string>? Logout = null,
+    // /install·/uninstall: Windows 셸 통합(PATH + 탐색기 우클릭 메뉴) 설치/제거.
+    Func<string>? InstallIntegration = null,
+    Func<string>? UninstallIntegration = null);
 
 /// <summary>
 /// 슬래시 명령 실행 결과. Output은 호출측이 렌더, Quit이면 REPL 종료.

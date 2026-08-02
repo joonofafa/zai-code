@@ -262,7 +262,27 @@ public static class AppBootstrap
                     .Where(x => !dis.Contains(x.Skill.Name)).Select(x => x.Skill).ToList();
                 skillTool.Reload(active);
                 return L10n.Get("slash.skills.toggleSaved", active.Count, dis.Count);
-            });
+            },
+            // /login: 세션 도중 재로그인. 성공하면 새 키를 이 프로세스 환경에도 반영해 즉시 쓰이게 한다.
+            Login: async token =>
+            {
+                var ok = await LoginFlow.RunAsync(LoginFlow.ResolveDefaultHost(), token).ConfigureAwait(false);
+                if (!ok)
+                {
+                    return L10n.Get("slash.login.failed");
+                }
+
+                ResolveCredentials();
+                return L10n.Get("slash.login.done");
+            },
+            Logout: () =>
+            {
+                LoginFlow.Logout();
+                return L10n.Get("cli.login.loggedOut");
+            },
+            // /install·/uninstall: Windows 셸 통합(PATH + 탐색기 우클릭 메뉴).
+            InstallIntegration: () => WindowsIntegration.Install(L10n.Get("slash.install.menuLabel")),
+            UninstallIntegration: WindowsIntegration.Uninstall);
 
         return new AppRuntime(
             mcp, ctx, toolList, skills.Select(s => s.Name).ToList(), mcpConfigs, providerDesc, settings);

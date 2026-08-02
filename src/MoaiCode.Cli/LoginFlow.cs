@@ -153,6 +153,21 @@ public static class LoginFlow
             // non-fatal.
         }
 
+        // Windows: 셸 통합(PATH + 우클릭 메뉴) 설치를 물어본다. 이미 설치돼 있으면 다시 묻지 않는다.
+        try
+        {
+            if (OperatingSystem.IsWindows() && !Console.IsInputRedirected && !WindowsIntegration.IsInstalled()
+                && AnsiConsole.Confirm(L10n.Get("cli.install.ask"), defaultValue: true))
+            {
+                var result = WindowsIntegration.Install(L10n.Get("slash.install.menuLabel"));
+                AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(result)}[/]");
+            }
+        }
+        catch
+        {
+            // non-fatal — 설치 실패가 로그인 성공을 막지 않는다.
+        }
+
         return true;
     }
 

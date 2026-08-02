@@ -225,6 +225,54 @@ internal sealed class SkillsCommand : ISlashCommand
     }
 }
 
+// /login: 세션 도중 재로그인. 자격증명이 만료·손상되면 REPL 을 나가지 않고 여기서 복구한다.
+internal sealed class LoginCommand : ISlashCommand
+{
+    public string Name => "login";
+    public string Description => L10n.Get("slash.login.description");
+
+    public async Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
+    {
+        if (ctx.Login is null)
+        {
+            return new SlashResult(L10n.Get("slash.login.unavailable"));
+        }
+
+        return new SlashResult(await ctx.Login(ct).ConfigureAwait(false));
+    }
+}
+
+internal sealed class LogoutCommand : ISlashCommand
+{
+    public string Name => "logout";
+    public string Description => L10n.Get("slash.logout.description");
+
+    public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
+        => Task.FromResult(new SlashResult(
+            ctx.Logout is null ? L10n.Get("slash.login.unavailable") : ctx.Logout()));
+}
+
+// /install·/uninstall: Windows 셸 통합(PATH + 탐색기 우클릭 "MoAI Code로 열기").
+internal sealed class InstallCommand : ISlashCommand
+{
+    public string Name => "install";
+    public string Description => L10n.Get("slash.install.description");
+
+    public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
+        => Task.FromResult(new SlashResult(
+            ctx.InstallIntegration is null ? L10n.Get("slash.install.unavailable") : ctx.InstallIntegration()));
+}
+
+internal sealed class UninstallCommand : ISlashCommand
+{
+    public string Name => "uninstall";
+    public string Description => L10n.Get("slash.uninstall.description");
+
+    public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
+        => Task.FromResult(new SlashResult(
+            ctx.UninstallIntegration is null ? L10n.Get("slash.install.unavailable") : ctx.UninstallIntegration()));
+}
+
 internal sealed class McpCommand : ISlashCommand
 {
     public string Name => "mcp";
