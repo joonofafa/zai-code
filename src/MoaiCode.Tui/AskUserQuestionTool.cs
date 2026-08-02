@@ -20,6 +20,8 @@ public sealed class AskUserQuestionTool : ITool
         (e.g., which approach to take, which file to target). Presents a selectable numbered list
         and returns the user's choice. Prefer this over asking in plain prose when you want the
         user to pick from concrete options. Provide a clear question and 2-4 concise options.
+        The UI always adds an "Other" entry so the user can type a free-form answer instead of
+        picking one of your options; treat such a custom answer as their instruction.
         """;
 
     public bool IsReadOnly => true;          // 사용자에게 묻는 행위 — 권한 게이트 불필요
@@ -80,10 +82,13 @@ public sealed class AskUserQuestionTool : ITool
             .Header($"[aqua]{Markup.Escape(L10n.Get("common.question"))}[/]")
             .BorderColor(Color.Aqua));
 
-        // 화살표 선택 위젯. label + (설명) 을 항목으로.
+        // 화살표 선택 위젯. label + (설명) 을 항목으로. 마지막에 '직접 입력…'(자유 텍스트)을 항상 추가해,
+        // 제시된 선택지가 안 맞을 때 ESC로 빠져나가(→ 불필요한 재질문 턴) 대신 사용자가 답을 직접 줄 수 있게 한다.
         var labels = options
             .Select(o => string.IsNullOrWhiteSpace(o.Desc) ? o.Label : $"{o.Label}  ({o.Desc})")
             .ToList();
+        var otherIndex = labels.Count;
+        labels.Add(L10n.Get("ask.otherOption"));
 
         var pick = SelectList.Prompt(string.Empty, labels);
         if (pick < 0)
@@ -92,7 +97,31 @@ public sealed class AskUserQuestionTool : ITool
             yield break;
         }
 
+        if (pick == otherIndex)
+        {
+            // '직접 입력' 선택 → 자유 텍스트를 받아 모델에 그대로 전달.
+            var typed = ReadFreeText();
+            if (string.IsNullOrWhiteSpace(typed))
+            {
+                yield return new ToolOutput("User chose to answer freely but entered nothing. Proceed or ask again.");
+                yield break;
+            }
+
+            yield return new ToolOutput($"User answered (free text, not one of the listed options): {typed.Trim()}");
+            yield break;
+        }
+
         yield return new ToolOutput($"User selected option {pick + 1}: {options[pick].Label}");
+    }
+
+    // '직접 입력' 선택 시 한 줄 자유 텍스트를 읽는다. 콘솔 입력을 단독 점유하도록 ConsolePrompt 로 감싼다.
+    private static string? ReadFreeText()
+    {
+        using (ConsolePrompt.Begin())
+        {
+            Console.Write(L10n.Get("ask.inputPrompt"));
+            return Console.ReadLine();
+        }
     }
 
     private static List<(string Label, string? Desc)> ParseOptions(JsonElement input)

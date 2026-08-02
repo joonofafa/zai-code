@@ -136,6 +136,8 @@
   "slash.usage.total": "Total",
   "common.noChanges": "(no changes)",
   "common.question": "Question",
+  "ask.otherOption": "Other — type your own answer…",
+  "ask.inputPrompt": "Your answer: ",
   "common.unknownError": "unknown error",
   "tool.emptyCommand": "(empty command)",
   "permission.truncated": "\n… (truncated)",

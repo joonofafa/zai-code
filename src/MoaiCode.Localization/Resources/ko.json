@@ -136,6 +136,8 @@
   "slash.usage.total": "합계",
   "common.noChanges": "(변경 없음)",
   "common.question": "질문",
+  "ask.otherOption": "직접 입력…  (위 선택지 대신 답을 직접 작성)",
+  "ask.inputPrompt": "답변 입력: ",
   "common.unknownError": "알 수 없는 오류",
   "tool.emptyCommand": "(빈 명령)",
   "permission.truncated": "\n… (생략)",
