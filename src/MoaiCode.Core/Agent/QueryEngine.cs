@@ -26,6 +26,10 @@ public sealed class QueryEngine
     private readonly int _compactTokens;
     private const int MaxContextRecoveries = 3;
 
+    // 단일 툴 결과가 컨텍스트에 들어갈 때의 문자 상한. 거대한 grep/bash/read 출력이 창을 폭주시켜
+    // 잦은(손실 있는) 컴팩션을 유발하는 것을 막는다. <=0 이면 무제한. UI 표시는 원문 그대로.
+    private readonly int _maxToolResultChars;
+
     // max_turns 도달 시 곧장 멈추지 않고, 압축 후 턴을 연장할 수 있는 최대 횟수.
     private const int MaxTurnExtensions = 3;
 
@@ -52,7 +56,8 @@ public sealed class QueryEngine
         string? workingDirectory = null,
         int contextWindowTokens = 200_000,
         bool extendTurns = true,
-        Func<bool>? pendingTasks = null)
+        Func<bool>? pendingTasks = null,
+        int maxToolResultChars = 16_000)
     {
         _model = model;
         _tools = tools;
@@ -63,6 +68,7 @@ public sealed class QueryEngine
         _compactTokens = Math.Max(1_000, contextWindowTokens * 70 / 100);
         _extendTurns = extendTurns;
         _pendingTasks = pendingTasks;
+        _maxToolResultChars = maxToolResultChars;
     }
 
     public IReadOnlyList<Message> Messages => _messages;
@@ -365,7 +371,8 @@ public sealed class QueryEngine
 
                 await _observer.BeforeToolAsync(tool, call, toolContext, ct).ConfigureAwait(false);
                 var (output, isError) = await ExecuteToolAsync(tool, call, toolContext, ct).ConfigureAwait(false);
-                _messages.Add(new ToolResultMessage(call.Id, output, isError));
+                // 컨텍스트(모델)로 가는 결과만 상한을 건다 — UI(ToolExecuted)와 관찰자엔 원문 유지.
+                _messages.Add(new ToolResultMessage(call.Id, CapToolOutput(output, _maxToolResultChars), isError));
                 yield return new ToolExecuted(call.Name, call.Id, output, isError);
 
                 var observation = await _observer
@@ -644,6 +651,26 @@ public sealed class QueryEngine
         _messages.Clear();
         _messages.AddRange(rebuilt);
         return true;
+    }
+
+    /// <summary>
+    /// 컨텍스트로 들어가는 툴 결과를 상한 이내로 자른다. 넘치면 앞(70%)+뒤(30%)를 남기고 가운데를
+    /// 생략 표식으로 대체한다(오류는 흔히 끝에 있으므로 꼬리 보존). maxChars &lt;= 0 이면 원문 그대로.
+    /// </summary>
+    public static string CapToolOutput(string text, int maxChars)
+    {
+        if (maxChars <= 0 || text.Length <= maxChars)
+        {
+            return text;
+        }
+
+        var head = maxChars * 7 / 10;
+        var tail = maxChars - head;
+        var omitted = text.Length - head - tail;
+        return text[..head]
+            + $"\n\n… [tool output truncated to protect context: {omitted} of {text.Length} chars omitted. "
+            + "Narrow the query/range, or write large output to a file and read a summary.] …\n\n"
+            + text[^tail..];
     }
 
     /// <summary>대략적 토큰 추정 (chars/4). 임계선 근처에서만 정확하면 되므로 휴리스틱으로 충분.</summary>
