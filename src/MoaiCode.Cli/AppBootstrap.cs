@@ -70,8 +70,17 @@ public static class AppBootstrap
         // COM Office 편집 툴('열려있는 문서 편집')은 CLI 에서 제외 — MoAI Desktop(GUI) 전용.
         // (닫힌 문서 생성/검증 Open XML 툴은 위에서 이미 등록되어 CLI 에도 유지.)
 
-        // 3) MCP 서버
-        var mcpConfigs = McpConfigLoader.Discover(cwd);
+        // 3) MCP 서버 — 보안(SEC-001): 프로젝트(작업 디렉터리) .mcp.json 은 신뢰하지 않는 저장소가 시작 시
+        // 임의 프로세스를 실행하는 통로다. 기본은 사용자 홈 설정만 로드하고, MOAI_ALLOW_PROJECT_MCP=1 로
+        // 명시적으로 신뢰했을 때만 프로젝트 MCP 를 로드한다.
+        var allowProjectMcp = IsEnvTruthy("MOAI_ALLOW_PROJECT_MCP");
+        if (!allowProjectMcp && McpConfigLoader.HasProjectConfig(cwd))
+        {
+            Console.Error.WriteLine(
+                "moai: project MCP config (.mcp.json) found but not loaded (untrusted). " +
+                "Set MOAI_ALLOW_PROJECT_MCP=1 to enable it for this project.");
+        }
+        var mcpConfigs = McpConfigLoader.Discover(cwd, includeProjectScope: allowProjectMcp);
         var mcp = new McpManager();
         if (mcpConfigs.Count > 0)
         {
@@ -126,9 +135,9 @@ public static class AppBootstrap
             toolList.Add(skillTool);
         }
 
-        // 4b) Agent/Task 툴 (서브에이전트는 현재 툴 스냅샷을 사용 — 재귀 방지)
+        // 4b) 서브에이전트용 툴 스냅샷 (재귀 방지 — Agent/Task 툴 추가 전에 캡처).
+        // AgentTool 은 게이트가 만들어진 뒤(아래 5)에 생성한다 — 하위 에이전트가 부모 게이트를 쓰도록(SEC-004).
         var subTools = new List<ITool>(toolList);
-        toolList.Add(new AgentTool(model, subTools));
         var taskStore = new TaskStore();
         toolList.Add(new TaskCreateTool(taskStore));
         toolList.Add(new TaskListTool(taskStore));
@@ -175,6 +184,9 @@ public static class AppBootstrap
 
         IPermissionGate gate = new ModeAwarePermissionGate(
             state, baseGate, cwd, settings.ConfineToWorkspace, confirmer, classifier, rules);
+
+        // 하위 에이전트가 부모와 동일한 게이트를 쓰도록 여기서 생성해 툴 목록에 추가(SEC-004).
+        toolList.Add(new AgentTool(model, subTools, gate: gate));
 
         var observer = new HarnessToolObserver(settings, checkpoints);
         // 단일 툴 결과의 컨텍스트 유입 상한(거대 출력 → 잦은 컴팩션 방지). MOAI_MAX_TOOL_RESULT_CHARS 로 조정, 0/음수면 무제한.
@@ -362,6 +374,17 @@ public static class AppBootstrap
 
     // 비대화형에서 위험 툴 자동 승인 opt-in. MOAI_YES / MOAI_APPROVE / MOAI_AUTO_APPROVE = 1/true/yes.
     // 위험 판정 분류기 on/off. 기본 켜짐 — MOAI_RISK_CLASSIFIER=0/false/off 로 끈다.
+    // 환경변수가 "1/true/on/yes"(대소문자 무시)면 참. 미설정/그 외는 거짓.
+    private static bool IsEnvTruthy(string name)
+    {
+        var v = Environment.GetEnvironmentVariable(name);
+        return !string.IsNullOrEmpty(v)
+            && (v.Equals("1", StringComparison.Ordinal)
+                || v.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || v.Equals("on", StringComparison.OrdinalIgnoreCase)
+                || v.Equals("yes", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static bool RiskClassifierEnabled()
     {
         var v = Environment.GetEnvironmentVariable("MOAI_RISK_CLASSIFIER");

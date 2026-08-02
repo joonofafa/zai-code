@@ -18,12 +18,16 @@ public sealed class AgentTool : ITool
     private readonly IChatModel _model;
     private readonly IReadOnlyList<ITool> _subTools;
     private readonly int _maxTurns;
+    private readonly IPermissionGate? _gate;
 
-    public AgentTool(IChatModel model, IReadOnlyList<ITool> subTools, int maxTurns = 8)
+    // gate: 하위 에이전트가 쓸 권한 게이트(부모와 동일). null 이면 자동 승인(하위 안전장치 없음) — 보안상
+    // 호출측이 반드시 부모 게이트를 넘겨야 한다(SEC-004). 기본 null 은 테스트/레거시 호출 호환용.
+    public AgentTool(IChatModel model, IReadOnlyList<ITool> subTools, int maxTurns = 8, IPermissionGate? gate = null)
     {
         _model = model;
         _subTools = subTools;
         _maxTurns = maxTurns;
+        _gate = gate;
     }
 
     public string Name => "Agent";
@@ -72,13 +76,14 @@ public sealed class AgentTool : ITool
             yield break;
         }
 
-        // 서브에이전트는 자동 승인 (대화형 권한은 메인 에이전트에서만).
+        // 서브에이전트도 부모와 동일한 권한 게이트를 쓴다(SEC-004): 워크스페이스 경계·deny 규칙·파괴적
+        // 명령 차단·위험 분류가 하위 도구 호출에도 적용된다. 게이트가 주입되지 않은 경우에만 자동 승인.
         // extendTurns:false — 서브에이전트는 maxTurns에서 멈춘다(연장 금지). 연장은 메인 에이전트 전용으로,
         // 서브에이전트까지 연장하면 한 번 spawn에 수십 턴×원격모델 지연으로 몇 분씩 걸린다.
         var subEngine = new QueryEngine(
             _model,
             _subTools,
-            new AutoApproveGate(),
+            _gate ?? new AutoApproveGate(),
             maxTurns: _maxTurns,
             workingDirectory: context.WorkingDirectory,
             extendTurns: false);
