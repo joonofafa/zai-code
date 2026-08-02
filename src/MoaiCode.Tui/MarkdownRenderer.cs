@@ -213,8 +213,20 @@ public static class MarkdownRenderer
             AppendInline(sb, inline);
         }
 
-        return sb.ToString();
+        return BoldFallback(sb.ToString());
     }
+
+    // CommonMark 의 right-flanking 규칙상, 닫는 ** 앞이 문장부호이고 뒤가 공백/부호가 아니면 강조로
+    // 닫히지 않는다. 한국어는 따옴표 뒤에 조사를 공백 없이 붙여서(예: **"인용"**까지) 이 규칙에 자주
+    // 걸리고, 그러면 사용자 화면에 ** 가 그대로 노출된다. 파싱이 놓친 쌍만 여기서 굵게 처리한다.
+    // (조립된 문자열 기준 — 실패한 구분자는 여러 LiteralInline 으로 쪼개져 오므로 개별 리터럴로는 못 잡는다.)
+    private static readonly System.Text.RegularExpressions.Regex BoldFallbackRe =
+        new(@"\*\*(?=\S)(.+?)(?<=\S)\*\*", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static string BoldFallback(string s)
+        => s.Contains("**", StringComparison.Ordinal)
+            ? BoldFallbackRe.Replace(s, m => "[bold]" + m.Groups[1].Value + "[/]")
+            : s;
 
     private static void AppendInline(StringBuilder sb, Inline inline)
     {

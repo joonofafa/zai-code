@@ -81,4 +81,27 @@ public class MarkdownRendererTests
     {
         Assert.NotNull(MarkdownRenderer.Render("just some plain text with no markdown"));
     }
+
+    // CommonMark right-flanking 규칙: 닫는 ** 앞이 문장부호이고 뒤가 한글이면 강조로 닫히지 않아
+    // 화면에 ** 가 그대로 노출됐다. 한국어는 따옴표 뒤에 조사를 붙여 쓰므로 매우 흔한 패턴.
+    [Theory]
+    [InlineData("**\"인용\"**까지 진행")]                    // 따옴표로 끝 + 조사
+    [InlineData("**그 다음 요청은 \"1k 대결\"**였죠.")]      // 동일 패턴(문장 안)
+    [InlineData("**(주의)**를 참고")]                        // 괄호로 끝 + 조사
+    public void Bold_closing_after_punctuation_before_hangul_still_renders(string md)
+        => Assert.DoesNotContain("**", RenderToText(md));
+
+    [Theory]
+    [InlineData("**bold** text")]
+    [InlineData("**강조**가 안될까?")]
+    [InlineData("그럼 **hard vs alpha**를 보자")]
+    public void Normal_bold_still_renders(string md)
+        => Assert.DoesNotContain("**", RenderToText(md));
+
+    [Fact]
+    public void Unpaired_asterisks_are_left_alone()
+    {
+        // 파이썬 **kwargs 처럼 짝이 없는 ** 는 굵게로 오인해 먹어버리면 안 된다.
+        Assert.Contains("**kwargs", RenderToText("use **kwargs here"));
+    }
 }
