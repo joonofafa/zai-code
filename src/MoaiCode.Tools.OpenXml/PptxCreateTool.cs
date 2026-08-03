@@ -47,7 +47,7 @@ public sealed class PptxCreateTool : ITool
           "type": "object",
           "properties": {
             "path": { "type": "string", "description": "Output .pptx path (relative to workspace)" },
-            "template": { "type": "string", "enum": ["A", "B"], "description": "Design template (default A). A = light corporate (grey bg, navy title, left accent bar). B = keynote/bold (white bg, red accent, larger type). The template fixes colors, fonts, typography hierarchy, spacing and alignment — you only provide content." },
+            "template": { "type": "string", "enum": ["A", "B", "C", "D"], "description": "Design template (default A). A = light corporate (grey bg, navy, left accent bar). B = keynote/bold (white bg, red, large type). C = minimal (white bg, black type, thin neutral bar, airy). D = dark (deep navy bg, light text, cyan accent). The template fixes colors, fonts, typography hierarchy, spacing and alignment — you only provide content." },
             "slides": {
               "type": "array",
               "items": {
@@ -187,9 +187,25 @@ public sealed class PptxCreateTool : ITool
         TitleFont: "Arial", BodyFont: "Arial",
         TitlePt: 34, SubtitlePt: 18, BodyPt: 16);
 
+    // C형: 미니멀(흰 배경·검정 타이포·회색 부제·얇은 무채색 바, 여백 큰).
+    private static readonly ThemePreset TemplateC = new(
+        Name: "C", BgHex: "FFFFFF", AccentHex: "222222", TitleHex: "111111",
+        SubtitleHex: "888888", BodyHex: "333333",
+        TitleFont: "Calibri Light", BodyFont: "Calibri",
+        TitlePt: 30, SubtitlePt: 16, BodyPt: 15);
+
+    // D형: 다크(짙은 남색 배경·밝은 텍스트·시안 강조 포인트).
+    private static readonly ThemePreset TemplateD = new(
+        Name: "D", BgHex: "1F2430", AccentHex: "4FC3F7", TitleHex: "FFFFFF",
+        SubtitleHex: "AEB6C7", BodyHex: "E3E8F0",
+        TitleFont: "Calibri Light", BodyFont: "Calibri",
+        TitlePt: 32, SubtitlePt: 17, BodyPt: 15);
+
     private static ThemePreset ResolveTemplate(string? t) => t?.Trim().ToUpperInvariant() switch
     {
         "B" => TemplateB,
+        "C" => TemplateC,
+        "D" => TemplateD,
         _ => TemplateA, // 기본 A형
     };
 
@@ -600,12 +616,25 @@ public sealed class PptxCreateTool : ITool
         }
 
         var para = new D.Paragraph();
-        // 본문 불릿: 줄간격 여유(120%)로 매달린 줄·과밀 완화.
-        var pPr = bullet
-            ? new D.ParagraphProperties(
-                new D.LineSpacing(new D.SpacingPercent { Val = 120000 }),
-                new D.BulletFont { Typeface = "Arial" }, new D.CharacterBullet { Char = "•" })
-            : new D.ParagraphProperties(new D.NoBullet());
+        // 본문 불릿: 줄간격 여유(120%)로 매달린 줄·과밀 완화. 불릿 색은 본문 색에 맞춘다
+        // (다크 배경에서 검정 불릿이 안 보이는 것 방지). 자식 순서: lnSpc → buClr → buFont → buChar.
+        D.ParagraphProperties pPr;
+        if (bullet)
+        {
+            pPr = new D.ParagraphProperties(new D.LineSpacing(new D.SpacingPercent { Val = 120000 }));
+            if (color is not null)
+            {
+                pPr.AppendChild(new D.BulletColor(new D.RgbColorModelHex { Val = color }));
+            }
+
+            pPr.AppendChild(new D.BulletFont { Typeface = "Arial" });
+            pPr.AppendChild(new D.CharacterBullet { Char = "•" });
+        }
+        else
+        {
+            pPr = new D.ParagraphProperties(new D.NoBullet());
+        }
+
         para.AppendChild(pPr);
         para.AppendChild(new D.Run(runProps, new D.Text(text)));
         return para;
