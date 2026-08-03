@@ -24,18 +24,21 @@ public sealed class OpenMoaiClient
 {
     private readonly HttpClient _http;
     private readonly string _host;
+    private readonly string _client;
 
-    public OpenMoaiClient(string host, HttpClient? http = null)
+    // clientKind: 로그인 주체 식별자("cli" | "desktop"). 서버가 이 값으로 CLI/Desktop 키를 분리 발급한다.
+    public OpenMoaiClient(string host, HttpClient? http = null, string clientKind = "cli")
     {
         _host = host.TrimEnd('/');
         _http = http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+        _client = string.IsNullOrWhiteSpace(clientKind) ? "cli" : clientKind;
     }
 
     public Task<LoginResult> LoginAsync(string email, string password, CancellationToken ct)
-        => PostAsync("/api/cli/login", new { email, password }, ct);
+        => PostAsync("/api/cli/login", new { email, password, client = _client }, ct);
 
     public Task<LoginResult> LoginMfaAsync(string mfaToken, string code, CancellationToken ct)
-        => PostAsync("/api/cli/login/mfa", new { mfaToken, code }, ct);
+        => PostAsync("/api/cli/login/mfa", new { mfaToken, code, client = _client }, ct);
 
     // ── 팀 공유 스킬 (baseUrl = host + "/api/v1"; Knowledge 툴과 동일한 Bearer GET 패턴) ──────────
     // login 엔드포인트(_host 기반)와 달리 baseUrl 을 그대로 받는 static 헬퍼 — 실패는 예외로 던지고,

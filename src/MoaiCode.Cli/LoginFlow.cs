@@ -64,7 +64,7 @@ public static class LoginFlow
         // 사내망 프록시 (로그인 요청도 프록시를 경유해야 하므로 로그인 전에 적용).
         MaybeConfigureProxy();
 
-        var client = new OpenMoaiClient(host);
+        var client = new OpenMoaiClient(host, clientKind: "cli");
         var r = await client.LoginAsync(email, password, ct).ConfigureAwait(false);
 
         if (r.Status == "mfa_required" && !string.IsNullOrEmpty(r.MfaToken))

@@ -92,7 +92,8 @@ public sealed partial class LoginViewModel : ObservableObject
             }
 
             var host = ResolveHost();
-            var client = new OpenMoaiClient(host);
+            // Desktop 로그인은 client="desktop" 을 보내 서버가 CLI 키와 분리 발급하도록 한다.
+            var client = new OpenMoaiClient(host, clientKind: "desktop");
 
             LoginResult r;
             if (wasMfa)
