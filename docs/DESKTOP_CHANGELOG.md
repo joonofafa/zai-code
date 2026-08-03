@@ -5,6 +5,7 @@ Windows 데스크톱(Avalonia, 단일 exe) 릴리스 이력. CLI(`moai`)와 독�
 
 | 버전 | 요약 |
 |------|------|
+| 0.4.58 | **PPT 템플릿 시스템(디자인 프리셋 × 레이아웃)**: "이쁘게 만들어" 대신 검증된 템플릿 규격 안에서 콘텐츠만 채운다. PptxCreate에 **template**(A 코퍼레이트 / B 키노트 — 배경·색·타이포 계층·정렬 고정) × **layout**(cover·section·content·two_col·text_image·table·quote) + **subtitle**. 타이포 계층·좌측 정렬·줄간격으로 매달린 줄·과밀 해소. + 3앱 단위 추가 통일(**add_slide**·**add_page**·add_sheet)로 빈 문서 초안 생성 |
 | 0.4.57 | **엑셀 피봇테이블 생성**: Excel 편집에 **insert_pivot** 추가 — 열린 워크북의 데이터 범위(source)로 새 시트에 피봇테이블을 만든다. rows/columns/filters(필드명)와 values({field, func}: sum·count·average·max·min)를 지정하면 Excel 엔진이 집계(예: 부서×월 매출 합계). 없는 필드는 건너뛰고 부분 성공. Windows 전용 |
 | 0.4.56 | **도형 편집(위치·크기·회전·반전) 3앱 통일 + 이미지 삽입**: (1) Word·Excel·PowerPoint 편집에 **set_geometry** 추가 — 도형 이동/크기/**회전(도)**/좌우·상하 반전(공용 ShapeGeometry). Word·Excel Inspect도 도형 목록(위치·크기·회전) 노출, PPT Inspect에 rotation 추가. (2) **이미지 삽입** — 신규 **ImageFetch**(웹 이미지 URL→로컬 저장, SSRF 가드·image/* 검증)로 웹 이미지 확보, 세 앱 편집에 **insert_picture**(열린 문서에 로컬 이미지 삽입: PPT=슬라이드, Word=인라인/떠있는 도형, Excel=활성시트). 생성 이미지(ImageCreate)·웹 이미지 모두 삽입 가능 |
 | 0.4.55 | 스킬 개별 토글 일관성: CLI에서 끈 개별 스킬(skills-disabled.json)을 데스크톱에서도 제외(마스터 스위치와 별개로 존중) |
