@@ -5,6 +5,7 @@ Windows 데스크톱(Avalonia, 단일 exe) 릴리스 이력. CLI(`moai`)와 독�
 
 | 버전 | 요약 |
 |------|------|
+| 0.4.60 | **문서·엑셀 양식 템플릿**: 표준 업무 서식을 규격화(구조는 앱이 보장, 내용만 채움). (1) **Word** DocxCreate에 **template** — report(보고서: 개요·배경·현황·분석·결론 및 제언)/incident(경위서: 발생 개요·경위·원인·조치·재발 방지)/proposal(제안서: 배경·제안 내용·기대 효과·추진 일정·소요 예산). (2) **Excel** XlsxCreate에 **template** — expense(지출결의서: 일자/적요/금액/비고 + 합계 SUM·원화)/invoice(거래명세서: 품목/규격/수량/단가/금액 + 합계)/inventory(재고관리표: 품목/규격/입고/출고/재고). template만 주면 빈 양식, sheets를 함께 주면 값 채움 |
 | 0.4.59 | **PPT 디자인 템플릿 4종**: A(연그레이·남색 코퍼레이트) / B(흰·빨강 키노트) / C(미니멀·검정) / D(다크·시안). template 로 선택, 디자인은 규격이 보장 |
 | 0.4.58 | **PPT 템플릿 시스템(디자인 프리셋 × 레이아웃)**: "이쁘게 만들어" 대신 검증된 템플릿 규격 안에서 콘텐츠만 채운다. PptxCreate에 **template**(A 코퍼레이트 / B 키노트 — 배경·색·타이포 계층·정렬 고정) × **layout**(cover·section·content·two_col·text_image·table·quote) + **subtitle**. 타이포 계층·좌측 정렬·줄간격으로 매달린 줄·과밀 해소. + 3앱 단위 추가 통일(**add_slide**·**add_page**·add_sheet)로 빈 문서 초안 생성 |
 | 0.4.57 | **엑셀 피봇테이블 생성**: Excel 편집에 **insert_pivot** 추가 — 열린 워크북의 데이터 범위(source)로 새 시트에 피봇테이블을 만든다. rows/columns/filters(필드명)와 values({field, func}: sum·count·average·max·min)를 지정하면 Excel 엔진이 집계(예: 부서×월 매출 합계). 없는 필드는 건너뛰고 부분 성공. Windows 전용 |
