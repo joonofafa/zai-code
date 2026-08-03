@@ -97,6 +97,27 @@ public partial class MainWindow : Window
         }
     }
 
+    // 공유 폴더 연결 — 폴더 선택 → ViewModel 이 설정 저장 + 즉시 감시 시작.
+    private async void OnAddFolderClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+        {
+            return;
+        }
+
+        var picked = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "공유할 폴더 선택",
+            AllowMultiple = false,
+        });
+
+        var folder = picked.Count > 0 ? picked[0].TryGetLocalPath() : null;
+        if (!string.IsNullOrEmpty(folder))
+        {
+            vm.AddFolder(folder);
+        }
+    }
+
     // 조직 문서함 검색(모드 B) — RAG 검색 다이얼로그 → 선택 스니펫을 참조로 첨부.
     private async void OnOrgClick(object? sender, RoutedEventArgs e)
     {
