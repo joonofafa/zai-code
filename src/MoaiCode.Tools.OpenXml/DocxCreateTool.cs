@@ -20,7 +20,13 @@ public sealed class DocxCreateTool : ITool
         python-docx, etc.) or write Bash/Node/Python scripts to build Word files — this tool already
         does it. For a well-structured document, prefer 'blocks' (ordered mix of headings, paragraphs,
         bullet/numbered lists, and tables) over a flat 'paragraphs' array. Text in any block may use
-        markdown-style **bold** and *italic*. For editing an OPEN document on Windows, use the COM tools.
+        markdown-style **bold** and *italic*.
+        DOCUMENT FORMS: set "template" to a Korean business doc type and produce the standard sections
+        as heading blocks, filling each — report(보고서): 개요·배경·현황·분석·결론 및 제언;
+        incident(경위서): 발생 개요·경위·원인·조치 사항·재발 방지 대책;
+        proposal(제안서): 배경 및 목적·제안 내용·기대 효과·추진 일정·소요 예산.
+        If you provide no blocks, the standard section skeleton is scaffolded for the user to fill.
+        For editing an OPEN document on Windows, use the COM tools.
         """;
 
     public bool IsReadOnly => false;
@@ -32,6 +38,7 @@ public sealed class DocxCreateTool : ITool
           "type": "object",
           "properties": {
             "path": { "type": "string", "description": "Output .docx path (relative to workspace)" },
+            "template": { "type": "string", "enum": ["report", "incident", "proposal"], "description": "Korean business document form. report=보고서, incident=경위서, proposal=제안서. Produce the standard sections as heading blocks (see tool description). If no blocks are given, the section skeleton is scaffolded." },
             "title": { "type": "string", "description": "Document title (large bold heading, first line)" },
             "blocks": {
               "type": "array",
@@ -84,9 +91,19 @@ public sealed class DocxCreateTool : ITool
     private sealed record Input(
         [property: JsonPropertyName("path")] string? Path,
         [property: JsonPropertyName("title")] string? Title,
+        [property: JsonPropertyName("template")] string? Template,
         [property: JsonPropertyName("blocks")] List<BlockIn>? Blocks,
         [property: JsonPropertyName("paragraphs")] List<string>? Paragraphs,
         [property: JsonPropertyName("images")] List<ImageIn>? Images);
+
+    // 문서 유형별 표준 섹션(양식). 모델이 blocks 로 이 구조를 채우고, 비어 있으면 스캐폴딩된다.
+    private static string[]? FormSections(string? template) => template?.Trim().ToLowerInvariant() switch
+    {
+        "report" or "보고서" => new[] { "개요", "배경", "현황", "분석", "결론 및 제언" },
+        "incident" or "경위서" => new[] { "발생 개요", "경위", "원인", "조치 사항", "재발 방지 대책" },
+        "proposal" or "제안서" => new[] { "배경 및 목적", "제안 내용", "기대 효과", "추진 일정", "소요 예산" },
+        _ => null,
+    };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -139,6 +156,15 @@ public sealed class DocxCreateTool : ITool
             foreach (var b in inp.Blocks)
             {
                 AppendBlock(body, b);
+            }
+        }
+        else if ((inp.Paragraphs?.Count ?? 0) == 0 && FormSections(inp.Template) is { } sections)
+        {
+            // 양식 스캐폴딩: 콘텐츠가 없으면 표준 섹션 뼈대(제목 + 안내 문단)를 채워 넣는다.
+            foreach (var sec in sections)
+            {
+                body.AppendChild(Heading(sec, 1));
+                body.AppendChild(BodyParagraph("(내용을 입력하세요)"));
             }
         }
         else
