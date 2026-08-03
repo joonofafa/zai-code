@@ -18,6 +18,9 @@ public partial class MainWindow : Window
         AvaloniaXamlLoader.Load(this);
         DataContextChanged += OnDataContextChanged;
 
+        // 창 포커스 복귀(예: 연결된 Office 를 닫고 돌아옴) 시 연결 문서 생존 재확인.
+        Activated += (_, _) => (DataContext as MainViewModel)?.CheckActiveDocAlive();
+
         // 채팅 스크롤을 하단 고정(sticky) — ScrollChanged 기반. 스트리밍/새 항목에 정확히 따라가고
         // 사용자가 위로 올리면 멈춘다(Avalonia 정석; ScrollToEnd 프레임 세기·Offset 강제 폐기).
         var sv = this.FindControl<ScrollViewer>("ChatScroll");

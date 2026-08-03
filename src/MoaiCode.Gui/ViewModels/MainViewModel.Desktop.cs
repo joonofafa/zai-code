@@ -30,11 +30,16 @@ public sealed partial class MainViewModel
     [RelayCommand] private void ShowFoldersTab() => Tab = 0;
     [RelayCommand] private void ShowEditTab() => Tab = 1;
 
+    // 편집 대화 → 열린 문서 목록으로 복귀("← 목록"). 세션/문서 연결은 유지.
+    [RelayCommand] private void BackToList() => ShowHome = true;
+
     // ── 공유 폴더 대시보드 ──
     public ObservableCollection<FolderRow> Folders { get; } = new();
     public int WatchedFolderCount => Folders.Count;
 
     [ObservableProperty] private string _syncStatus = "대기 중";
+
+    private Timer? _aliveTimer;
 
     private void InitDesktop()
     {
@@ -45,6 +50,50 @@ public sealed partial class MainViewModel
             svc.Status += OnSyncStatus;
             SyncStatus = svc.FolderCount == 0 ? "대기 중 (연결된 폴더 없음)" : $"{svc.FolderCount}개 폴더 감시 중";
         }
+
+        // 연결된 문서가 사용자에 의해 닫혔는지 주기 확인(연결 중일 때만 COM 열거). 창 포커스 복귀 시에도 확인.
+        _aliveTimer = new Timer(
+            _ => Dispatcher.UIThread.Post(CheckActiveDocAlive),
+            null, 5000, 5000);
+    }
+
+    /// <summary>연결된 Office 문서가 아직 열려 있는지 확인. 닫혔으면 연결 해제 + 목록으로 복귀.</summary>
+    public void CheckActiveDocAlive()
+    {
+        if (!IsDocConnected || string.IsNullOrEmpty(_sessionTargetDoc))
+        {
+            return;
+        }
+
+        System.Collections.Generic.IReadOnlyList<OfficeDoc> open;
+        try
+        {
+            open = OfficeWindowLister.ListOpenDocuments();
+        }
+        catch
+        {
+            return; // 열거 실패 시 상태 유지(오탐 방지)
+        }
+
+        var alive = open.Any(d =>
+            (d.Path is not null && _sessionDocPath is not null
+                && string.Equals(d.Path, _sessionDocPath, StringComparison.OrdinalIgnoreCase))
+            || string.Equals(d.Name, _sessionTargetDoc, StringComparison.Ordinal));
+        if (alive)
+        {
+            return;
+        }
+
+        // 연결 문서가 닫힘 → 해제하고 열린 문서 목록으로.
+        DetachDoc();
+        OfficeDocs.Clear();
+        foreach (var d in open)
+        {
+            OfficeDocs.Add(d);
+        }
+
+        OnPropertyChanged(nameof(HasOpenDocs));
+        ShowHome = true; // 편집 탭: 목록 / 없음 상태로 전환
     }
 
     private void OnSyncStatus(string msg) => Dispatcher.UIThread.Post(() => SyncStatus = msg);
