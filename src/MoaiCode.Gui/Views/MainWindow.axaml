@@ -6,7 +6,7 @@
         x:Class="MoaiCode.Gui.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="MoAI Desktop"
-        Width="1120" Height="760" MinWidth="900" MinHeight="580"
+        Width="860" Height="1040" MinWidth="700" MinHeight="680"
         Background="{DynamicResource BgWindowBrush}"
         FontFamily="avares://Avalonia.Fonts.Inter/Assets#Inter"
         WindowStartupLocation="CenterScreen">
