@@ -123,7 +123,11 @@ public static class GuiBootstrap
                 }
             }
 
-            return skills.Count > 0 ? new SkillTool(skills) : null;
+            // CLI 개별 스킬 토글(~/.moai/skills-disabled.json)을 존중 — 사용자가 끈 스킬은 GUI 에서도 제외.
+            var disabled = SkillState.LoadDisabled();
+            var active = skills.Where(s => !disabled.Contains(s.Name)).ToList();
+
+            return active.Count > 0 ? new SkillTool(active) : null;
         }
         catch
         {
