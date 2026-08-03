@@ -50,6 +50,8 @@ public sealed class WordEditTool : ITool
           - replace: find & replace ALL occurrences of "find_text" with "replace_text" across the document.
           - export_pdf: export the document to PDF ("path" = output .pdf; if omitted, next to the document).
           - delete_shape: delete a floating shape (by "shape_index"/"shape_name", or the current selection).
+          - new_document: start a brand-new blank Word document (launches Word if it is not running) so you
+            can then write into it with insert_paragraph/set_style/etc. Use this when no document is open.
         Target the paragraph by 1-based "para_index" (from WordInspect); if omitted, the CURRENT SELECTION.
         IMPORTANT: set_text only edits EXISTING paragraphs (1..N as reported by WordInspect). Never use an
         out-of-range para_index — to ADD new content use insert_paragraph. Always WordInspect first to get N.
@@ -65,7 +67,7 @@ public sealed class WordEditTool : ITool
         {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["set_text","set_font","set_style","insert_paragraph","delete_paragraph","insert_table","set_geometry","insert_picture","add_page","replace","export_pdf","delete_shape"] },
+            "action": { "type": "string", "enum": ["set_text","set_font","set_style","insert_paragraph","delete_paragraph","insert_table","set_geometry","insert_picture","add_page","replace","export_pdf","delete_shape","new_document"] },
             "path": { "type": "string", "description": "Local image file path (insert_picture) OR output .pdf path (export_pdf)" },
             "find_text": { "type": "string", "description": "Text to find (replace)" },
             "replace_text": { "type": "string", "description": "Replacement text (replace)" },
@@ -113,7 +115,7 @@ public sealed class WordEditTool : ITool
         [property: JsonPropertyName("replace_text")] string? ReplaceText);
 
     private static readonly string[] Actions =
-        { "set_text", "set_font", "set_style", "insert_paragraph", "delete_paragraph", "insert_table", "set_geometry", "insert_picture", "add_page", "replace", "export_pdf", "delete_shape" };
+        { "set_text", "set_font", "set_style", "insert_paragraph", "delete_paragraph", "insert_table", "set_geometry", "insert_picture", "add_page", "replace", "export_pdf", "delete_shape", "new_document" };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -183,6 +185,21 @@ public sealed class WordEditTool : ITool
 
     private static string Apply(Input inp, string workingDir)
     {
+        // new_document: 실행 중 Word 에 붙거나, 없으면 새로 띄워 빈 문서를 만든다(작성 시작점).
+        if (inp.Action == "new_document")
+        {
+            dynamic? wapp = ComInterop.GetOrCreate("Word.Application");
+            if (wapp is null)
+            {
+                throw new System.InvalidOperationException("Word 를 시작할 수 없습니다(설치 확인).");
+            }
+
+            wapp.Visible = true;
+            wapp.Documents.Add();
+            wapp.Activate();
+            return "OK: 새 Word 문서를 열었습니다.";
+        }
+
         dynamic? app = ComInterop.TryGetActiveObject("Word.Application");
         if (app is null)
         {

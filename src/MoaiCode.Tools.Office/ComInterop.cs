@@ -49,6 +49,31 @@ internal static class ComInterop
         }
     }
 
+    /// <summary>새 COM 서버 인스턴스를 생성한다(실행 중인 게 없을 때 앱을 새로 띄우기 위함). 실패 시 null.</summary>
+    public static object? CreateInstance(string progId)
+    {
+        try
+        {
+            var type = Type.GetTypeFromProgID(progId);
+            if (type is null)
+            {
+                MoaiLog.Warn($"COM: ProgID '{progId}' not registered (Office not installed?)");
+                return null;
+            }
+
+            return Activator.CreateInstance(type);
+        }
+        catch (Exception ex)
+        {
+            MoaiLog.Error($"COM: CreateInstance('{progId}') threw", ex);
+            return null;
+        }
+    }
+
+    /// <summary>실행 중이면 붙고, 없으면 새로 생성. 새 문서 시작(new_*) 경로용.</summary>
+    public static object? GetOrCreate(string progId)
+        => TryGetActiveObject(progId) ?? CreateInstance(progId);
+
     [DllImport("oleaut32.dll", PreserveSig = true)]
     private static extern int GetActiveObject(
         ref Guid rclsid, IntPtr pvReserved, [MarshalAs(UnmanagedType.IUnknown)] out object ppunk);

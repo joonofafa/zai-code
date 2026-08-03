@@ -56,6 +56,8 @@ public sealed class ExcelEditTool : ITool
           - delete_column: delete the entire column(s) of "cell" (e.g. "B" or "B:C" or "B2").
           - delete_shape: delete a shape on the active sheet ("shape_index"/"shape_name").
           - export_pdf: export the workbook to PDF ("path" = output .pdf; if omitted, next to the workbook).
+          - new_workbook: start a brand-new blank Excel workbook (launches Excel if not running) so you can
+            then fill it with set_value/set_formula/etc. Use this when no workbook is open.
         Target the range by "cell" ("A1" or "A1:B2"); if omitted, the CURRENT SELECTION.
         Colors are "#RRGGBB" hex or a basic name. Windows only.
         """;
@@ -69,7 +71,7 @@ public sealed class ExcelEditTool : ITool
         {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["set_value","set_formula","set_font","set_fill","insert_chart","add_sheet","set_geometry","insert_picture","insert_pivot","replace","merge_cells","delete_sheet","delete_row","delete_column","delete_shape","export_pdf"] },
+            "action": { "type": "string", "enum": ["set_value","set_formula","set_font","set_fill","insert_chart","add_sheet","set_geometry","insert_picture","insert_pivot","replace","merge_cells","delete_sheet","delete_row","delete_column","delete_shape","export_pdf","new_workbook"] },
             "path": { "type": "string", "description": "Local image file path (insert_picture) OR output .pdf path (export_pdf)" },
             "find_text": { "type": "string", "description": "Text to find (replace)" },
             "replace_text": { "type": "string", "description": "Replacement text (replace)" },
@@ -144,7 +146,7 @@ public sealed class ExcelEditTool : ITool
         [property: JsonPropertyName("func")] string? Func);
 
     private static readonly string[] Actions =
-        { "set_value", "set_formula", "set_font", "set_fill", "insert_chart", "add_sheet", "set_geometry", "insert_picture", "insert_pivot", "replace", "merge_cells", "delete_sheet", "delete_row", "delete_column", "delete_shape", "export_pdf" };
+        { "set_value", "set_formula", "set_font", "set_fill", "insert_chart", "add_sheet", "set_geometry", "insert_picture", "insert_pivot", "replace", "merge_cells", "delete_sheet", "delete_row", "delete_column", "delete_shape", "export_pdf", "new_workbook" };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -220,6 +222,20 @@ public sealed class ExcelEditTool : ITool
 
     private static string Apply(Input inp, string workingDir)
     {
+        // new_workbook: 실행 중 Excel 에 붙거나, 없으면 새로 띄워 빈 통합문서를 만든다(작성 시작점).
+        if (inp.Action == "new_workbook")
+        {
+            dynamic? xapp = ComInterop.GetOrCreate("Excel.Application");
+            if (xapp is null)
+            {
+                throw new System.InvalidOperationException("Excel 을 시작할 수 없습니다(설치 확인).");
+            }
+
+            xapp.Visible = true;
+            xapp.Workbooks.Add();
+            return "OK: 새 Excel 통합문서를 열었습니다.";
+        }
+
         dynamic? app = ComInterop.TryGetActiveObject("Excel.Application");
         if (app is null)
         {

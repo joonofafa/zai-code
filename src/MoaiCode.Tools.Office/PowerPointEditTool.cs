@@ -52,6 +52,8 @@ public sealed class PowerPointEditTool : ITool
           - export_pdf: export the presentation to PDF ("path" = output .pdf; if omitted, next to the file).
           - delete_slide: delete the slide at "slide_index".
           - delete_shape: delete the target shape (by slide_index+shape_id/shape_name, or current selection).
+          - new_presentation: start a brand-new presentation with one blank title slide (launches PowerPoint
+            if not running) so you can then build it with add_slide/set_text/etc. Use this when none is open.
         Target the shape by shape_id (from PowerPointInspect) on slide_index; shape_name is a fallback.
         If no shape target is given, the action applies to the CURRENTLY SELECTED shape(s).
         "scope" selects where the shape lives: "slide" (default, body shapes), "layout" (the slide's
@@ -71,7 +73,7 @@ public sealed class PowerPointEditTool : ITool
         {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape"], "description": "Edit action" },
+            "action": { "type": "string", "enum": ["set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape", "new_presentation"], "description": "Edit action" },
             "find_text": { "type": "string", "description": "Text to find (replace)" },
             "replace_text": { "type": "string", "description": "Replacement text (replace)" },
             "bullets": { "type": "array", "items": { "type": "string" }, "description": "add_slide: body bullet lines" },
@@ -121,7 +123,7 @@ public sealed class PowerPointEditTool : ITool
         [property: JsonPropertyName("replace_text")] string? ReplaceText);
 
     private static readonly string[] Actions =
-        { "set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape" };
+        { "set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape", "new_presentation" };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -210,6 +212,21 @@ public sealed class PowerPointEditTool : ITool
 
     private static string Apply(Input inp, string workingDir)
     {
+        // new_presentation: 실행 중 PowerPoint 에 붙거나, 없으면 새로 띄워 빈 프레젠테이션(제목 슬라이드 1장)을 만든다.
+        if (inp.Action == "new_presentation")
+        {
+            dynamic? papp = ComInterop.GetOrCreate("PowerPoint.Application");
+            if (papp is null)
+            {
+                throw new InvalidOperationException("PowerPoint 를 시작할 수 없습니다(설치 확인).");
+            }
+
+            papp.Visible = MsoTrue; // PowerPoint 는 창이 보여야 조작 가능
+            dynamic newPres = papp.Presentations.Add(MsoTrue);
+            newPres.Slides.Add(1, PpLayoutTitle); // 빈 프레젠테이션(0장) 대신 제목 슬라이드 1장으로 시작
+            return "OK: 새 PowerPoint 프레젠테이션을 열었습니다.";
+        }
+
         dynamic? app = ComInterop.TryGetActiveObject("PowerPoint.Application");
         if (app is null)
         {
