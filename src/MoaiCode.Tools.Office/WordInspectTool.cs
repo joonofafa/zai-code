@@ -22,7 +22,8 @@ public sealed class WordInspectTool : ITool
 
     public string Description => """
         Inspects the running Word document: paragraphs (1-based index, text, style, font_size, font_name,
-        bold, font_color), and current selection. Use BEFORE editing, and MATCH the document's existing
+        bold, font_color), floating shapes (1-based index, name, position/size/rotation — for WordEdit
+        set_geometry), and current selection. Use BEFORE editing, and MATCH the document's existing
         tone — e.g. give inserted body text the same size/color as surrounding body paragraphs, not a heading.
         Windows only; requires Word running with an open document.
         """;

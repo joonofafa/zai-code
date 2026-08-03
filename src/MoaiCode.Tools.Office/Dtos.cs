@@ -40,4 +40,16 @@ public sealed record ShapeInfo(
     string? FillColor = null,
     // 도형 소속: "slide"(본문) · "layout"(레이아웃 배경) · "master"(마스터 배경).
     // 레이아웃/마스터 도형은 편집 시 같은 scope 를 지정해야 대상이 된다(전체 테마 색 변경 등).
-    string Scope = "slide");
+    string Scope = "slide",
+    // 도형 회전 각도(도, 시계방향). PowerPointEdit set_geometry 로 변경.
+    double Rotation = 0);
+
+/// <summary>Word/Excel 공용 도형 요약(기하 편집 참조용). 편집은 1-based Index 또는 Name 으로 지정.</summary>
+public sealed record OfficeShapeInfo(
+    int Index,
+    string Name,
+    double Left,
+    double Top,
+    double Width,
+    double Height,
+    double Rotation);

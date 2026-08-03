@@ -24,7 +24,8 @@ public sealed class ExcelInspectTool : ITool
     public string Name => "ExcelInspect";
 
     public string Description => """
-        Inspects the running Excel: active workbook, worksheets, and the current selection
+        Inspects the running Excel: active workbook, worksheets, the active sheet's shapes
+        (1-based index, name, position/size/rotation — for ExcelEdit set_geometry), and the current selection
         (address + displayed values, capped) (read-only). Use BEFORE editing to read current
         state. Windows only; requires Excel running with an open workbook.
         """;

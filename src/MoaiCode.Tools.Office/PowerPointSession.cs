@@ -132,7 +132,8 @@ public sealed class PowerPointSession
                 Bold: bold,
                 FontColor: fontColor,
                 FillColor: fillColor,
-                Scope: scope));
+                Scope: scope,
+                Rotation: TryGet(() => (double?)Convert.ToDouble(shape.Rotation)) ?? 0));
             added++;
         }
     }

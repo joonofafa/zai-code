@@ -34,6 +34,12 @@ public sealed class ExcelEditTool : ITool
           - set_fill: cell background color (needs "color")
           - insert_chart: chart from data (needs source via "cell"; "chart_type": column|line|pie|bar)
           - add_sheet: add a worksheet (optional "sheet_name")
+          - set_geometry: move/resize/rotate/flip a shape on the active sheet (any of "left","top","width",
+            "height" in points, "rotation" in degrees clockwise, "flip": horizontal|vertical). Target by
+            1-based "shape_index" or "shape_name" (from ExcelInspect's shapes).
+          - insert_picture: insert an image from a local file ("path") onto the active sheet (optional
+            "left","top","width","height" in points; omit width/height for native size). Get the file first
+            via ImageCreate (generated) or ImageFetch (from a web URL).
         Target the range by "cell" ("A1" or "A1:B2"); if omitted, the CURRENT SELECTION.
         Colors are "#RRGGBB" hex or a basic name. Windows only.
         """;
@@ -47,7 +53,8 @@ public sealed class ExcelEditTool : ITool
         {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["set_value","set_formula","set_font","set_fill","insert_chart","add_sheet"] },
+            "action": { "type": "string", "enum": ["set_value","set_formula","set_font","set_fill","insert_chart","add_sheet","set_geometry","insert_picture"] },
+            "path": { "type": "string", "description": "Local image file path (insert_picture)" },
             "cell": { "type": "string", "description": "A1 or A1:B2 (omit to target current selection)" },
             "value": { "type": "string", "description": "value for set_value" },
             "formula": { "type": "string", "description": "formula for set_formula" },
@@ -55,7 +62,15 @@ public sealed class ExcelEditTool : ITool
             "font_size": { "type": "number" },
             "bold": { "type": "boolean" },
             "chart_type": { "type": "string", "description": "column|line|pie|bar" },
-            "sheet_name": { "type": "string" }
+            "sheet_name": { "type": "string" },
+            "shape_index": { "type": "integer", "description": "1-based shape index on active sheet (set_geometry)" },
+            "shape_name": { "type": "string", "description": "Shape name (set_geometry, fallback for shape_index)" },
+            "left": { "type": "number", "description": "X position in points (set_geometry)" },
+            "top": { "type": "number", "description": "Y position in points (set_geometry)" },
+            "width": { "type": "number", "description": "Width in points (set_geometry)" },
+            "height": { "type": "number", "description": "Height in points (set_geometry)" },
+            "rotation": { "type": "number", "description": "Rotation angle in degrees, clockwise (set_geometry)" },
+            "flip": { "type": "string", "description": "Flip the shape: horizontal | vertical (set_geometry)" }
           },
           "required": ["action"]
         }
@@ -70,10 +85,19 @@ public sealed class ExcelEditTool : ITool
         [property: JsonPropertyName("font_size")] double? FontSize,
         [property: JsonPropertyName("bold")] bool? Bold,
         [property: JsonPropertyName("chart_type")] string? ChartType,
-        [property: JsonPropertyName("sheet_name")] string? SheetName);
+        [property: JsonPropertyName("sheet_name")] string? SheetName,
+        [property: JsonPropertyName("shape_index")] int? ShapeIndex,
+        [property: JsonPropertyName("shape_name")] string? ShapeName,
+        [property: JsonPropertyName("left")] double? Left,
+        [property: JsonPropertyName("top")] double? Top,
+        [property: JsonPropertyName("width")] double? Width,
+        [property: JsonPropertyName("height")] double? Height,
+        [property: JsonPropertyName("rotation")] double? Rotation,
+        [property: JsonPropertyName("flip")] string? Flip,
+        [property: JsonPropertyName("path")] string? Path);
 
     private static readonly string[] Actions =
-        { "set_value", "set_formula", "set_font", "set_fill", "insert_chart", "add_sheet" };
+        { "set_value", "set_formula", "set_font", "set_fill", "insert_chart", "add_sheet", "set_geometry", "insert_picture" };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -96,7 +120,7 @@ public sealed class ExcelEditTool : ITool
         string? error = null;
         try
         {
-            result = await _sta.InvokeAsync(() => Apply(inp!)).ConfigureAwait(false);
+            result = await _sta.InvokeAsync(() => Apply(inp!, context.WorkingDirectory)).ConfigureAwait(false);
         }
         catch (System.Exception ex)
         {
@@ -129,11 +153,17 @@ public sealed class ExcelEditTool : ITool
             "set_font" when string.IsNullOrWhiteSpace(inp.Color) && inp.FontSize is null && inp.Bold is null
                 => "set_font 에는 color, font_size, bold 중 하나가 필요합니다.",
             "set_fill" when string.IsNullOrWhiteSpace(inp.Color) => "set_fill 에는 color 가 필요합니다.",
+            "set_geometry" when inp.ShapeIndex is null && string.IsNullOrWhiteSpace(inp.ShapeName)
+                => "set_geometry 에는 shape_index 또는 shape_name 이 필요합니다.",
+            "set_geometry" when ShapeGeometry.IsEmpty(inp.Left, inp.Top, inp.Width, inp.Height, inp.Rotation, inp.Flip)
+                => "set_geometry 에는 left, top, width, height, rotation, flip 중 하나가 필요합니다.",
+            "set_geometry" => ShapeGeometry.ValidateFlip(inp.Flip),
+            "insert_picture" when string.IsNullOrWhiteSpace(inp.Path) => "insert_picture 에는 path 가 필요합니다.",
             _ => null,
         };
     }
 
-    private static string Apply(Input inp)
+    private static string Apply(Input inp, string workingDir)
     {
         dynamic? app = ComInterop.TryGetActiveObject("Excel.Application");
         if (app is null)
@@ -142,6 +172,17 @@ public sealed class ExcelEditTool : ITool
         }
 
         dynamic wb = app.ActiveWorkbook; // 없으면 COMException
+
+        if (inp.Action == "insert_picture")
+        {
+            var file = OfficePicture.ResolvePath(inp.Path, workingDir);
+            var w = inp.Width is not null ? (float)inp.Width.Value : OfficePicture.KeepNative;
+            var h = inp.Height is not null ? (float)inp.Height.Value : OfficePicture.KeepNative;
+            app.ActiveSheet.Shapes.AddPicture(
+                file, OfficePicture.LinkToFileFalse, OfficePicture.SaveWithDocTrue,
+                (float)(inp.Left ?? 0), (float)(inp.Top ?? 0), w, h);
+            return "OK: 활성 시트에 이미지를 삽입했습니다.";
+        }
 
         if (inp.Action == "add_sheet")
         {
@@ -162,6 +203,14 @@ public sealed class ExcelEditTool : ITool
             chartObj.Chart.SetSourceData(src);
             chartObj.Chart.ChartType = ChartTypeId(inp.ChartType);
             return "OK: 차트를 삽입했습니다.";
+        }
+
+        if (inp.Action == "set_geometry")
+        {
+            dynamic shape = ResolveShape(app, inp);
+            var applied = ShapeGeometry.Apply(shape, inp.Left, inp.Top, inp.Width, inp.Height, inp.Rotation, inp.Flip);
+            var target = inp.ShapeIndex is not null ? $"도형 {inp.ShapeIndex}" : $"도형 '{inp.ShapeName}'";
+            return $"OK: {target} 에 기하 변경 {applied}건 적용.";
         }
 
         dynamic range = ResolveRange(app, inp.Cell);
@@ -219,6 +268,32 @@ public sealed class ExcelEditTool : ITool
         }
 
         return app.ActiveSheet.Range(cell);
+    }
+
+    // 활성 시트에서 대상 도형을 찾는다: shape_index 우선, 없으면 shape_name.
+    private static dynamic ResolveShape(dynamic app, Input inp)
+    {
+        dynamic shapes = app.ActiveSheet.Shapes;
+        if (inp.ShapeIndex is not null)
+        {
+            int count = (int)shapes.Count;
+            if (inp.ShapeIndex.Value < 1 || inp.ShapeIndex.Value > count)
+            {
+                throw new System.InvalidOperationException(
+                    $"도형 {inp.ShapeIndex} 없음(활성 시트에 {count}개). ExcelInspect 의 shapes 를 확인하세요.");
+            }
+
+            return shapes.Item(inp.ShapeIndex.Value);
+        }
+
+        try
+        {
+            return shapes.Item(inp.ShapeName);
+        }
+        catch
+        {
+            throw new System.InvalidOperationException($"도형 '{inp.ShapeName}' 을 활성 시트에서 찾지 못했습니다.");
+        }
     }
 
     private static int ChartTypeId(string? type) => type?.Trim().ToLowerInvariant() switch

@@ -8,7 +8,9 @@ public sealed record WorkbookInfo(
     string? Path,
     string? ActiveSheet,
     IReadOnlyList<WorksheetInfo> Sheets,
-    SelectionInfo? Selection);
+    SelectionInfo? Selection,
+    // 활성 시트의 도형 목록. ExcelEdit set_geometry 의 대상 참조용(1-based Index/Name).
+    IReadOnlyList<OfficeShapeInfo>? Shapes = null);
 
 /// <summary>워크시트 스냅샷. UsedRange 는 데이터가 있는 범위(A1:D20 형식).</summary>
 public sealed record WorksheetInfo(

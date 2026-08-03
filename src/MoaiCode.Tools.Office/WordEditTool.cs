@@ -36,6 +36,12 @@ public sealed class WordEditTool : ITool
             Body text defaults to Normal style (does NOT inherit the previous heading). Set "style" only for headings.
           - delete_paragraph: delete paragraph at "para_index"
           - insert_table: insert a table (needs "rows","cols")
+          - set_geometry: move/resize/rotate/flip a floating shape (any of "left","top","width","height"
+            in points, "rotation" in degrees clockwise, "flip": horizontal|vertical). Target the shape by
+            1-based "shape_index" or "shape_name" (from WordInspect's shapes); if omitted, the CURRENT SELECTION.
+          - insert_picture: insert an image from a local file ("path"). Inline at the current selection by
+            default; if "left"/"top" are given it is placed as a floating shape. Optional "width"/"height"
+            in points. Get the file first via ImageCreate (generated) or ImageFetch (from a web URL).
         Target the paragraph by 1-based "para_index" (from WordInspect); if omitted, the CURRENT SELECTION.
         IMPORTANT: set_text only edits EXISTING paragraphs (1..N as reported by WordInspect). Never use an
         out-of-range para_index — to ADD new content use insert_paragraph. Always WordInspect first to get N.
@@ -51,7 +57,8 @@ public sealed class WordEditTool : ITool
         {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["set_text","set_font","set_style","insert_paragraph","delete_paragraph","insert_table"] },
+            "action": { "type": "string", "enum": ["set_text","set_font","set_style","insert_paragraph","delete_paragraph","insert_table","set_geometry","insert_picture"] },
+            "path": { "type": "string", "description": "Local image file path (insert_picture)" },
             "para_index": { "type": "integer", "description": "1-based paragraph index (omit to target current selection)" },
             "text": { "type": "string" },
             "color": { "type": "string", "description": "#RRGGBB or basic color name" },
@@ -59,7 +66,15 @@ public sealed class WordEditTool : ITool
             "bold": { "type": "boolean" },
             "style": { "type": "string", "description": "heading1|heading2|heading3|title|normal" },
             "rows": { "type": "integer" },
-            "cols": { "type": "integer" }
+            "cols": { "type": "integer" },
+            "shape_index": { "type": "integer", "description": "1-based floating-shape index (set_geometry)" },
+            "shape_name": { "type": "string", "description": "Shape name (set_geometry, fallback for shape_index)" },
+            "left": { "type": "number", "description": "X position in points (set_geometry)" },
+            "top": { "type": "number", "description": "Y position in points (set_geometry)" },
+            "width": { "type": "number", "description": "Width in points (set_geometry)" },
+            "height": { "type": "number", "description": "Height in points (set_geometry)" },
+            "rotation": { "type": "number", "description": "Rotation angle in degrees, clockwise (set_geometry)" },
+            "flip": { "type": "string", "description": "Flip the shape: horizontal | vertical (set_geometry)" }
           },
           "required": ["action"]
         }
@@ -74,10 +89,19 @@ public sealed class WordEditTool : ITool
         [property: JsonPropertyName("bold")] bool? Bold,
         [property: JsonPropertyName("style")] string? Style,
         [property: JsonPropertyName("rows")] int? Rows,
-        [property: JsonPropertyName("cols")] int? Cols);
+        [property: JsonPropertyName("cols")] int? Cols,
+        [property: JsonPropertyName("shape_index")] int? ShapeIndex,
+        [property: JsonPropertyName("shape_name")] string? ShapeName,
+        [property: JsonPropertyName("left")] double? Left,
+        [property: JsonPropertyName("top")] double? Top,
+        [property: JsonPropertyName("width")] double? Width,
+        [property: JsonPropertyName("height")] double? Height,
+        [property: JsonPropertyName("rotation")] double? Rotation,
+        [property: JsonPropertyName("flip")] string? Flip,
+        [property: JsonPropertyName("path")] string? Path);
 
     private static readonly string[] Actions =
-        { "set_text", "set_font", "set_style", "insert_paragraph", "delete_paragraph", "insert_table" };
+        { "set_text", "set_font", "set_style", "insert_paragraph", "delete_paragraph", "insert_table", "set_geometry", "insert_picture" };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -100,7 +124,7 @@ public sealed class WordEditTool : ITool
         string? error = null;
         try
         {
-            result = await _sta.InvokeAsync(() => Apply(inp!)).ConfigureAwait(false);
+            result = await _sta.InvokeAsync(() => Apply(inp!, context.WorkingDirectory)).ConfigureAwait(false);
         }
         catch (System.Exception ex)
         {
@@ -136,11 +160,15 @@ public sealed class WordEditTool : ITool
             "delete_paragraph" when inp.ParaIndex is null => "delete_paragraph 에는 para_index 가 필요합니다.",
             "insert_table" when inp.Rows is null or < 1 || inp.Cols is null or < 1
                 => "insert_table 에는 rows, cols(1 이상)가 필요합니다.",
+            "set_geometry" when ShapeGeometry.IsEmpty(inp.Left, inp.Top, inp.Width, inp.Height, inp.Rotation, inp.Flip)
+                => "set_geometry 에는 left, top, width, height, rotation, flip 중 하나가 필요합니다.",
+            "set_geometry" => ShapeGeometry.ValidateFlip(inp.Flip),
+            "insert_picture" when string.IsNullOrWhiteSpace(inp.Path) => "insert_picture 에는 path 가 필요합니다.",
             _ => null,
         };
     }
 
-    private static string Apply(Input inp)
+    private static string Apply(Input inp, string workingDir)
     {
         dynamic? app = ComInterop.TryGetActiveObject("Word.Application");
         if (app is null)
@@ -152,6 +180,28 @@ public sealed class WordEditTool : ITool
 
         switch (inp.Action)
         {
+            case "insert_picture":
+            {
+                var file = OfficePicture.ResolvePath(inp.Path, workingDir);
+
+                // left/top 지정 시 떠있는 도형, 없으면 현재 선택 위치에 인라인 삽입.
+                if (inp.Left is not null || inp.Top is not null)
+                {
+                    var w = inp.Width is not null ? (float)inp.Width.Value : OfficePicture.KeepNative;
+                    var h = inp.Height is not null ? (float)inp.Height.Value : OfficePicture.KeepNative;
+                    doc.Shapes.AddPicture(
+                        file, OfficePicture.LinkToFileFalse, OfficePicture.SaveWithDocTrue,
+                        (float)(inp.Left ?? 0), (float)(inp.Top ?? 0), w, h);
+                    return "OK: 이미지를 삽입했습니다(떠있는 도형).";
+                }
+
+                dynamic inline = app.Selection.InlineShapes.AddPicture(
+                    file, OfficePicture.LinkToFileFalse, OfficePicture.SaveWithDocTrue);
+                if (inp.Width is not null) { inline.Width = (float)inp.Width.Value; }
+                if (inp.Height is not null) { inline.Height = (float)inp.Height.Value; }
+                return "OK: 이미지를 삽입했습니다(인라인).";
+            }
+
             case "insert_paragraph":
             {
                 dynamic content = doc.Content;
@@ -181,6 +231,15 @@ public sealed class WordEditTool : ITool
                 dynamic tRange = Target(app, doc, inp);
                 doc.Tables.Add(tRange, inp.Rows!.Value, inp.Cols!.Value);
                 return $"OK: {inp.Rows}x{inp.Cols} 표를 삽입했습니다.";
+            }
+
+            case "set_geometry":
+            {
+                dynamic shape = ResolveShape(app, doc, inp);
+                var applied = ShapeGeometry.Apply(shape, inp.Left, inp.Top, inp.Width, inp.Height, inp.Rotation, inp.Flip);
+                var target = inp.ShapeIndex is not null ? $"도형 {inp.ShapeIndex}"
+                    : !string.IsNullOrWhiteSpace(inp.ShapeName) ? $"도형 '{inp.ShapeName}'" : "현재 선택 도형";
+                return $"OK: {target} 에 기하 변경 {applied}건 적용.";
             }
         }
 
@@ -250,6 +309,53 @@ public sealed class WordEditTool : ITool
         }
 
         return app.Selection.Range;
+    }
+
+    // 대상 도형: shape_index/shape_name 지정 시 그 떠있는 도형, 없으면 현재 선택한 도형.
+    private static dynamic ResolveShape(dynamic app, dynamic doc, Input inp)
+    {
+        if (inp.ShapeIndex is not null)
+        {
+            int count = (int)doc.Shapes.Count;
+            if (inp.ShapeIndex.Value < 1 || inp.ShapeIndex.Value > count)
+            {
+                throw new System.InvalidOperationException(
+                    $"도형 {inp.ShapeIndex} 없음(현재 {count}개). WordInspect 의 shapes 에서 인덱스를 확인하세요.");
+            }
+
+            return doc.Shapes[inp.ShapeIndex.Value];
+        }
+
+        if (!string.IsNullOrWhiteSpace(inp.ShapeName))
+        {
+            try
+            {
+                return doc.Shapes[inp.ShapeName];
+            }
+            catch
+            {
+                throw new System.InvalidOperationException($"도형 '{inp.ShapeName}' 을 찾지 못했습니다.");
+            }
+        }
+
+        // 미지정 → 현재 선택한 도형(ShapeRange). 도형이 선택돼 있지 않으면 실패.
+        dynamic? shape = null;
+        try
+        {
+            shape = app.Selection.ShapeRange[1];
+        }
+        catch
+        {
+            // 무시하고 아래에서 에러 처리.
+        }
+
+        if (shape is null)
+        {
+            throw new System.InvalidOperationException(
+                "대상 도형이 없습니다. shape_index/shape_name 으로 지정하거나, Word 에서 도형을 선택한 뒤 다시 시도하세요.");
+        }
+
+        return shape;
     }
 
     private static int StyleId(string style) => style.Trim().ToLowerInvariant() switch

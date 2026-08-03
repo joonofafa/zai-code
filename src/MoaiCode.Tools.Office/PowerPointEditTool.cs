@@ -37,6 +37,11 @@ public sealed class PowerPointEditTool : ITool
           - set_fill: set a shape's fill (background) color (needs "color")
           - set_font: set text color/size/bold (any of "color", "font_size", "bold")
           - set_line: set border line color/weight (any of "color", "line_weight")
+          - set_geometry: move/resize/rotate/flip a shape (any of "left","top","width","height" in points,
+            "rotation" in degrees clockwise, "flip": horizontal|vertical)
+          - insert_picture: add an image from a local file ("path"; optional "left","top","width","height"
+            in points, omit width/height for native size) onto slide_index (or the current slide). Get the
+            file first via ImageCreate (generated) or ImageFetch (from a web URL).
         Target the shape by shape_id (from PowerPointInspect) on slide_index; shape_name is a fallback.
         If no shape target is given, the action applies to the CURRENTLY SELECTED shape(s).
         "scope" selects where the shape lives: "slide" (default, body shapes), "layout" (the slide's
@@ -56,7 +61,8 @@ public sealed class PowerPointEditTool : ITool
         {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["set_text", "set_fill", "set_font", "set_line"], "description": "Edit action" },
+            "action": { "type": "string", "enum": ["set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture"], "description": "Edit action" },
+            "path": { "type": "string", "description": "Local image file path (insert_picture)" },
             "slide_index": { "type": "integer", "description": "1-based slide index (omit to target current selection)" },
             "scope": { "type": "string", "enum": ["slide", "layout", "master"], "description": "Where the target shape lives: slide (default), layout, or master. layout/master require slide_index + shape_id/shape_name." },
             "shape_id": { "type": "integer", "description": "Shape id from PowerPointInspect (preferred)" },
@@ -65,7 +71,13 @@ public sealed class PowerPointEditTool : ITool
             "color": { "type": "string", "description": "#RRGGBB hex or basic color name (set_fill/set_font/set_line)" },
             "font_size": { "type": "number", "description": "Font size in points (set_font)" },
             "bold": { "type": "boolean", "description": "Bold on/off (set_font)" },
-            "line_weight": { "type": "number", "description": "Border line weight in points (set_line)" }
+            "line_weight": { "type": "number", "description": "Border line weight in points (set_line)" },
+            "left": { "type": "number", "description": "X position in points (set_geometry)" },
+            "top": { "type": "number", "description": "Y position in points (set_geometry)" },
+            "width": { "type": "number", "description": "Width in points (set_geometry)" },
+            "height": { "type": "number", "description": "Height in points (set_geometry)" },
+            "rotation": { "type": "number", "description": "Rotation angle in degrees, clockwise (set_geometry)" },
+            "flip": { "type": "string", "description": "Flip the shape: horizontal | vertical (set_geometry)" }
           },
           "required": ["action"]
         }
@@ -81,9 +93,17 @@ public sealed class PowerPointEditTool : ITool
         [property: JsonPropertyName("color")] string? Color,
         [property: JsonPropertyName("font_size")] double? FontSize,
         [property: JsonPropertyName("bold")] bool? Bold,
-        [property: JsonPropertyName("line_weight")] double? LineWeight);
+        [property: JsonPropertyName("line_weight")] double? LineWeight,
+        [property: JsonPropertyName("left")] double? Left,
+        [property: JsonPropertyName("top")] double? Top,
+        [property: JsonPropertyName("width")] double? Width,
+        [property: JsonPropertyName("height")] double? Height,
+        [property: JsonPropertyName("rotation")] double? Rotation,
+        [property: JsonPropertyName("flip")] string? Flip,
+        [property: JsonPropertyName("path")] string? Path);
 
-    private static readonly string[] Actions = { "set_text", "set_fill", "set_font", "set_line" };
+    private static readonly string[] Actions =
+        { "set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture" };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -106,7 +126,7 @@ public sealed class PowerPointEditTool : ITool
         string? error = null;
         try
         {
-            result = await _sta.InvokeAsync(() => Apply(inp!)).ConfigureAwait(false);
+            result = await _sta.InvokeAsync(() => Apply(inp!, context.WorkingDirectory)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -160,11 +180,15 @@ public sealed class PowerPointEditTool : ITool
                 => "set_font 에는 color, font_size, bold 중 하나가 필요합니다.",
             "set_line" when string.IsNullOrWhiteSpace(inp.Color) && inp.LineWeight is null
                 => "set_line 에는 color 또는 line_weight 가 필요합니다.",
+            "set_geometry" when ShapeGeometry.IsEmpty(inp.Left, inp.Top, inp.Width, inp.Height, inp.Rotation, inp.Flip)
+                => "set_geometry 에는 left, top, width, height, rotation, flip 중 하나가 필요합니다.",
+            "set_geometry" => ShapeGeometry.ValidateFlip(inp.Flip),
+            "insert_picture" when string.IsNullOrWhiteSpace(inp.Path) => "insert_picture 에는 path 가 필요합니다.",
             _ => null,
         };
     }
 
-    private static string Apply(Input inp)
+    private static string Apply(Input inp, string workingDir)
     {
         dynamic? app = ComInterop.TryGetActiveObject("PowerPoint.Application");
         if (app is null)
@@ -173,6 +197,11 @@ public sealed class PowerPointEditTool : ITool
         }
 
         dynamic pres = app.ActivePresentation; // 없으면 COMException
+
+        if (inp.Action == "insert_picture")
+        {
+            return InsertPicture(app, pres, inp, workingDir);
+        }
 
         var targets = ResolveTargets(app, pres, inp);
         if (targets.Count == 0)
@@ -190,6 +219,39 @@ public sealed class PowerPointEditTool : ITool
             ? $"슬라이드 {inp.SlideIndex}" + ((inp.Scope ?? "slide") is var sc && sc != "slide" ? $"({sc})" : string.Empty)
             : "현재 선택";
         return $"OK: {where} 도형 {targets.Count}개에 {inp.Action} 적용.";
+    }
+
+    // 로컬 이미지 파일을 슬라이드에 삽입한다. slide_index 지정 시 그 슬라이드, 없으면 현재 슬라이드.
+    private static string InsertPicture(dynamic app, dynamic pres, Input inp, string workingDir)
+    {
+        var file = OfficePicture.ResolvePath(inp.Path, workingDir);
+
+        dynamic slide;
+        if (inp.SlideIndex is not null)
+        {
+            int slideCount = (int)pres.Slides.Count;
+            if (inp.SlideIndex.Value < 1 || inp.SlideIndex.Value > slideCount)
+            {
+                throw new InvalidOperationException($"슬라이드 {inp.SlideIndex} 없음(현재 {slideCount}개).");
+            }
+
+            slide = pres.Slides[inp.SlideIndex.Value];
+        }
+        else
+        {
+            slide = app.ActiveWindow.View.Slide; // 현재 편집 중인 슬라이드
+        }
+
+        var left = (float)(inp.Left ?? 100);
+        var top = (float)(inp.Top ?? 100);
+        var width = inp.Width is not null ? (float)inp.Width.Value : OfficePicture.KeepNative;
+        var height = inp.Height is not null ? (float)inp.Height.Value : OfficePicture.KeepNative;
+
+        slide.Shapes.AddPicture(
+            file, OfficePicture.LinkToFileFalse, OfficePicture.SaveWithDocTrue, left, top, width, height);
+
+        var where = inp.SlideIndex is not null ? $"슬라이드 {inp.SlideIndex}" : "현재 슬라이드";
+        return $"OK: {where} 에 이미지를 삽입했습니다.";
     }
 
     // 대상 도형 목록을 만든다: 지정(slide_index+shape) 하나, 또는 현재 선택 전체.
@@ -321,6 +383,10 @@ public sealed class PowerPointEditTool : ITool
                     shape.Line.Weight = (float)inp.LineWeight.Value;
                 }
 
+                break;
+
+            case "set_geometry":
+                ShapeGeometry.Apply(shape, inp.Left, inp.Top, inp.Width, inp.Height, inp.Rotation, inp.Flip);
                 break;
         }
     }

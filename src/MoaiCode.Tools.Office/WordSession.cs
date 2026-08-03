@@ -78,7 +78,34 @@ public sealed class WordSession
             Path: TryGet(() => (string?)doc.FullName, null),
             ParagraphCount: paraCount,
             SelectionText: selection,
-            Paragraphs: paras);
+            Paragraphs: paras,
+            Shapes: ReadShapes(doc));
+    }
+
+    // 떠 있는 도형(doc.Shapes) 목록. 인라인 이미지(InlineShapes)는 회전/이동이 안 되므로 제외.
+    private static IReadOnlyList<OfficeShapeInfo> ReadShapes(dynamic doc)
+    {
+        var shapes = new List<OfficeShapeInfo>();
+        int count = TryGet(() => (int?)doc.Shapes.Count, null) ?? 0;
+        for (var i = 1; i <= count; i++)
+        {
+            dynamic? shape = TryGet(() => doc.Shapes[i], null);
+            if (shape is null)
+            {
+                continue;
+            }
+
+            shapes.Add(new OfficeShapeInfo(
+                Index: i,
+                Name: TryGet(() => (string?)shape.Name, null) ?? $"Shape{i}",
+                Left: TryGet(() => (double?)Convert.ToDouble(shape.Left), null) ?? 0,
+                Top: TryGet(() => (double?)Convert.ToDouble(shape.Top), null) ?? 0,
+                Width: TryGet(() => (double?)Convert.ToDouble(shape.Width), null) ?? 0,
+                Height: TryGet(() => (double?)Convert.ToDouble(shape.Height), null) ?? 0,
+                Rotation: TryGet(() => (double?)Convert.ToDouble(shape.Rotation), null) ?? 0));
+        }
+
+        return shapes;
     }
 
     // Office COM 색(BGR int) → "#RRGGBB". wdColorAutomatic(-16777216) 등 특수값은 null.

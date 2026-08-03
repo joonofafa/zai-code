@@ -53,7 +53,40 @@ public sealed class ExcelSession
             Path: TryGet(() => (string?)wb.FullName),
             ActiveSheet: TryGet(() => (string?)app.ActiveSheet.Name),
             Sheets: sheets,
-            Selection: ReadSelection(app, maxRows, maxCols));
+            Selection: ReadSelection(app, maxRows, maxCols),
+            Shapes: ReadShapes(app));
+    }
+
+    // 활성 시트의 도형 목록. 편집(set_geometry)은 활성 시트 도형을 대상으로 한다.
+    private static IReadOnlyList<OfficeShapeInfo> ReadShapes(dynamic app)
+    {
+        var shapes = new List<OfficeShapeInfo>();
+        dynamic? sheet = TryGet(() => app.ActiveSheet);
+        if (sheet is null)
+        {
+            return shapes;
+        }
+
+        int count = TryGet(() => (int?)sheet.Shapes.Count) ?? 0;
+        for (var i = 1; i <= count; i++)
+        {
+            dynamic? shape = TryGet(() => sheet.Shapes.Item(i));
+            if (shape is null)
+            {
+                continue;
+            }
+
+            shapes.Add(new OfficeShapeInfo(
+                Index: i,
+                Name: TryGet(() => (string?)shape.Name) ?? $"Shape{i}",
+                Left: TryGet(() => (double?)Convert.ToDouble(shape.Left)) ?? 0,
+                Top: TryGet(() => (double?)Convert.ToDouble(shape.Top)) ?? 0,
+                Width: TryGet(() => (double?)Convert.ToDouble(shape.Width)) ?? 0,
+                Height: TryGet(() => (double?)Convert.ToDouble(shape.Height)) ?? 0,
+                Rotation: TryGet(() => (double?)Convert.ToDouble(shape.Rotation)) ?? 0));
+        }
+
+        return shapes;
     }
 
     private static SelectionInfo? ReadSelection(dynamic app, int maxRows, int maxCols)

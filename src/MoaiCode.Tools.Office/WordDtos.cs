@@ -8,7 +8,9 @@ public sealed record WordDocInfo(
     string? Path,
     int ParagraphCount,
     string? SelectionText,
-    IReadOnlyList<WordParaInfo> Paragraphs);
+    IReadOnlyList<WordParaInfo> Paragraphs,
+    // 떠 있는(floating) 도형 목록. WordEdit set_geometry 의 대상 참조용(1-based Index/Name). 인라인 이미지는 제외.
+    IReadOnlyList<OfficeShapeInfo>? Shapes = null);
 
 /// <summary>문단 하나. 모델이 문서 톤(크기·색·글꼴)을 보고 편집을 판단하도록 서식도 포함.</summary>
 public sealed record WordParaInfo(

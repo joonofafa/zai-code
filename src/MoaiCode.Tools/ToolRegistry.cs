@@ -30,5 +30,6 @@ public static class ToolRegistry
         new OrgDatasListTool(),
         new OrgDatasTool(),
         new ImageCreateTool(),
+        new ImageFetchTool(),
     };
 }
