@@ -15,6 +15,8 @@ namespace MoaiCode.Tools.Office;
 public sealed class WordEditTool : ITool
 {
     // WdBuiltinStyle.
+    private const int WdPageBreak = 7;   // WdBreakType.wdPageBreak
+    private const int WdCollapseEnd = 0;  // WdCollapseDirection.wdCollapseEnd
     private const int WdStyleNormal = -1;
     private const int WdStyleHeading1 = -2;
     private const int WdStyleHeading2 = -3;
@@ -57,7 +59,7 @@ public sealed class WordEditTool : ITool
         {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["set_text","set_font","set_style","insert_paragraph","delete_paragraph","insert_table","set_geometry","insert_picture"] },
+            "action": { "type": "string", "enum": ["set_text","set_font","set_style","insert_paragraph","delete_paragraph","insert_table","set_geometry","insert_picture","add_page"] },
             "path": { "type": "string", "description": "Local image file path (insert_picture)" },
             "para_index": { "type": "integer", "description": "1-based paragraph index (omit to target current selection)" },
             "text": { "type": "string" },
@@ -101,7 +103,7 @@ public sealed class WordEditTool : ITool
         [property: JsonPropertyName("path")] string? Path);
 
     private static readonly string[] Actions =
-        { "set_text", "set_font", "set_style", "insert_paragraph", "delete_paragraph", "insert_table", "set_geometry", "insert_picture" };
+        { "set_text", "set_font", "set_style", "insert_paragraph", "delete_paragraph", "insert_table", "set_geometry", "insert_picture", "add_page" };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -212,6 +214,22 @@ public sealed class WordEditTool : ITool
                 // style 을 지정했으면 그 스타일, 없으면 본문(Normal)로 강제해 톤앤매너를 유지한다.
                 last.Style = string.IsNullOrWhiteSpace(inp.Style) ? WdStyleNormal : StyleId(inp.Style!);
                 return "OK: 문단을 추가했습니다.";
+            }
+
+            case "add_page":
+            {
+                // 문서 끝에 페이지 나눔을 넣어 새 페이지를 시작하고, text 가 있으면 그 페이지에 문단으로 채운다.
+                dynamic rng = doc.Content;
+                rng.Collapse(WdCollapseEnd);
+                rng.InsertBreak(WdPageBreak);
+                if (!string.IsNullOrWhiteSpace(inp.Text))
+                {
+                    rng.InsertAfter(inp.Text);
+                    dynamic last = doc.Paragraphs[(int)doc.Paragraphs.Count].Range;
+                    last.Style = string.IsNullOrWhiteSpace(inp.Style) ? WdStyleNormal : StyleId(inp.Style!);
+                }
+
+                return "OK: 새 페이지를 추가했습니다" + (string.IsNullOrWhiteSpace(inp.Text) ? "." : "(내용 포함).");
             }
 
             case "delete_paragraph":

@@ -42,6 +42,9 @@ public sealed class PowerPointEditTool : ITool
           - insert_picture: add an image from a local file ("path"; optional "left","top","width","height"
             in points, omit width/height for native size) onto slide_index (or the current slide). Get the
             file first via ImageCreate (generated) or ImageFetch (from a web URL).
+          - add_slide: append a new slide (optionally at "slide_index"). Fill it directly to draft fast:
+            "text" = title, "bullets" = body lines, "layout" = title_content(default)|title_only|title|blank.
+            Repeat to build a deck from an empty presentation.
         Target the shape by shape_id (from PowerPointInspect) on slide_index; shape_name is a fallback.
         If no shape target is given, the action applies to the CURRENTLY SELECTED shape(s).
         "scope" selects where the shape lives: "slide" (default, body shapes), "layout" (the slide's
@@ -61,7 +64,9 @@ public sealed class PowerPointEditTool : ITool
         {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture"], "description": "Edit action" },
+            "action": { "type": "string", "enum": ["set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide"], "description": "Edit action" },
+            "bullets": { "type": "array", "items": { "type": "string" }, "description": "add_slide: body bullet lines" },
+            "layout": { "type": "string", "enum": ["title_content", "title_only", "title", "blank"], "description": "add_slide: slide layout (default title_content)" },
             "path": { "type": "string", "description": "Local image file path (insert_picture)" },
             "slide_index": { "type": "integer", "description": "1-based slide index (omit to target current selection)" },
             "scope": { "type": "string", "enum": ["slide", "layout", "master"], "description": "Where the target shape lives: slide (default), layout, or master. layout/master require slide_index + shape_id/shape_name." },
@@ -100,10 +105,12 @@ public sealed class PowerPointEditTool : ITool
         [property: JsonPropertyName("height")] double? Height,
         [property: JsonPropertyName("rotation")] double? Rotation,
         [property: JsonPropertyName("flip")] string? Flip,
-        [property: JsonPropertyName("path")] string? Path);
+        [property: JsonPropertyName("path")] string? Path,
+        [property: JsonPropertyName("bullets")] List<string>? Bullets,
+        [property: JsonPropertyName("layout")] string? Layout);
 
     private static readonly string[] Actions =
-        { "set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture" };
+        { "set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide" };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -203,6 +210,11 @@ public sealed class PowerPointEditTool : ITool
             return InsertPicture(app, pres, inp, workingDir);
         }
 
+        if (inp.Action == "add_slide")
+        {
+            return AddSlide(pres, inp);
+        }
+
         var targets = ResolveTargets(app, pres, inp);
         if (targets.Count == 0)
         {
@@ -255,6 +267,47 @@ public sealed class PowerPointEditTool : ITool
     }
 
     // 대상 도형 목록을 만든다: 지정(slide_index+shape) 하나, 또는 현재 선택 전체.
+    // PpSlideLayout: title(1) · title+content(2) · title only(11) · blank(12).
+    private const int PpLayoutTitle = 1;
+    private const int PpLayoutText = 2;
+    private const int PpLayoutTitleOnly = 11;
+    private const int PpLayoutBlank = 12;
+
+    // 새 슬라이드를 추가하고(레이아웃), 제목/불릿을 바로 채운다 — 빈 프레젠테이션에서 초안 생성용.
+    private static string AddSlide(dynamic pres, Input inp)
+    {
+        int count = (int)pres.Slides.Count;
+        int index = inp.SlideIndex is int si && si >= 1 && si <= count + 1 ? si : count + 1;
+        var layout = SlideLayoutId(inp.Layout);
+        dynamic slide = pres.Slides.Add(index, layout);
+
+        if (!string.IsNullOrWhiteSpace(inp.Text))
+        {
+            TrySet(() => slide.Shapes.Title.TextFrame.TextRange.Text = inp.Text);
+        }
+
+        if (inp.Bullets is { Count: > 0 })
+        {
+            var body = string.Join("\r", inp.Bullets.Where(b => !string.IsNullOrEmpty(b)));
+            // 본문 플레이스홀더(보통 2번). 없으면 조용히 넘어간다(레이아웃에 따라 부재 가능).
+            TrySet(() => slide.Shapes.Placeholders[2].TextFrame.TextRange.Text = body);
+        }
+
+        var extras = new List<string>();
+        if (!string.IsNullOrWhiteSpace(inp.Text)) { extras.Add("제목"); }
+        if (inp.Bullets is { Count: > 0 }) { extras.Add($"불릿 {inp.Bullets.Count}개"); }
+        var filled = extras.Count > 0 ? " — " + string.Join(", ", extras) + " 설정" : string.Empty;
+        return $"OK: 슬라이드 {index} 추가(레이아웃 {inp.Layout ?? "title_content"}){filled}.";
+    }
+
+    private static int SlideLayoutId(string? layout) => layout?.Trim().ToLowerInvariant() switch
+    {
+        "blank" => PpLayoutBlank,
+        "title_only" => PpLayoutTitleOnly,
+        "title" => PpLayoutTitle,
+        _ => PpLayoutText, // title_content
+    };
+
     private static List<dynamic> ResolveTargets(dynamic app, dynamic pres, Input inp)
     {
         var list = new List<dynamic>();
