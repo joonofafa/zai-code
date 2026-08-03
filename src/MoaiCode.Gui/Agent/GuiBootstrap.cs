@@ -80,9 +80,9 @@ public static class GuiBootstrap
         var list = ToolRegistry.BuiltIn
             .Where(t => t.Name is not "OrgDatas" and not "OrgDatasList" and not "OrgDocsDelete")
             .ToList();
-        list.Add(new DocxCreateTool());
-        list.Add(new XlsxCreateTool());
-        list.Add(new PptxCreateTool());
+
+        // 문서 생성(OpenXML)은 Desktop 에서 제거 — 작성·편집은 열려 있는 Office(COM)로만 한다.
+        // OpenXml 어셈블리는 읽기용(DocumentTextExtractor/OfficeDocInspect)·공유 동기화에 계속 필요해 유지.
         list.Add(new OfficeDocInspectTool());
         list.Add(new ChunkBuildTool());
         list.Add(new ChunkFetchTool());

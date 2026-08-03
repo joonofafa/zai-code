@@ -208,12 +208,26 @@ public static class SystemPromptBuilder
             return null;
         }
 
-        return string.Join("\n", new[]
+        // Create(OpenXML) 툴 없이 COM 편집 툴만 있는 세션(MoAI Desktop) — 열린 문서에서만 작업.
+        var editOnly =
+            !(has.Contains("DocxCreate") || has.Contains("XlsxCreate") || has.Contains("PptxCreate"))
+            && (has.Contains("WordEdit") || has.Contains("ExcelEdit") || has.Contains("PowerPointEdit"));
+
+        var doc = new List<string>
         {
             "# Working with documents",
             "",
             "Some of your tools create or edit real Office documents (Word/Excel/PowerPoint) that the user will deliver as finished work. When the request is to produce or edit a document, you are writing a polished deliverable, not code — for the document's CONTENT (not your chat replies), the guidance below overrides the brevity and minimal-change coding rules above.",
             "",
+        };
+
+        if (editOnly)
+        {
+            doc.Add(" - This session has NO standalone file-creation tool. Do NOT generate .docx/.xlsx/.pptx files or write scripts to do so. Create and edit content ONLY inside the Office document that is currently OPEN, in place, via WordEdit/ExcelEdit/PowerPointEdit (add pages/slides/sheets and fill content there). If the app you need is not open, tell the user which app to open — it will be launched for them.");
+        }
+
+        doc.AddRange(new[]
+        {
             " - Structure to the document type. Word (report/letter): a clear title, a short lead or summary, then logical sections with headings; use bullet/numbered lists and tables where they aid clarity — never a wall of plain paragraphs. PowerPoint (slides): one idea per slide, a strong title, concise scannable bullets; use tables, two-column layouts, or shapes for visual structure. Excel (data): a labeled header row, consistent columns, and a chart when the data shows a trend or comparison.",
             " - Write substantive, complete body content in the user's language, with enough detail to be genuinely useful. \"One sentence beats three\" is for your chat messages, not for document body text.",
             " - Match the audience and tone. Default to a professional, business-appropriate register (this is a financial-company setting) unless the user asks otherwise.",
@@ -221,6 +235,8 @@ public static class SystemPromptBuilder
             " - Editing an existing document: FIRST inspect it (WordInspect/PowerPointInspect/ExcelInspect) and MATCH its existing tone and formatting (font size, style, color, spacing). Change only what the user asked; leave unrelated content and formatting untouched.",
             " - Ground the content in any reference documents provided; do not invent facts, figures, or quotations.",
         });
+
+        return string.Join("\n", doc);
     }
 
     private static string Environment(PromptContext ctx)
