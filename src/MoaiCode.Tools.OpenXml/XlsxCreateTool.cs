@@ -108,7 +108,8 @@ public sealed class XlsxCreateTool : ITool
         [property: JsonPropertyName("rows")] List<List<string>>? Rows,
         [property: JsonPropertyName("boldHeader")] bool? BoldHeader,
         [property: JsonPropertyName("formats")] List<string>? Formats,
-        [property: JsonPropertyName("charts")] List<ChartIn>? Charts);
+        [property: JsonPropertyName("charts")] List<ChartIn>? Charts,
+        [property: JsonPropertyName("bordered")] bool? Bordered = null);
 
     private sealed record Input(
         [property: JsonPropertyName("path")] string? Path,
@@ -136,7 +137,7 @@ public sealed class XlsxCreateTool : ITool
                         new[] { "일자", "적요", "금액", "비고" },
                         Empty(4), Empty(4), Empty(4), Empty(4), Empty(4),
                         new[] { "", "합계", "=SUM(C7:C11)", "" }),
-                    BoldHeader: true, Formats: new() { "date", "", "won", "" }, Charts: null) };
+                    BoldHeader: true, Formats: new() { "date", "", "won", "" }, Charts: null, Bordered: true) };
 
             case "invoice" or "거래명세서":
                 // 제목·거래처·품목표(품목/규격/수량/단가/금액)·합계.
@@ -149,7 +150,7 @@ public sealed class XlsxCreateTool : ITool
                         new[] { "품목", "규격", "수량", "단가", "금액" },
                         Empty(5), Empty(5), Empty(5), Empty(5), Empty(5),
                         new[] { "합계", "", "", "", "=SUM(E6:E10)" }),
-                    BoldHeader: true, Formats: new() { "", "", "int", "won", "won" }, Charts: null) };
+                    BoldHeader: true, Formats: new() { "", "", "int", "won", "won" }, Charts: null, Bordered: true) };
 
             case "inventory" or "재고관리표":
                 // 제목·재고표(품목/규격/입고/출고/재고/비고).
@@ -159,7 +160,7 @@ public sealed class XlsxCreateTool : ITool
                         Empty(6),
                         new[] { "품목", "규격", "입고", "출고", "재고", "비고" },
                         Empty(6), Empty(6), Empty(6), Empty(6), Empty(6)),
-                    BoldHeader: true, Formats: new() { "", "", "int", "int", "int", "" }, Charts: null) };
+                    BoldHeader: true, Formats: new() { "", "", "int", "int", "int", "" }, Charts: null, Bordered: true) };
 
             default:
                 return null;
@@ -226,6 +227,10 @@ public sealed class XlsxCreateTool : ITool
         var stylesPart = wbPart.AddNewPart<WorkbookStylesPart>();
         stylesPart.Stylesheet = BuildStylesheet(customCodes);
 
+        // 테두리 뱅크 오프셋: 뱅크 A(테두리 없음) 크기 = 고정 5 + 커스텀 numFmt 수.
+        // bordered 시트는 각 셀 스타일 인덱스에 이 값을 더해 동일 서식 + 테두리를 참조한다.
+        uint borderOffset = FirstCustomStyle + (uint)customCodes.Count;
+
         var sheetsEl = wbPart.Workbook.AppendChild(new Sheets());
 
         uint sheetId = 1;
@@ -240,6 +245,7 @@ public sealed class XlsxCreateTool : ITool
                 .ToList();
 
             var bold = sheet.BoldHeader == true;
+            var borderBase = sheet.Bordered == true ? borderOffset : 0u;
             var colWidth = new Dictionary<int, double>();
             uint r = 1;
             foreach (var rowCells in sheet.Rows ?? new List<List<string>>())
@@ -249,7 +255,7 @@ public sealed class XlsxCreateTool : ITool
                 foreach (var value in rowCells)
                 {
                     var colStyle = col < colStyles.Count ? colStyles[col] : null;
-                    row.AppendChild(MakeCell(Reference(col, r), value, bold && r == 1, colStyle));
+                    row.AppendChild(MakeCell(Reference(col, r), value, bold && r == 1, colStyle, borderBase));
 
                     // 열 너비 추정: 수식은 결과를 몰라 내용폭에서 제외하고 서식 최소폭으로 커버.
                     var content = (value ?? string.Empty).StartsWith('=') ? 0 : DisplayWidth(value);
@@ -361,25 +367,51 @@ public sealed class XlsxCreateTool : ITool
 
     private static Stylesheet BuildStylesheet(IReadOnlyList<string> customCodes)
     {
-        var cellFormats = new CellFormats(
-            new CellFormat(),                                                          // 0: 기본
-            new CellFormat { FontId = 1, ApplyFont = true },                           // 1: 굵게
-            new CellFormat { NumberFormatId = 10, ApplyNumberFormat = true },          // 2: 0.00%
-            new CellFormat { NumberFormatId = 3, ApplyNumberFormat = true },           // 3: #,##0
-            new CellFormat { NumberFormatId = 4, ApplyNumberFormat = true });          // 4: #,##0.00
-
         var numberingFormats = new NumberingFormats();
         var fmtId = FirstCustomNumFmtId;
+
+        // 뱅크 A(테두리 없음) 서식 스펙: (fontId?, numFmtId?). 인덱스 0..4 는 기존과 동일.
+        var specs = new List<(uint? Font, uint? NumFmt)>
+        {
+            (null, null),  // 0: 기본
+            (1u, null),    // 1: 굵게
+            (null, 10u),   // 2: 0.00%
+            (null, 3u),    // 3: #,##0
+            (null, 4u),    // 4: #,##0.00
+        };
         foreach (var code in customCodes)
         {
             numberingFormats.AppendChild(new NumberingFormat { NumberFormatId = fmtId, FormatCode = code });
-            cellFormats.AppendChild(new CellFormat { NumberFormatId = fmtId, ApplyNumberFormat = true });
+            specs.Add((null, fmtId));
             fmtId++;
         }
 
+        // 뱅크 A(테두리 없음) 그다음 뱅크 B(테두리 borderId=1). B 인덱스 = A 인덱스 + specs.Count(=borderOffset).
+        CellFormat Make((uint? Font, uint? NumFmt) s, bool bordered)
+        {
+            var cf = new CellFormat();
+            if (s.Font is uint f) { cf.FontId = f; cf.ApplyFont = true; }
+            if (s.NumFmt is uint n) { cf.NumberFormatId = n; cf.ApplyNumberFormat = true; }
+            if (bordered) { cf.BorderId = 1; cf.ApplyBorder = true; }
+            return cf;
+        }
+
+        var cellFormats = new CellFormats();
+        foreach (var s in specs) { cellFormats.AppendChild(Make(s, false)); }
+        foreach (var s in specs) { cellFormats.AppendChild(Make(s, true)); }
+        cellFormats.Count = (uint)(specs.Count * 2);
+
         var fonts = new Fonts(new Font(), new Font(new Bold()));
         var fills = new Fills(new Fill(new PatternFill { PatternType = PatternValues.None }));
-        var borders = new Borders(new Border());
+
+        // 테두리: 0 = 없음, 1 = 얇은 사방 테두리(양식 표용).
+        var thin = new Border(
+            new LeftBorder { Style = BorderStyleValues.Thin },
+            new RightBorder { Style = BorderStyleValues.Thin },
+            new TopBorder { Style = BorderStyleValues.Thin },
+            new BottomBorder { Style = BorderStyleValues.Thin },
+            new DiagonalBorder());
+        var borders = new Borders(new Border(), thin);
 
         // Stylesheet 자식 순서(스키마): numFmts → fonts → fills → borders → cellFormats.
         if (customCodes.Count > 0)
@@ -396,7 +428,19 @@ public sealed class XlsxCreateTool : ITool
 
     // 셀 문자열을 타이핑한다. columnStyle 지정 시 그 서식을 강제(수식 결과 서식·통화·날짜 등),
     // 아니면 자동 감지: 헤더=라벨(굵게 텍스트), 수식(=)·퍼센트·천단위·순수숫자·텍스트.
-    private static Cell MakeCell(string reference, string? value, bool isHeader, uint? columnStyle)
+    // borderBase 지정 시(bordered 시트) 셀 스타일 인덱스에 오프셋을 더해 동일 서식+테두리를 참조한다.
+    private static Cell MakeCell(string reference, string? value, bool isHeader, uint? columnStyle, uint borderBase)
+    {
+        var cell = MakeCellCore(reference, value, isHeader, columnStyle);
+        if (borderBase != 0)
+        {
+            cell.StyleIndex = (cell.StyleIndex?.Value ?? 0u) + borderBase;
+        }
+
+        return cell;
+    }
+
+    private static Cell MakeCellCore(string reference, string? value, bool isHeader, uint? columnStyle)
     {
         var v = value ?? string.Empty;
 
