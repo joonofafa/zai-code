@@ -20,14 +20,22 @@ public sealed class PptxCreateTool : ITool
 
     public string Description => """
         Creates a new PowerPoint presentation (.pptx) using the built-in Open XML writer — no
-        dependencies, no PowerPoint install. Each slide supports a title, single-column bullets, a
-        TWO-COLUMN layout (`columns`), a TABLE (`table`: headers + rows), and an ACCENT color
-        (`accent`, hex like #2F5496) applied to the title, an underline bar, and the table header row.
-        Layout is automatic: title on top, text (bullets/columns) then table stacked below. For diagrams,
-        `shapes` places free-form boxes/arrows (rect/roundRect/ellipse/arrow/chevron/diamond) at inch
-        coordinates (slide is 10 x 7.5) with fill + centered label. ALWAYS use this to produce a .pptx
-        file. Do NOT install packages (pptxgenjs, python-pptx, etc.) or write scripts. For editing an
-        OPEN presentation on Windows, use PowerPointEdit.
+        dependencies, no PowerPoint install. DESIGN IS TEMPLATE-DRIVEN: pick a "template" (A/B) and a
+        per-slide "layout"; the template fixes colors, fonts, typography hierarchy (title/subtitle/body),
+        spacing and alignment, so you ONLY supply content. Do NOT try to hand-tune a "pretty" design —
+        choose the right layout and write concise content instead.
+        Per slide provide: title, subtitle, and content for the chosen layout —
+          - cover: title + subtitle (centered) — the opening slide
+          - section: a divider between parts (title + subtitle)
+          - content: title + subtitle + bullets (default). Keep bullets to <=5 lines, each ONE short line.
+          - two_col: comparison — provide "columns" (max 2; each heading + bullets)
+          - text_image: explanation with a figure — bullets on the left + "image" on the right
+          - table: data — provide "table" (headers + rows)
+          - quote: one strong statement — put it in "title"
+        "shapes" places free-form boxes/arrows (rect/roundRect/ellipse/arrow/chevron/diamond) at inch
+        coordinates (slide is 10 x 7.5) for diagrams. ALWAYS use this to produce a .pptx file. Do NOT
+        install packages (pptxgenjs, python-pptx, etc.) or write scripts. For editing an OPEN presentation
+        on Windows, use PowerPointEdit.
         """;
 
     public bool IsReadOnly => false;
@@ -39,13 +47,16 @@ public sealed class PptxCreateTool : ITool
           "type": "object",
           "properties": {
             "path": { "type": "string", "description": "Output .pptx path (relative to workspace)" },
+            "template": { "type": "string", "enum": ["A", "B"], "description": "Design template (default A). A = light corporate (grey bg, navy title, left accent bar). B = keynote/bold (white bg, red accent, larger type). The template fixes colors, fonts, typography hierarchy, spacing and alignment — you only provide content." },
             "slides": {
               "type": "array",
               "items": {
                 "type": "object",
                 "properties": {
                   "title": { "type": "string" },
-                  "accent": { "type": "string", "description": "Accent color hex (e.g. #2F5496) for title, underline bar, table header" },
+                  "subtitle": { "type": "string", "description": "Secondary line under the title (subhead)" },
+                  "layout": { "type": "string", "enum": ["cover","section","content","two_col","text_image","table","quote"], "description": "Object placement for this slide. Pick by content: cover=title slide (title+subtitle centered); section=divider between parts; content=title+subtitle+bullets (default); two_col=comparison (provide columns); text_image=explanation with a figure (bullets left + image right, provide image); table=data (provide table); quote=one strong statement (put it in title)." },
+                  "accent": { "type": "string", "description": "Override accent color hex (e.g. #2F5496). Usually omit — the template sets it." },
                   "bullets": { "type": "array", "items": { "type": "string" }, "description": "Single-column bullet lines" },
                   "columns": {
                     "type": "array",
@@ -133,6 +144,8 @@ public sealed class PptxCreateTool : ITool
 
     private sealed record SlideIn(
         [property: JsonPropertyName("title")] string? Title,
+        [property: JsonPropertyName("subtitle")] string? Subtitle,
+        [property: JsonPropertyName("layout")] string? Layout,
         [property: JsonPropertyName("accent")] string? Accent,
         [property: JsonPropertyName("bullets")] List<string>? Bullets,
         [property: JsonPropertyName("columns")] List<ColumnIn>? Columns,
@@ -142,7 +155,43 @@ public sealed class PptxCreateTool : ITool
 
     private sealed record Input(
         [property: JsonPropertyName("path")] string? Path,
+        [property: JsonPropertyName("template")] string? Template,
         [property: JsonPropertyName("slides")] List<SlideIn>? Slides);
+
+    // 디자인 템플릿(프리셋) — 색·폰트·타이포 계층·정렬을 규격으로 고정한다.
+    // "이쁘게 만들어" 같은 모호한 지시 대신, 검증된 템플릿 안에서 콘텐츠만 채운다.
+    private sealed record ThemePreset(
+        string Name,
+        string BgHex,        // 슬라이드 배경
+        string AccentHex,    // 강조(제목·바)
+        string TitleHex,     // 제목 색
+        string SubtitleHex,  // 부제 색
+        string BodyHex,      // 본문 색
+        string TitleFont,    // 제목 글꼴
+        string BodyFont,     // 본문 글꼴
+        int TitlePt,         // 제목 pt
+        int SubtitlePt,      // 부제 pt
+        int BodyPt);         // 본문 pt
+
+    // A형: 연그레이 배경 + 좌측 accent 바 + 뚜렷한 타이포 계층(큰 제목/중간 부제/본문).
+    private static readonly ThemePreset TemplateA = new(
+        Name: "A", BgHex: "F7F8FA", AccentHex: "2F5496", TitleHex: "1F3864",
+        SubtitleHex: "44546A", BodyHex: "333333",
+        TitleFont: "Calibri Light", BodyFont: "Calibri",
+        TitlePt: 30, SubtitlePt: 17, BodyPt: 15);
+
+    // B형: 흰 배경 + 큰 강조 타이포(키노트풍).
+    private static readonly ThemePreset TemplateB = new(
+        Name: "B", BgHex: "FFFFFF", AccentHex: "C00000", TitleHex: "C00000",
+        SubtitleHex: "595959", BodyHex: "262626",
+        TitleFont: "Arial", BodyFont: "Arial",
+        TitlePt: 34, SubtitlePt: 18, BodyPt: 16);
+
+    private static ThemePreset ResolveTemplate(string? t) => t?.Trim().ToUpperInvariant() switch
+    {
+        "B" => TemplateB,
+        _ => TemplateA, // 기본 A형
+    };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -160,7 +209,7 @@ public sealed class PptxCreateTool : ITool
         try
         {
             full = OpenXmlPaths.ResolveForWrite(context.WorkingDirectory, inp.Path, ".pptx");
-            Write(full, inp.Slides, context.WorkingDirectory);
+            Write(full, inp.Template, inp.Slides, context.WorkingDirectory);
         }
         catch (Exception ex)
         {
@@ -173,7 +222,7 @@ public sealed class PptxCreateTool : ITool
             : new ToolOutput($"OK: {full} 생성 ({inp.Slides.Count} 슬라이드).");
     }
 
-    private static void Write(string path, List<SlideIn> slides, string workingDir)
+    private static void Write(string path, string? template, List<SlideIn> slides, string workingDir)
     {
         using var doc = PresentationDocument.Create(path, PresentationDocumentType.Presentation);
         var presPart = doc.AddPresentationPart();
@@ -223,12 +272,13 @@ public sealed class PptxCreateTool : ITool
         var themePart = masterPart.AddNewPart<ThemePart>();
         themePart.Theme = MinimalTheme();
 
+        var preset = ResolveTemplate(template);
         var slideIdList = new SlideIdList();
         uint slideId = 256;
         foreach (var s in slides)
         {
             var slidePart = presPart.AddNewPart<SlidePart>();
-            slidePart.Slide = BuildSlide(s);
+            slidePart.Slide = BuildSlide(s, preset);
             slidePart.AddPart(layoutPart);
 
             if (s.Image is { Path: { } imgPath } && !string.IsNullOrWhiteSpace(imgPath))
@@ -239,10 +289,16 @@ public sealed class PptxCreateTool : ITool
                     throw new FileNotFoundException($"이미지 없음: {imgPath}");
                 }
 
-                var width = s.Image.WidthInches is > 0 ? s.Image.WidthInches!.Value : 4.0;
+                var isTextImage = string.Equals(s.Layout?.Trim(), "text_image", StringComparison.OrdinalIgnoreCase);
+                // text_image: 우측 절반에 맞춘 폭 기본값.
+                var width = s.Image.WidthInches is > 0 ? s.Image.WidthInches!.Value : (isTextImage ? 4.2 : 4.0);
                 var (cx, cy) = ImageEmbed.EmuSize(imgFull, width);
-                var x = s.Image.X is { } xv ? (long)(xv * ImageEmbed.EmuPerInch) : (9144000 - cx) / 2;
-                var y = s.Image.Y is { } yv ? (long)(yv * ImageEmbed.EmuPerInch) : (long)(2.2 * ImageEmbed.EmuPerInch);
+                var x = s.Image.X is { } xv ? (long)(xv * ImageEmbed.EmuPerInch)
+                    : isTextImage ? SlideW - cx - MarginX          // 우측 정렬
+                    : (SlideW - cx) / 2;                            // 중앙
+                var y = s.Image.Y is { } yv ? (long)(yv * ImageEmbed.EmuPerInch)
+                    : isTextImage ? BodyTop + 300000               // 본문 상단 맞춤
+                    : (long)(2.2 * ImageEmbed.EmuPerInch);
                 var tree = slidePart.Slide.CommonSlideData!.ShapeTree!;
                 tree.AppendChild(ImageEmbed.PptxPicture(slidePart, imgFull, x, y, cx, cy, 900U + slideId));
             }
@@ -266,6 +322,9 @@ public sealed class PptxCreateTool : ITool
     }
 
     // 슬라이드 기하(EMU). 9144000×6858000 = 4:3 기본.
+    private const long SlideW = 9144000;      // 4:3 슬라이드 폭
+    private const long SlideH = 6858000;      // 4:3 슬라이드 높이
+    private const long LeftBarW = 110000;     // 좌측 accent 세로 바 폭
     private const long MarginX = 685800;      // 0.75"
     private const long ContentW = 7772400;    // 슬라이드 폭 - 좌우 여백
     private const long BodyTop = 1500000;
@@ -284,33 +343,83 @@ public sealed class PptxCreateTool : ITool
         _ => 1050,
     };
 
-    private static Slide BuildSlide(SlideIn s)
+    // 템플릿(디자인 프리셋) × 레이아웃(객체 배치)로 슬라이드를 만든다.
+    // 디자인(색·타이포·정렬)은 프리셋이 규격으로 고정하고, 콘텐츠만 채운다.
+    private static Slide BuildSlide(SlideIn s, ThemePreset p)
     {
         var tree = new ShapeTree(NvGroupShapeProps(), new GroupShapeProperties());
         uint id = 2;
-        var accent = ParseColor(s.Accent) ?? DefaultAccent;
-        var hasTitle = !string.IsNullOrWhiteSpace(s.Title);
 
-        if (hasTitle)
+        // 공통 디자인: 배경 + 좌측 accent 세로 바(AccentBar 는 채운 사각형이라 배경에도 재사용).
+        tree.AppendChild(AccentBar(id++, 0, 0, SlideW, SlideH, p.BgHex));
+        tree.AppendChild(AccentBar(id++, 0, 0, LeftBarW, SlideH, p.AccentHex));
+
+        var layout = (s.Layout ?? "content").Trim().ToLowerInvariant();
+
+        // ── cover: 중앙 큰 제목 + 부제 ──
+        if (layout == "cover")
         {
-            tree.AppendChild(MakeShape(id++, "Title", MarginX, 381000, ContentW, 900000,
-                new[] { TextParagraph(s.Title!, 3200, bold: true, bullet: false, color: accent) }));
-            tree.AppendChild(AccentBar(id++, MarginX, 1330000, ContentW, 50000, accent)); // 밑줄 강조바
+            tree.AppendChild(MakeShape(id++, "Title", MarginX, 2600000, ContentW, 1200000,
+                new[] { CenteredText(s.Title ?? string.Empty, p.TitlePt + 12, true, p.TitleHex, p.TitleFont) }));
+            tree.AppendChild(AccentBar(id++, (SlideW - 1400000) / 2, 3860000, 1400000, 44000, p.AccentHex));
+            if (!string.IsNullOrWhiteSpace(s.Subtitle))
+            {
+                tree.AppendChild(MakeShape(id++, "Subtitle", MarginX, 4000000, ContentW, 700000,
+                    new[] { CenteredText(s.Subtitle!, p.SubtitlePt, false, p.SubtitleHex, p.BodyFont) }));
+            }
+
+            return WrapSlide(tree);
+        }
+
+        // ── section: 구간 구분(좌측 강조 블록 + 큰 제목 + 부제) ──
+        if (layout == "section")
+        {
+            tree.AppendChild(AccentBar(id++, MarginX, 2550000, 300000, 1000000, p.AccentHex));
+            tree.AppendChild(MakeShape(id++, "Title", MarginX + 480000, 2660000, ContentW - 480000, 880000,
+                new[] { TextParagraph(s.Title ?? string.Empty, (p.TitlePt + 6) * 100, bold: true, bullet: false, color: p.TitleHex, fontName: p.TitleFont) }));
+            if (!string.IsNullOrWhiteSpace(s.Subtitle))
+            {
+                tree.AppendChild(MakeShape(id++, "Subtitle", MarginX + 480000, 3560000, ContentW - 480000, 480000,
+                    new[] { TextParagraph(s.Subtitle!, p.SubtitlePt * 100, bold: false, bullet: false, color: p.SubtitleHex, fontName: p.BodyFont) }));
+            }
+
+            return WrapSlide(tree);
+        }
+
+        // ── quote: 큰 문구 하나(중앙) ──
+        if (layout == "quote")
+        {
+            tree.AppendChild(MakeShape(id++, "Quote", MarginX + 300000, 2300000, ContentW - 600000, 2200000,
+                new[] { CenteredText(s.Title ?? s.Subtitle ?? string.Empty, p.SubtitlePt + 12, true, p.TitleHex, p.TitleFont) }));
+            tree.AppendChild(AccentBar(id++, (SlideW - 1400000) / 2, 4650000, 1400000, 44000, p.AccentHex));
+            return WrapSlide(tree);
+        }
+
+        // ── content / text_image 공통: 좌측 정렬 제목 + 부제 + 짧은 강조바 ──
+        long bodyTop = BodyTop;
+        if (!string.IsNullOrWhiteSpace(s.Title))
+        {
+            tree.AppendChild(MakeShape(id++, "Title", MarginX, 360000, ContentW, 720000,
+                new[] { TextParagraph(s.Title!, p.TitlePt * 100, bold: true, bullet: false, color: p.TitleHex, fontName: p.TitleFont) }));
+            long y = 1080000;
+            if (!string.IsNullOrWhiteSpace(s.Subtitle))
+            {
+                tree.AppendChild(MakeShape(id++, "Subtitle", MarginX, y, ContentW, 440000,
+                    new[] { TextParagraph(s.Subtitle!, p.SubtitlePt * 100, bold: false, bullet: false, color: p.SubtitleHex, fontName: p.BodyFont) }));
+                y += 470000;
+            }
+
+            tree.AppendChild(AccentBar(id++, MarginX, y + 30000, 820000, 42000, p.AccentHex));
+            bodyTop = y + 250000;
         }
 
         var hasCols = s.Columns is { Count: > 0 };
         var hasBullets = s.Bullets is { Count: > 0 };
-        var hasText = hasCols || hasBullets;
         var hasTable = s.Table is not null && ((s.Table.Headers?.Count ?? 0) > 0 || (s.Table.Rows?.Count ?? 0) > 0);
 
-        // 본문/표 영역 분할: 둘 다 있으면 텍스트 위·표 아래로 스택.
-        long textTop = BodyTop, textH = BodyBottom - BodyTop;
-        long tableTop = BodyTop;
-        if (hasText && hasTable)
-        {
-            textH = 2200000;
-            tableTop = BodyTop + textH + 200000;
-        }
+        // 본문 폭: text_image 는 좌측 절반(우측은 이미지 자리).
+        long bodyW = layout == "text_image" ? (SlideW / 2) - MarginX : ContentW;
+        long bodyH = BodyBottom - bodyTop;
 
         if (hasCols)
         {
@@ -323,38 +432,36 @@ public sealed class PptxCreateTool : ITool
                 var paras = new List<D.Paragraph>();
                 if (!string.IsNullOrWhiteSpace(cols[i].Heading))
                 {
-                    paras.Add(TextParagraph(cols[i].Heading!, 2000, bold: true, bullet: false, color: accent));
+                    paras.Add(TextParagraph(cols[i].Heading!, p.SubtitlePt * 100, bold: true, bullet: false, color: p.AccentHex, fontName: p.BodyFont));
                 }
 
-                var colSize = Math.Min(1600, BulletFontSize((cols[i].Bullets ?? new List<string>()).Count));
+                var colSize = Math.Min(p.BodyPt * 100, BulletFontSize((cols[i].Bullets ?? new List<string>()).Count));
                 foreach (var b in cols[i].Bullets ?? new List<string>())
                 {
-                    paras.Add(TextParagraph(b, colSize, bold: false, bullet: true, color: null));
+                    paras.Add(TextParagraph(b, colSize, bold: false, bullet: true, color: p.BodyHex, fontName: p.BodyFont));
                 }
 
                 if (paras.Count == 0)
                 {
-                    paras.Add(TextParagraph(string.Empty, 1600, bold: false, bullet: false, color: null));
+                    paras.Add(TextParagraph(string.Empty, p.BodyPt * 100, false, false, null));
                 }
 
-                tree.AppendChild(MakeShape(id++, $"Col{i + 1}", x, textTop, colW, textH, paras));
+                tree.AppendChild(MakeShape(id++, $"Col{i + 1}", x, bodyTop, colW, bodyH, paras));
             }
         }
         else if (hasBullets)
         {
-            var bodySize = BulletFontSize(s.Bullets!.Count);
-            tree.AppendChild(MakeShape(id++, "Body", MarginX, textTop, ContentW, textH,
-                s.Bullets!.Select(b => TextParagraph(b, bodySize, bold: false, bullet: true, color: null))));
+            var size = Math.Min(p.BodyPt * 100, BulletFontSize(s.Bullets!.Count));
+            tree.AppendChild(MakeShape(id++, "Body", MarginX, bodyTop, bodyW, bodyH,
+                s.Bullets!.Select(b => TextParagraph(b, size, bold: false, bullet: true, color: p.BodyHex, fontName: p.BodyFont))));
         }
 
         if (hasTable)
         {
-            // 표 가용 높이(본문 아래 남는 공간)를 넘겨 행 높이·폰트를 맞춘다.
-            tree.AppendChild(BuildTable(id++, MarginX, tableTop, ContentW, s.Table!, accent, BodyBottom - tableTop));
+            tree.AppendChild(BuildTable(id++, MarginX, bodyTop, ContentW, s.Table!, p.AccentHex, BodyBottom - bodyTop));
         }
 
-        var hasShapes = s.Shapes is { Count: > 0 };
-        if (hasShapes)
+        if (s.Shapes is { Count: > 0 })
         {
             foreach (var sh in s.Shapes!)
             {
@@ -362,14 +469,11 @@ public sealed class PptxCreateTool : ITool
             }
         }
 
-        if (!hasTitle && !hasText && !hasTable && !hasShapes)
-        {
-            tree.AppendChild(MakeShape(id, "Body", MarginX, BodyTop, ContentW, BodyBottom - BodyTop,
-                new[] { TextParagraph(string.Empty, 1800, bold: false, bullet: false, color: null) }));
-        }
-
-        return new Slide(new CommonSlideData(tree), new ColorMapOverride(new D.MasterColorMapping()));
+        return WrapSlide(tree);
     }
+
+    private static Slide WrapSlide(ShapeTree tree) =>
+        new(new CommonSlideData(tree), new ColorMapOverride(new D.MasterColorMapping()));
 
     private const long EmuPerInch = 914400;
 
@@ -404,7 +508,7 @@ public sealed class PptxCreateTool : ITool
             body);
     }
 
-    private static D.Paragraph CenteredText(string text, int fontSizePt, bool bold, string? color)
+    private static D.Paragraph CenteredText(string text, int fontSizePt, bool bold, string? color, string? fontName = null)
     {
         var runProps = new D.RunProperties { Language = "en-US", FontSize = fontSizePt * 100 };
         if (bold)
@@ -415,6 +519,11 @@ public sealed class PptxCreateTool : ITool
         if (color is not null)
         {
             runProps.AppendChild(new D.SolidFill(new D.RgbColorModelHex { Val = color }));
+        }
+
+        if (!string.IsNullOrEmpty(fontName))
+        {
+            runProps.AppendChild(new D.LatinFont { Typeface = fontName });
         }
 
         var para = new D.Paragraph(new D.ParagraphProperties(new D.NoBullet()) { Alignment = D.TextAlignmentTypeValues.Center });
@@ -471,7 +580,7 @@ public sealed class PptxCreateTool : ITool
             new P.TextBody(new D.BodyProperties(), new D.ListStyle(), new D.Paragraph()));
     }
 
-    private static D.Paragraph TextParagraph(string text, int fontSize, bool bold, bool bullet, string? color)
+    private static D.Paragraph TextParagraph(string text, int fontSize, bool bold, bool bullet, string? color, string? fontName = null)
     {
         var runProps = new D.RunProperties { Language = "en-US", FontSize = fontSize };
         if (bold)
@@ -479,15 +588,25 @@ public sealed class PptxCreateTool : ITool
             runProps.Bold = true;
         }
 
+        // RunProperties 자식 순서(스키마): fill(SolidFill) → latin(LatinFont).
         if (color is not null)
         {
             runProps.AppendChild(new D.SolidFill(new D.RgbColorModelHex { Val = color }));
         }
 
+        if (!string.IsNullOrEmpty(fontName))
+        {
+            runProps.AppendChild(new D.LatinFont { Typeface = fontName });
+        }
+
         var para = new D.Paragraph();
-        para.AppendChild(bullet
-            ? new D.ParagraphProperties(new D.BulletFont { Typeface = "Arial" }, new D.CharacterBullet { Char = "•" })
-            : new D.ParagraphProperties(new D.NoBullet()));
+        // 본문 불릿: 줄간격 여유(120%)로 매달린 줄·과밀 완화.
+        var pPr = bullet
+            ? new D.ParagraphProperties(
+                new D.LineSpacing(new D.SpacingPercent { Val = 120000 }),
+                new D.BulletFont { Typeface = "Arial" }, new D.CharacterBullet { Char = "•" })
+            : new D.ParagraphProperties(new D.NoBullet());
+        para.AppendChild(pPr);
         para.AppendChild(new D.Run(runProps, new D.Text(text)));
         return para;
     }
