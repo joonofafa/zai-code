@@ -40,6 +40,11 @@ public sealed class ExcelEditTool : ITool
           - insert_picture: insert an image from a local file ("path") onto the active sheet (optional
             "left","top","width","height" in points; omit width/height for native size). Get the file first
             via ImageCreate (generated) or ImageFetch (from a web URL).
+          - insert_pivot: create a PivotTable on a NEW sheet from a source range. "source" (e.g. "A1:D100",
+            include the header row — field names come from it), "source_sheet" optional (default active).
+            Place fields via "rows"/"columns"/"filters" (arrays of field names) and "values"
+            (array of {field, func}; func: sum|count|average|max|min, default sum). Excel computes it.
+            e.g. source "A1:D200", rows ["부서"], columns ["월"], values [{"field":"매출","func":"sum"}].
         Target the range by "cell" ("A1" or "A1:B2"); if omitted, the CURRENT SELECTION.
         Colors are "#RRGGBB" hex or a basic name. Windows only.
         """;
@@ -53,7 +58,7 @@ public sealed class ExcelEditTool : ITool
         {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["set_value","set_formula","set_font","set_fill","insert_chart","add_sheet","set_geometry","insert_picture"] },
+            "action": { "type": "string", "enum": ["set_value","set_formula","set_font","set_fill","insert_chart","add_sheet","set_geometry","insert_picture","insert_pivot"] },
             "path": { "type": "string", "description": "Local image file path (insert_picture)" },
             "cell": { "type": "string", "description": "A1 or A1:B2 (omit to target current selection)" },
             "value": { "type": "string", "description": "value for set_value" },
@@ -70,7 +75,24 @@ public sealed class ExcelEditTool : ITool
             "width": { "type": "number", "description": "Width in points (set_geometry)" },
             "height": { "type": "number", "description": "Height in points (set_geometry)" },
             "rotation": { "type": "number", "description": "Rotation angle in degrees, clockwise (set_geometry)" },
-            "flip": { "type": "string", "description": "Flip the shape: horizontal | vertical (set_geometry)" }
+            "flip": { "type": "string", "description": "Flip the shape: horizontal | vertical (set_geometry)" },
+            "source": { "type": "string", "description": "insert_pivot: source data range, e.g. \"A1:D100\" (include the header row; field names come from it)" },
+            "source_sheet": { "type": "string", "description": "insert_pivot: sheet name of the source range (omit = active sheet)" },
+            "rows": { "type": "array", "items": { "type": "string" }, "description": "insert_pivot: field names placed on ROWS (e.g. [\"부서\"])" },
+            "columns": { "type": "array", "items": { "type": "string" }, "description": "insert_pivot: field names placed on COLUMNS (e.g. [\"월\"])" },
+            "filters": { "type": "array", "items": { "type": "string" }, "description": "insert_pivot: field names used as page/report FILTERS" },
+            "values": {
+              "type": "array",
+              "description": "insert_pivot: value fields with aggregation. Each {field, func}.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "field": { "type": "string", "description": "Field name to aggregate (e.g. \"매출\")" },
+                  "func": { "type": "string", "enum": ["sum","count","average","max","min","countnums"], "description": "Aggregation (default sum)" }
+                },
+                "required": ["field"]
+              }
+            }
           },
           "required": ["action"]
         }
@@ -94,10 +116,20 @@ public sealed class ExcelEditTool : ITool
         [property: JsonPropertyName("height")] double? Height,
         [property: JsonPropertyName("rotation")] double? Rotation,
         [property: JsonPropertyName("flip")] string? Flip,
-        [property: JsonPropertyName("path")] string? Path);
+        [property: JsonPropertyName("path")] string? Path,
+        [property: JsonPropertyName("source")] string? Source,
+        [property: JsonPropertyName("source_sheet")] string? SourceSheet,
+        [property: JsonPropertyName("rows")] List<string>? Rows,
+        [property: JsonPropertyName("columns")] List<string>? Columns,
+        [property: JsonPropertyName("filters")] List<string>? Filters,
+        [property: JsonPropertyName("values")] List<PivotValueIn>? Values);
+
+    private sealed record PivotValueIn(
+        [property: JsonPropertyName("field")] string? Field,
+        [property: JsonPropertyName("func")] string? Func);
 
     private static readonly string[] Actions =
-        { "set_value", "set_formula", "set_font", "set_fill", "insert_chart", "add_sheet", "set_geometry", "insert_picture" };
+        { "set_value", "set_formula", "set_font", "set_fill", "insert_chart", "add_sheet", "set_geometry", "insert_picture", "insert_pivot" };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -159,6 +191,8 @@ public sealed class ExcelEditTool : ITool
                 => "set_geometry 에는 left, top, width, height, rotation, flip 중 하나가 필요합니다.",
             "set_geometry" => ShapeGeometry.ValidateFlip(inp.Flip),
             "insert_picture" when string.IsNullOrWhiteSpace(inp.Path) => "insert_picture 에는 path 가 필요합니다.",
+            "insert_pivot" when string.IsNullOrWhiteSpace(inp.Source) => "insert_pivot 에는 source(데이터 범위)가 필요합니다.",
+            "insert_pivot" when inp.Values is not { Count: > 0 } => "insert_pivot 에는 values(집계할 값 필드)가 최소 1개 필요합니다.",
             _ => null,
         };
     }
@@ -213,6 +247,11 @@ public sealed class ExcelEditTool : ITool
             return $"OK: {target} 에 기하 변경 {applied}건 적용.";
         }
 
+        if (inp.Action == "insert_pivot")
+        {
+            return InsertPivot(app, wb, inp);
+        }
+
         dynamic range = ResolveRange(app, inp.Cell);
         switch (inp.Action)
         {
@@ -257,6 +296,137 @@ public sealed class ExcelEditTool : ITool
 
         var scope = string.IsNullOrWhiteSpace(inp.Cell) ? "현재 선택" : inp.Cell;
         return $"OK: {scope} 에 {inp.Action} 적용.";
+    }
+
+    // XlPivotFieldOrientation / XlConsolidationFunction / XlPivotTableSourceType 상수(late-binding int).
+    private const int XlDatabase = 1;
+    private const int XlRowField = 1;
+    private const int XlColumnField = 2;
+    private const int XlPageField = 3;
+    private const int XlSum = -4157;
+    private const int XlCount = -4112;
+    private const int XlAverage = -4106;
+    private const int XlMax = -4136;
+    private const int XlMin = -4139;
+    private const int XlCountNums = -4113;
+
+    // Excel 피봇 엔진으로 새 시트에 피봇테이블을 만든다. source 헤더행에서 필드명을 얻는다.
+    private static string InsertPivot(dynamic app, dynamic wb, Input inp)
+    {
+        // 소스 범위(지정 시트 또는 활성 시트).
+        dynamic srcSheet = string.IsNullOrWhiteSpace(inp.SourceSheet)
+            ? app.ActiveSheet
+            : wb.Worksheets[inp.SourceSheet];
+        dynamic srcRange = srcSheet.Range(inp.Source);
+
+        // 대상: 새 시트(피봇은 보통 별도 시트).
+        dynamic dest = wb.Worksheets.Add();
+        var destName = UniqueSheetName(wb, "피벗");
+        try { dest.Name = destName; } catch { /* 이름 충돌 등 — 기본 이름 유지 */ }
+
+        // 캐시 → 피봇테이블(A1 배치).
+        dynamic cache = wb.PivotCaches().Create(XlDatabase, srcRange);
+        dynamic pt = cache.CreatePivotTable(dest.Range("A1"), "PivotTable_MoAI");
+
+        // 필드 배치. 없는 필드명은 COM 예외 → 흡수하고 계속(부분 성공).
+        var placed = 0;
+        foreach (var f in inp.Rows ?? new List<string>())
+        {
+            if (SetOrientation(pt, f, XlRowField)) { placed++; }
+        }
+
+        foreach (var f in inp.Columns ?? new List<string>())
+        {
+            if (SetOrientation(pt, f, XlColumnField)) { placed++; }
+        }
+
+        foreach (var f in inp.Filters ?? new List<string>())
+        {
+            if (SetOrientation(pt, f, XlPageField)) { placed++; }
+        }
+
+        var vals = 0;
+        foreach (var v in inp.Values ?? new List<PivotValueIn>())
+        {
+            if (string.IsNullOrWhiteSpace(v.Field))
+            {
+                continue;
+            }
+
+            try
+            {
+                pt.AddDataField(pt.PivotFields(v.Field), System.Type.Missing, PivotFuncId(v.Func));
+                vals++;
+            }
+            catch (System.Exception ex)
+            {
+                MoaiLog.Debug($"ExcelPivot: value field '{v.Field}' skip: {ex.GetType().Name}");
+            }
+        }
+
+        if (vals == 0)
+        {
+            throw new System.InvalidOperationException(
+                "값 필드를 하나도 배치하지 못했습니다. source 헤더의 필드명과 values.field 가 일치하는지 확인하세요.");
+        }
+
+        return $"OK: '{destName}' 시트에 피봇테이블 생성(행 {placed}·값 {vals} 필드). 필드명은 source 헤더 기준입니다.";
+    }
+
+    // 필드 방향 지정. 없는 필드명이면 COM 예외 → false(흡수).
+    private static bool SetOrientation(dynamic pt, string? field, int orientation)
+    {
+        if (string.IsNullOrWhiteSpace(field))
+        {
+            return false;
+        }
+
+        try
+        {
+            pt.PivotFields(field).Orientation = orientation;
+            return true;
+        }
+        catch (System.Exception ex)
+        {
+            MoaiLog.Debug($"ExcelPivot: field '{field}' orientation skip: {ex.GetType().Name}");
+            return false;
+        }
+    }
+
+    private static int PivotFuncId(string? func) => func?.Trim().ToLowerInvariant() switch
+    {
+        "count" => XlCount,
+        "average" or "avg" => XlAverage,
+        "max" => XlMax,
+        "min" => XlMin,
+        "countnums" => XlCountNums,
+        _ => XlSum,
+    };
+
+    // wb 안에서 base/base2/base3… 중 겹치지 않는 시트명.
+    private static string UniqueSheetName(dynamic wb, string baseName)
+    {
+        var existing = new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+        foreach (dynamic ws in wb.Worksheets)
+        {
+            existing.Add((string)ws.Name);
+        }
+
+        if (!existing.Contains(baseName))
+        {
+            return baseName;
+        }
+
+        for (var i = 2; i < 100; i++)
+        {
+            var name = baseName + i;
+            if (!existing.Contains(name))
+            {
+                return name;
+            }
+        }
+
+        return baseName + System.Guid.NewGuid().ToString("N")[..4];
     }
 
     // cell 지정 시 활성 시트의 그 범위, 없으면 현재 선택.
