@@ -222,29 +222,32 @@
                        FontSize="13" TextWrapping="Wrap" TextAlignment="Center"
                        Foreground="{DynamicResource TextMutedBrush}" HorizontalAlignment="Center" />
           </StackPanel>
-          <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
-            <Button Classes="tile" Command="{Binding OpenWordCommand}">
-              <StackPanel Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="6,4">
+          <StackPanel Spacing="10" MaxWidth="380" HorizontalAlignment="Stretch">
+            <Button Classes="recentcard" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                    Command="{Binding OpenWordCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="13" VerticalAlignment="Center">
                 <Path Data="{StaticResource Icon.FileText}" Stroke="#2B579A"
                       StrokeThickness="1.7" StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                      Width="24" Height="24" Stretch="Uniform" HorizontalAlignment="Center" />
-                <TextBlock Text="Word 열기" FontSize="12.5" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                      Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center" />
+                <TextBlock Text="Word 열기" FontSize="13.5" FontWeight="SemiBold" VerticalAlignment="Center" />
               </StackPanel>
             </Button>
-            <Button Classes="tile" Command="{Binding OpenPowerPointCommand}">
-              <StackPanel Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="6,4">
+            <Button Classes="recentcard" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                    Command="{Binding OpenPowerPointCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="13" VerticalAlignment="Center">
                 <Path Data="{StaticResource Icon.Presentation}" Stroke="#C43E1C"
                       StrokeThickness="1.7" StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                      Width="24" Height="24" Stretch="Uniform" HorizontalAlignment="Center" />
-                <TextBlock Text="PowerPoint 열기" FontSize="12.5" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                      Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center" />
+                <TextBlock Text="PowerPoint 열기" FontSize="13.5" FontWeight="SemiBold" VerticalAlignment="Center" />
               </StackPanel>
             </Button>
-            <Button Classes="tile" Command="{Binding OpenExcelCommand}">
-              <StackPanel Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="6,4">
+            <Button Classes="recentcard" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                    Command="{Binding OpenExcelCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="13" VerticalAlignment="Center">
                 <Path Data="{StaticResource Icon.FileSpreadsheet}" Stroke="#217346"
                       StrokeThickness="1.7" StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                      Width="24" Height="24" Stretch="Uniform" HorizontalAlignment="Center" />
-                <TextBlock Text="Excel 열기" FontSize="12.5" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                      Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center" />
+                <TextBlock Text="Excel 열기" FontSize="13.5" FontWeight="SemiBold" VerticalAlignment="Center" />
               </StackPanel>
             </Button>
           </StackPanel>
