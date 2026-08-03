@@ -19,6 +19,9 @@ public sealed class ExcelEditTool : ITool
     private const int XlLine = 4;
     private const int XlPie = 5;
     private const int XlBarClustered = 57;
+    private const int XlTypePDF = 0;    // XlFixedFormatType.xlTypePDF
+    private const int XlPart = 2;       // XlLookAt.xlPart
+    private const int XlCenter = -4108; // XlHAlign/XlVAlign.xlCenter
 
     private readonly StaDispatcher _sta;
 
@@ -45,6 +48,14 @@ public sealed class ExcelEditTool : ITool
             Place fields via "rows"/"columns"/"filters" (arrays of field names) and "values"
             (array of {field, func}; func: sum|count|average|max|min, default sum). Excel computes it.
             e.g. source "A1:D200", rows ["부서"], columns ["월"], values [{"field":"매출","func":"sum"}].
+          - replace: find & replace ALL occurrences of "find_text" with "replace_text". Scoped to "cell"
+            range if given, else the whole active sheet.
+          - merge_cells: merge the "cell" range into one cell (centered). e.g. cell "A1:E1" for a title row.
+          - delete_sheet: delete a worksheet ("sheet_name"; omit = active sheet). Cannot delete the last one.
+          - delete_row: delete the entire row(s) of "cell" (e.g. "3" or "3:5" or "A3").
+          - delete_column: delete the entire column(s) of "cell" (e.g. "B" or "B:C" or "B2").
+          - delete_shape: delete a shape on the active sheet ("shape_index"/"shape_name").
+          - export_pdf: export the workbook to PDF ("path" = output .pdf; if omitted, next to the workbook).
         Target the range by "cell" ("A1" or "A1:B2"); if omitted, the CURRENT SELECTION.
         Colors are "#RRGGBB" hex or a basic name. Windows only.
         """;
@@ -58,8 +69,10 @@ public sealed class ExcelEditTool : ITool
         {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["set_value","set_formula","set_font","set_fill","insert_chart","add_sheet","set_geometry","insert_picture","insert_pivot"] },
-            "path": { "type": "string", "description": "Local image file path (insert_picture)" },
+            "action": { "type": "string", "enum": ["set_value","set_formula","set_font","set_fill","insert_chart","add_sheet","set_geometry","insert_picture","insert_pivot","replace","merge_cells","delete_sheet","delete_row","delete_column","delete_shape","export_pdf"] },
+            "path": { "type": "string", "description": "Local image file path (insert_picture) OR output .pdf path (export_pdf)" },
+            "find_text": { "type": "string", "description": "Text to find (replace)" },
+            "replace_text": { "type": "string", "description": "Replacement text (replace)" },
             "cell": { "type": "string", "description": "A1 or A1:B2 (omit to target current selection)" },
             "value": { "type": "string", "description": "value for set_value" },
             "formula": { "type": "string", "description": "formula for set_formula" },
@@ -122,14 +135,16 @@ public sealed class ExcelEditTool : ITool
         [property: JsonPropertyName("rows")] List<string>? Rows,
         [property: JsonPropertyName("columns")] List<string>? Columns,
         [property: JsonPropertyName("filters")] List<string>? Filters,
-        [property: JsonPropertyName("values")] List<PivotValueIn>? Values);
+        [property: JsonPropertyName("values")] List<PivotValueIn>? Values,
+        [property: JsonPropertyName("find_text")] string? FindText,
+        [property: JsonPropertyName("replace_text")] string? ReplaceText);
 
     private sealed record PivotValueIn(
         [property: JsonPropertyName("field")] string? Field,
         [property: JsonPropertyName("func")] string? Func);
 
     private static readonly string[] Actions =
-        { "set_value", "set_formula", "set_font", "set_fill", "insert_chart", "add_sheet", "set_geometry", "insert_picture", "insert_pivot" };
+        { "set_value", "set_formula", "set_font", "set_fill", "insert_chart", "add_sheet", "set_geometry", "insert_picture", "insert_pivot", "replace", "merge_cells", "delete_sheet", "delete_row", "delete_column", "delete_shape", "export_pdf" };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -193,6 +208,12 @@ public sealed class ExcelEditTool : ITool
             "insert_picture" when string.IsNullOrWhiteSpace(inp.Path) => "insert_picture 에는 path 가 필요합니다.",
             "insert_pivot" when string.IsNullOrWhiteSpace(inp.Source) => "insert_pivot 에는 source(데이터 범위)가 필요합니다.",
             "insert_pivot" when inp.Values is not { Count: > 0 } => "insert_pivot 에는 values(집계할 값 필드)가 최소 1개 필요합니다.",
+            "replace" when string.IsNullOrEmpty(inp.FindText) => "replace 에는 find_text 가 필요합니다.",
+            "merge_cells" when string.IsNullOrWhiteSpace(inp.Cell) => "merge_cells 에는 cell(병합할 범위, 예 \"A1:E1\")이 필요합니다.",
+            "delete_row" when string.IsNullOrWhiteSpace(inp.Cell) => "delete_row 에는 cell(대상 행, 예 \"3\")이 필요합니다.",
+            "delete_column" when string.IsNullOrWhiteSpace(inp.Cell) => "delete_column 에는 cell(대상 열, 예 \"B\")이 필요합니다.",
+            "delete_shape" when inp.ShapeIndex is null && string.IsNullOrWhiteSpace(inp.ShapeName)
+                => "delete_shape 에는 shape_index 또는 shape_name 이 필요합니다.",
             _ => null,
         };
     }
@@ -250,6 +271,68 @@ public sealed class ExcelEditTool : ITool
         if (inp.Action == "insert_pivot")
         {
             return InsertPivot(app, wb, inp);
+        }
+
+        if (inp.Action == "export_pdf")
+        {
+            var outPath = OfficePdf.Resolve(inp.Path, TryFullName(wb), workingDir);
+            wb.ExportAsFixedFormat(XlTypePDF, outPath);
+            return $"OK: PDF 로 내보냈습니다 — {outPath}";
+        }
+
+        if (inp.Action == "replace")
+        {
+            // cell 지정 시 그 범위, 없으면 활성 시트 전체 셀.
+            dynamic scopeRange = string.IsNullOrWhiteSpace(inp.Cell)
+                ? app.ActiveSheet.Cells
+                : app.ActiveSheet.Range(inp.Cell);
+            // Replace(What, Replacement, LookAt, ...)
+            scopeRange.Replace(inp.FindText, inp.ReplaceText ?? string.Empty, XlPart);
+            return "OK: 찾기·바꾸기 완료.";
+        }
+
+        if (inp.Action == "merge_cells")
+        {
+            dynamic rng = app.ActiveSheet.Range(inp.Cell);
+            rng.Merge();
+            rng.HorizontalAlignment = XlCenter;
+            rng.VerticalAlignment = XlCenter;
+            return $"OK: {inp.Cell} 범위를 병합했습니다.";
+        }
+
+        if (inp.Action == "delete_sheet")
+        {
+            if ((int)wb.Worksheets.Count <= 1)
+            {
+                throw new System.InvalidOperationException("마지막 시트는 삭제할 수 없습니다.");
+            }
+
+            dynamic ws = string.IsNullOrWhiteSpace(inp.SheetName) ? app.ActiveSheet : wb.Worksheets[inp.SheetName];
+            var name = (string)ws.Name;
+            var prevAlerts = app.DisplayAlerts;
+            app.DisplayAlerts = false; // 삭제 확인 대화상자 억제
+            try { ws.Delete(); }
+            finally { app.DisplayAlerts = prevAlerts; }
+            return $"OK: 시트 '{name}' 를 삭제했습니다.";
+        }
+
+        if (inp.Action == "delete_row")
+        {
+            app.ActiveSheet.Range(inp.Cell).EntireRow.Delete();
+            return $"OK: {inp.Cell} 행을 삭제했습니다.";
+        }
+
+        if (inp.Action == "delete_column")
+        {
+            app.ActiveSheet.Range(inp.Cell).EntireColumn.Delete();
+            return $"OK: {inp.Cell} 열을 삭제했습니다.";
+        }
+
+        if (inp.Action == "delete_shape")
+        {
+            dynamic shape = ResolveShape(app, inp);
+            shape.Delete();
+            return "OK: 도형을 삭제했습니다.";
         }
 
         dynamic range = ResolveRange(app, inp.Cell);
@@ -427,6 +510,12 @@ public sealed class ExcelEditTool : ITool
         }
 
         return baseName + System.Guid.NewGuid().ToString("N")[..4];
+    }
+
+    // 저장 안 된 통합문서는 FullName 이 이름만 오거나 던질 수 있으므로 안전하게.
+    private static string? TryFullName(dynamic wb)
+    {
+        try { return (string)wb.FullName; } catch { return null; }
     }
 
     // cell 지정 시 활성 시트의 그 범위, 없으면 현재 선택.

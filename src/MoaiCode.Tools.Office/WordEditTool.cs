@@ -22,6 +22,9 @@ public sealed class WordEditTool : ITool
     private const int WdStyleHeading2 = -3;
     private const int WdStyleHeading3 = -4;
     private const int WdStyleTitle = -63;
+    private const int WdReplaceAll = 2;      // WdReplace.wdReplaceAll
+    private const int WdFindContinue = 1;    // WdFindWrap.wdFindContinue
+    private const int WdExportFormatPDF = 17; // WdExportFormat.wdExportFormatPDF
 
     private readonly StaDispatcher _sta;
 
@@ -44,6 +47,9 @@ public sealed class WordEditTool : ITool
           - insert_picture: insert an image from a local file ("path"). Inline at the current selection by
             default; if "left"/"top" are given it is placed as a floating shape. Optional "width"/"height"
             in points. Get the file first via ImageCreate (generated) or ImageFetch (from a web URL).
+          - replace: find & replace ALL occurrences of "find_text" with "replace_text" across the document.
+          - export_pdf: export the document to PDF ("path" = output .pdf; if omitted, next to the document).
+          - delete_shape: delete a floating shape (by "shape_index"/"shape_name", or the current selection).
         Target the paragraph by 1-based "para_index" (from WordInspect); if omitted, the CURRENT SELECTION.
         IMPORTANT: set_text only edits EXISTING paragraphs (1..N as reported by WordInspect). Never use an
         out-of-range para_index — to ADD new content use insert_paragraph. Always WordInspect first to get N.
@@ -59,8 +65,10 @@ public sealed class WordEditTool : ITool
         {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["set_text","set_font","set_style","insert_paragraph","delete_paragraph","insert_table","set_geometry","insert_picture","add_page"] },
-            "path": { "type": "string", "description": "Local image file path (insert_picture)" },
+            "action": { "type": "string", "enum": ["set_text","set_font","set_style","insert_paragraph","delete_paragraph","insert_table","set_geometry","insert_picture","add_page","replace","export_pdf","delete_shape"] },
+            "path": { "type": "string", "description": "Local image file path (insert_picture) OR output .pdf path (export_pdf)" },
+            "find_text": { "type": "string", "description": "Text to find (replace)" },
+            "replace_text": { "type": "string", "description": "Replacement text (replace)" },
             "para_index": { "type": "integer", "description": "1-based paragraph index (omit to target current selection)" },
             "text": { "type": "string" },
             "color": { "type": "string", "description": "#RRGGBB or basic color name" },
@@ -100,10 +108,12 @@ public sealed class WordEditTool : ITool
         [property: JsonPropertyName("height")] double? Height,
         [property: JsonPropertyName("rotation")] double? Rotation,
         [property: JsonPropertyName("flip")] string? Flip,
-        [property: JsonPropertyName("path")] string? Path);
+        [property: JsonPropertyName("path")] string? Path,
+        [property: JsonPropertyName("find_text")] string? FindText,
+        [property: JsonPropertyName("replace_text")] string? ReplaceText);
 
     private static readonly string[] Actions =
-        { "set_text", "set_font", "set_style", "insert_paragraph", "delete_paragraph", "insert_table", "set_geometry", "insert_picture", "add_page" };
+        { "set_text", "set_font", "set_style", "insert_paragraph", "delete_paragraph", "insert_table", "set_geometry", "insert_picture", "add_page", "replace", "export_pdf", "delete_shape" };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -166,6 +176,7 @@ public sealed class WordEditTool : ITool
                 => "set_geometry 에는 left, top, width, height, rotation, flip 중 하나가 필요합니다.",
             "set_geometry" => ShapeGeometry.ValidateFlip(inp.Flip),
             "insert_picture" when string.IsNullOrWhiteSpace(inp.Path) => "insert_picture 에는 path 가 필요합니다.",
+            "replace" when string.IsNullOrEmpty(inp.FindText) => "replace 에는 find_text 가 필요합니다.",
             _ => null,
         };
     }
@@ -258,6 +269,32 @@ public sealed class WordEditTool : ITool
                 var target = inp.ShapeIndex is not null ? $"도형 {inp.ShapeIndex}"
                     : !string.IsNullOrWhiteSpace(inp.ShapeName) ? $"도형 '{inp.ShapeName}'" : "현재 선택 도형";
                 return $"OK: {target} 에 기하 변경 {applied}건 적용.";
+            }
+
+            case "replace":
+            {
+                dynamic find = doc.Content.Find;
+                find.ClearFormatting();
+                find.Replacement.ClearFormatting();
+                // Execute(FindText, MatchCase, MatchWholeWord, MatchWildcards, MatchSoundsLike,
+                //   MatchAllWordForms, Forward, Wrap, Format, ReplaceWith, Replace)
+                find.Execute(inp.FindText, false, false, false, false, false, true,
+                    WdFindContinue, false, inp.ReplaceText ?? string.Empty, WdReplaceAll);
+                return "OK: 찾기·바꾸기 완료.";
+            }
+
+            case "export_pdf":
+            {
+                var outPath = OfficePdf.Resolve(inp.Path, TryFullName(doc), workingDir);
+                doc.ExportAsFixedFormat(outPath, WdExportFormatPDF);
+                return $"OK: PDF 로 내보냈습니다 — {outPath}";
+            }
+
+            case "delete_shape":
+            {
+                dynamic shape = ResolveShape(app, doc, inp);
+                shape.Delete();
+                return "OK: 도형을 삭제했습니다.";
             }
         }
 
@@ -374,6 +411,12 @@ public sealed class WordEditTool : ITool
         }
 
         return shape;
+    }
+
+    // 저장 안 된 문서는 FullName 이 이름만("Document1") 오거나 던질 수 있으므로 안전하게.
+    private static string? TryFullName(dynamic doc)
+    {
+        try { return (string)doc.FullName; } catch { return null; }
     }
 
     private static int StyleId(string style) => style.Trim().ToLowerInvariant() switch

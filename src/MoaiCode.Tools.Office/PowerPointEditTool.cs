@@ -25,6 +25,9 @@ public sealed class PowerPointEditTool : ITool
     private const int PpSelectionShapes = 2;
     private const int PpSelectionText = 3;
 
+    // PpFixedFormatType.ppFixedFormatTypePDF.
+    private const int PpFixedFormatTypePDF = 2;
+
     private readonly StaDispatcher _sta;
 
     public PowerPointEditTool(StaDispatcher sta) => _sta = sta;
@@ -45,6 +48,10 @@ public sealed class PowerPointEditTool : ITool
           - add_slide: append a new slide (optionally at "slide_index"). Fill it directly to draft fast:
             "text" = title, "bullets" = body lines, "layout" = title_content(default)|title_only|title|blank.
             Repeat to build a deck from an empty presentation.
+          - replace: find & replace ALL occurrences of "find_text" with "replace_text" across every slide.
+          - export_pdf: export the presentation to PDF ("path" = output .pdf; if omitted, next to the file).
+          - delete_slide: delete the slide at "slide_index".
+          - delete_shape: delete the target shape (by slide_index+shape_id/shape_name, or current selection).
         Target the shape by shape_id (from PowerPointInspect) on slide_index; shape_name is a fallback.
         If no shape target is given, the action applies to the CURRENTLY SELECTED shape(s).
         "scope" selects where the shape lives: "slide" (default, body shapes), "layout" (the slide's
@@ -64,7 +71,9 @@ public sealed class PowerPointEditTool : ITool
         {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide"], "description": "Edit action" },
+            "action": { "type": "string", "enum": ["set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape"], "description": "Edit action" },
+            "find_text": { "type": "string", "description": "Text to find (replace)" },
+            "replace_text": { "type": "string", "description": "Replacement text (replace)" },
             "bullets": { "type": "array", "items": { "type": "string" }, "description": "add_slide: body bullet lines" },
             "layout": { "type": "string", "enum": ["title_content", "title_only", "title", "blank"], "description": "add_slide: slide layout (default title_content)" },
             "path": { "type": "string", "description": "Local image file path (insert_picture)" },
@@ -107,10 +116,12 @@ public sealed class PowerPointEditTool : ITool
         [property: JsonPropertyName("flip")] string? Flip,
         [property: JsonPropertyName("path")] string? Path,
         [property: JsonPropertyName("bullets")] List<string>? Bullets,
-        [property: JsonPropertyName("layout")] string? Layout);
+        [property: JsonPropertyName("layout")] string? Layout,
+        [property: JsonPropertyName("find_text")] string? FindText,
+        [property: JsonPropertyName("replace_text")] string? ReplaceText);
 
     private static readonly string[] Actions =
-        { "set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide" };
+        { "set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape" };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -191,6 +202,8 @@ public sealed class PowerPointEditTool : ITool
                 => "set_geometry 에는 left, top, width, height, rotation, flip 중 하나가 필요합니다.",
             "set_geometry" => ShapeGeometry.ValidateFlip(inp.Flip),
             "insert_picture" when string.IsNullOrWhiteSpace(inp.Path) => "insert_picture 에는 path 가 필요합니다.",
+            "replace" when string.IsNullOrEmpty(inp.FindText) => "replace 에는 find_text 가 필요합니다.",
+            "delete_slide" when inp.SlideIndex is null => "delete_slide 에는 slide_index 가 필요합니다.",
             _ => null,
         };
     }
@@ -215,6 +228,30 @@ public sealed class PowerPointEditTool : ITool
             return AddSlide(pres, inp);
         }
 
+        if (inp.Action == "replace")
+        {
+            return Replace(pres, inp.FindText!, inp.ReplaceText ?? string.Empty);
+        }
+
+        if (inp.Action == "export_pdf")
+        {
+            var outPath = OfficePdf.Resolve(inp.Path, TryStr(() => (string)pres.FullName), workingDir);
+            pres.ExportAsFixedFormat(outPath, PpFixedFormatTypePDF);
+            return $"OK: PDF 로 내보냈습니다 — {outPath}";
+        }
+
+        if (inp.Action == "delete_slide")
+        {
+            int count = (int)pres.Slides.Count;
+            if (inp.SlideIndex!.Value < 1 || inp.SlideIndex.Value > count)
+            {
+                throw new InvalidOperationException($"슬라이드 {inp.SlideIndex} 없음(현재 {count}개).");
+            }
+
+            pres.Slides[inp.SlideIndex.Value].Delete();
+            return $"OK: 슬라이드 {inp.SlideIndex} 를 삭제했습니다.";
+        }
+
         var targets = ResolveTargets(app, pres, inp);
         if (targets.Count == 0)
         {
@@ -224,13 +261,21 @@ public sealed class PowerPointEditTool : ITool
 
         foreach (var shape in targets)
         {
-            ApplyToShape(shape, inp);
+            if (inp.Action == "delete_shape")
+            {
+                shape.Delete();
+            }
+            else
+            {
+                ApplyToShape(shape, inp);
+            }
         }
 
         var where = inp.SlideIndex is not null
             ? $"슬라이드 {inp.SlideIndex}" + ((inp.Scope ?? "slide") is var sc && sc != "slide" ? $"({sc})" : string.Empty)
             : "현재 선택";
-        return $"OK: {where} 도형 {targets.Count}개에 {inp.Action} 적용.";
+        var verb = inp.Action == "delete_shape" ? "도형 삭제" : $"{inp.Action} 적용";
+        return $"OK: {where} 도형 {targets.Count}개에 {verb}.";
     }
 
     // 로컬 이미지 파일을 슬라이드에 삽입한다. slide_index 지정 시 그 슬라이드, 없으면 현재 슬라이드.
@@ -298,6 +343,42 @@ public sealed class PowerPointEditTool : ITool
         if (inp.Bullets is { Count: > 0 }) { extras.Add($"불릿 {inp.Bullets.Count}개"); }
         var filled = extras.Count > 0 ? " — " + string.Join(", ", extras) + " 설정" : string.Empty;
         return $"OK: 슬라이드 {index} 추가(레이아웃 {inp.Layout ?? "title_content"}){filled}.";
+    }
+
+    // 모든 슬라이드의 텍스트 도형을 순회하며 문자열 치환(도형 단위 read-modify-write). 치환된 도형 수 반환.
+    private static string Replace(dynamic pres, string find, string replace)
+    {
+        var shapes = 0;
+        int slideCount = (int)pres.Slides.Count;
+        for (var si = 1; si <= slideCount; si++)
+        {
+            dynamic slide = pres.Slides[si];
+            int shapeCount = (int)slide.Shapes.Count;
+            for (var i = 1; i <= shapeCount; i++)
+            {
+                dynamic shape = slide.Shapes[i];
+                if (TryInt(() => (int)shape.HasTextFrame) != MsoTrue)
+                {
+                    continue;
+                }
+
+                var text = TryStr(() => (string)shape.TextFrame.TextRange.Text);
+                if (!string.IsNullOrEmpty(text) && text.Contains(find, StringComparison.Ordinal))
+                {
+                    if (TrySetOk(() => shape.TextFrame.TextRange.Text = text.Replace(find, replace, StringComparison.Ordinal)))
+                    {
+                        shapes++;
+                    }
+                }
+            }
+        }
+
+        return $"OK: {shapes}개 도형에서 찾기·바꾸기 완료.";
+    }
+
+    private static bool TrySetOk(Action set)
+    {
+        try { set(); return true; } catch { return false; }
     }
 
     private static int SlideLayoutId(string? layout) => layout?.Trim().ToLowerInvariant() switch
