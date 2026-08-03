@@ -35,7 +35,33 @@ public sealed class FolderSyncService : IDisposable
     /// <summary>트레이/UI 표시용 상태 메시지.</summary>
     public event Action<string>? Status;
 
+    /// <summary>앱에서 만든 단일 인스턴스(VM 이 폴더 대시보드를 제어하기 위해 접근).</summary>
+    public static FolderSyncService? Instance { get; private set; }
+
+    public FolderSyncService() => Instance = this;
+
     public IReadOnlyList<ConnectedFolder> Folders => _folders;
+
+    public int FolderCount => _folders.Count;
+
+    /// <summary>연결 폴더 하나를 감시 해제(파일 워처 중단). _folders/_watchers 는 추가 순서가 일치.</summary>
+    public void Disconnect(string path)
+    {
+        var i = _folders.FindIndex(f => string.Equals(f.Path, path, StringComparison.OrdinalIgnoreCase));
+        if (i < 0)
+        {
+            return;
+        }
+
+        _folders.RemoveAt(i);
+        if (i < _watchers.Count)
+        {
+            _watchers[i].Dispose();
+            _watchers.RemoveAt(i);
+        }
+
+        Status?.Invoke(_folders.Count == 0 ? "대기 중 (연결된 폴더 없음)" : $"{_folders.Count}개 폴더 감시 중");
+    }
 
     public void Start(IEnumerable<ConnectedFolder> folders)
     {

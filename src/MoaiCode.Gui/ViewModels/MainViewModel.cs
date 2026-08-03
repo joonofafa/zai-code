@@ -176,6 +176,8 @@ public sealed partial class MainViewModel : ObservableObject
         {
             IsAuthed = false; // 로그인 뷰 표시
         }
+
+        InitDesktop(); // 탭·공유 폴더 대시보드 배선(MainViewModel.Desktop.cs)
     }
 
     private static bool HasCredential() =>
