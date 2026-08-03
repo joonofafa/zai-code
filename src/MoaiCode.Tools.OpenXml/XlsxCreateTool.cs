@@ -27,6 +27,10 @@ public sealed class XlsxCreateTool : ITool
         install packages (openpyxl, exceljs, etc.) or write scripts to build spreadsheets.
         Charts reference vertical single-column ranges of the same sheet (e.g. categories "A2:A11",
         series values "B2:B11").
+        BUSINESS FORMS: set "template" to scaffold a standard Korean form (expense/지출결의서,
+        invoice/거래명세서, inventory/재고관리표) — you get the title, header row, table columns
+        (with 금액 currency / 수량 int formats) and a 합계 SUM formula. Then either omit "sheets"
+        to emit the blank form, or provide "sheets" yourself to fill the same layout with real rows.
         """;
 
     public bool IsReadOnly => false;
@@ -38,6 +42,7 @@ public sealed class XlsxCreateTool : ITool
           "type": "object",
           "properties": {
             "path": { "type": "string", "description": "Output .xlsx path (relative to workspace)" },
+            "template": { "type": "string", "enum": ["expense", "invoice", "inventory"], "description": "Optional business form to scaffold: expense(지출결의서), invoice(거래명세서), inventory(재고관리표). If set and 'sheets' is omitted, emits the standard blank form." },
             "sheets": {
               "type": "array",
               "description": "Sheets; each a name + rows (array of string cells)",
@@ -82,7 +87,7 @@ public sealed class XlsxCreateTool : ITool
               }
             }
           },
-          "required": ["path", "sheets"]
+          "required": ["path"]
         }
         """).RootElement.Clone();
 
@@ -107,16 +112,70 @@ public sealed class XlsxCreateTool : ITool
 
     private sealed record Input(
         [property: JsonPropertyName("path")] string? Path,
+        [property: JsonPropertyName("template")] string? Template,
         [property: JsonPropertyName("sheets")] List<SheetIn>? Sheets);
+
+    // 한국 업무용 표준 엑셀 양식. template 지정 + sheets 미제공 시 규격 시트를 스캐폴딩한다.
+    // 병합 셀은 미지원이므로 표 중심의 깔끔한 서식으로 구성한다(모델이 rows 로 값을 채워 넣음).
+    private static List<SheetIn>? FormSheets(string? template)
+    {
+        List<List<string>> Rows(params string[][] rs) => rs.Select(x => x.ToList()).ToList();
+        string[] Empty(int n) => new string[n];
+
+        switch ((template ?? string.Empty).Trim().ToLowerInvariant())
+        {
+            case "expense" or "지출결의서":
+                // 제목·기안정보·항목표(일자/적요/금액/비고)·합계.
+                return new() { new SheetIn("지출결의서",
+                    Rows(
+                        new[] { "지출결의서" },
+                        Empty(4),
+                        new[] { "기안일", "", "부서", "" },
+                        new[] { "작성자", "", "결재", "" },
+                        Empty(4),
+                        new[] { "일자", "적요", "금액", "비고" },
+                        Empty(4), Empty(4), Empty(4), Empty(4), Empty(4),
+                        new[] { "", "합계", "=SUM(C7:C11)", "" }),
+                    BoldHeader: true, Formats: new() { "date", "", "won", "" }, Charts: null) };
+
+            case "invoice" or "거래명세서":
+                // 제목·거래처·품목표(품목/규격/수량/단가/금액)·합계.
+                return new() { new SheetIn("거래명세서",
+                    Rows(
+                        new[] { "거래명세서" },
+                        Empty(5),
+                        new[] { "거래처", "", "거래일자", "", "" },
+                        Empty(5),
+                        new[] { "품목", "규격", "수량", "단가", "금액" },
+                        Empty(5), Empty(5), Empty(5), Empty(5), Empty(5),
+                        new[] { "합계", "", "", "", "=SUM(E6:E10)" }),
+                    BoldHeader: true, Formats: new() { "", "", "int", "won", "won" }, Charts: null) };
+
+            case "inventory" or "재고관리표":
+                // 제목·재고표(품목/규격/입고/출고/재고/비고).
+                return new() { new SheetIn("재고관리표",
+                    Rows(
+                        new[] { "재고관리표" },
+                        Empty(6),
+                        new[] { "품목", "규격", "입고", "출고", "재고", "비고" },
+                        Empty(6), Empty(6), Empty(6), Empty(6), Empty(6)),
+                    BoldHeader: true, Formats: new() { "", "", "int", "int", "int", "" }, Charts: null) };
+
+            default:
+                return null;
+        }
+    }
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
     {
         await Task.Yield();
         var inp = input.Deserialize<Input>();
-        if (inp is null || string.IsNullOrWhiteSpace(inp.Path) || inp.Sheets is null || inp.Sheets.Count == 0)
+        // sheets 미제공 시 template 이 표준 양식을 스캐폴딩(둘 다 없으면 오류).
+        var sheets = (inp?.Sheets is { Count: > 0 }) ? inp!.Sheets : FormSheets(inp?.Template);
+        if (inp is null || string.IsNullOrWhiteSpace(inp.Path) || sheets is null || sheets.Count == 0)
         {
-            yield return new ToolOutput("XlsxCreate: 'path' 와 최소 1개 'sheets' 가 필요합니다.", IsError: true);
+            yield return new ToolOutput("XlsxCreate: 'path' 와 최소 1개 'sheets'(또는 'template') 가 필요합니다.", IsError: true);
             yield break;
         }
 
@@ -125,7 +184,7 @@ public sealed class XlsxCreateTool : ITool
         try
         {
             full = OpenXmlPaths.ResolveForWrite(context.WorkingDirectory, inp.Path, ".xlsx");
-            Write(full, inp.Sheets);
+            Write(full, sheets);
         }
         catch (Exception ex)
         {
@@ -135,7 +194,7 @@ public sealed class XlsxCreateTool : ITool
 
         yield return error is not null
             ? new ToolOutput($"XlsxCreate: 실패 — {error}", IsError: true)
-            : new ToolOutput($"OK: {full} 생성 ({inp.Sheets.Count} 시트).");
+            : new ToolOutput($"OK: {full} 생성 ({sheets.Count} 시트).");
     }
 
     private static void Write(string path, List<SheetIn> sheets)
