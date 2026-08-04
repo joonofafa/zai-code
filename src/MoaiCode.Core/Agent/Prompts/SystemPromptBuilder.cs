@@ -309,8 +309,10 @@ public static class SystemPromptBuilder
             "Use the Memory tool to save durable facts you learn — deployment/build/access procedures, project " +
             "constraints and decisions, user preferences and corrections — so a future session does not rediscover " +
             "them. Save what was non-obvious to derive; do NOT save what the repository or git history already " +
-            "records, or details that only matter to this conversation. The index below is what you currently " +
-            "remember — open a specific entry with the Read tool when its hook looks relevant to the task.";
+            "records, or details that only matter to this conversation. Save promptly — especially when the " +
+            "user corrects you, pushes back, or states a preference, and when you discover a durable project " +
+            "constraint or a working procedure; do not wait. The index below is what you currently remember " +
+            "— open a specific entry with the Read tool when its hook looks relevant to the task.";
 
         if (!string.IsNullOrWhiteSpace(ctx.MemoryIndex))
         {

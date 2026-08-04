@@ -55,4 +55,27 @@ public static class CompactionPrompts
         "<analysis>\n[your thought process]\n</analysis>\n<summary>\n[the 9 sections above]\n</summary>\n\n" +
         "Output only those two blocks. Include only information present in the conversation above; do not " +
         "invent or speculate.";
+
+    // 메모리 하베스트: 압축 시점에 '세션을 넘겨 기억할' durable 사실만 추출한다. 툴 미사용, 지정 블록만 출력.
+    public const string MemoryHarvest =
+        "You are extracting DURABLE facts from a conversation that is being compacted, so they persist " +
+        "across FUTURE sessions. Respond with the specified block ONLY. Do NOT call any tools.\n\n" +
+        "Save ONLY facts that will still matter in a future session:\n" +
+        "- project constraints, conventions, environment/build/deploy/access procedures, and key decisions " +
+        "with their rationale;\n" +
+        "- user preferences and CORRECTIONS/feedback — including where the user pushed back, was frustrated, " +
+        "or told you to do something differently — expressed as an ACTIONABLE rule (what to do or avoid), " +
+        "not as a description of the user's mood.\n" +
+        "Do NOT save: transient task state, one-off details, or anything the repository or git history " +
+        "already records.\n\n" +
+        "You are given the current memory index (already-known facts). UPDATE an existing entry by reusing " +
+        "its exact name instead of duplicating, and skip anything already captured.\n\n" +
+        "Output ONLY this block and nothing else:\n" +
+        "<memories>\n" +
+        "name | type | one-line description | the fact to remember\n" +
+        "</memories>\n" +
+        "Rules: 'type' is one of user, feedback, project, reference. 'name' is a short kebab-case id. " +
+        "One memory per line, at most 6 lines, no extra commentary. If there is nothing durable worth " +
+        "saving, output exactly:\n" +
+        "<memories>\nNONE\n</memories>";
 }

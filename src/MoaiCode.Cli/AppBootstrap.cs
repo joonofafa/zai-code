@@ -197,7 +197,8 @@ public static class AppBootstrap
             model, toolList, gate, observer, settings.MaxTurns,
             contextWindowTokens: settings.ContextWindowTokens,
             pendingTasks: () => taskStore.All().Any(t => t.Status != MoaiCode.Tools.Tasks.TaskStatus.Completed),
-            maxToolResultChars: maxToolResultChars);
+            maxToolResultChars: maxToolResultChars,
+            harvestMemories: true);
         var promptCtx = BuildPromptContext(cwd, settings, toolList);
         engine.Seed(new[] { new SystemMessage(SystemPromptBuilder.Build(promptCtx)) });
 

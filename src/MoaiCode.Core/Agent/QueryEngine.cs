@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using MoaiCode.Core.Agent.Prompts;
+using MoaiCode.Core.Memory;
 using MoaiCode.Core.Messages;
 using MoaiCode.Core.Tools;
 
@@ -47,6 +48,9 @@ public sealed class QueryEngine
     // 미완료 작업이 남아있는지(task list). 모델이 일을 남긴 채 종료하려 하면 완료를 독려하는 데 사용.
     private readonly Func<bool>? _pendingTasks;
 
+    // 선제 압축 시 durable 사실을 자동으로 메모리에 저장할지 (main 세션만 true; 서브에이전트/기타는 false).
+    private readonly bool _harvestMemories;
+
     public QueryEngine(
         IChatModel model,
         IReadOnlyList<ITool> tools,
@@ -57,7 +61,8 @@ public sealed class QueryEngine
         int contextWindowTokens = 200_000,
         bool extendTurns = true,
         Func<bool>? pendingTasks = null,
-        int maxToolResultChars = 16_000)
+        int maxToolResultChars = 16_000,
+        bool harvestMemories = false)
     {
         _model = model;
         _tools = tools;
@@ -69,6 +74,7 @@ public sealed class QueryEngine
         _extendTurns = extendTurns;
         _pendingTasks = pendingTasks;
         _maxToolResultChars = maxToolResultChars;
+        _harvestMemories = harvestMemories;
     }
 
     public IReadOnlyList<Message> Messages => _messages;
@@ -589,7 +595,111 @@ public sealed class QueryEngine
             return false;
         }
 
-        return await CompactCoreAsync(12, ct).ConfigureAwait(false);
+        var did = await CompactCoreAsync(12, ct).ConfigureAwait(false);
+
+        // 선제 압축으로 오래된 문맥이 요약돼 사라지기 직전 — durable 사실을 메모리에 자동 저장(main 세션만).
+        if (did && _harvestMemories)
+        {
+            await HarvestMemoriesAsync(ct).ConfigureAwait(false);
+        }
+
+        return did;
+    }
+
+    // 압축 직후 문맥(요약 + 최근)에서 세션을 넘겨 기억할 durable 사실을 추출해 저장한다.
+    // 별도 1-shot 모델 호출(비용 1회). 실패는 non-fatal — 압축/세션을 막지 않는다.
+    private async Task HarvestMemoriesAsync(CancellationToken ct)
+    {
+        try
+        {
+            var span = _messages.Skip(_seed.Count).ToList();
+            if (span.Count == 0)
+            {
+                return;
+            }
+
+            var index = ProjectMemory.LoadIndex(_workingDirectory) ?? "(none yet)";
+            var userMsg = "# Already-known memory index\n" + index +
+                          "\n\n# Conversation to harvest durable facts from\n" + RenderSpan(span);
+            var oneShot = new List<Message>
+            {
+                new SystemMessage(Prompts.CompactionPrompts.MemoryHarvest),
+                new UserMessage(userMsg),
+            };
+
+            var sb = new StringBuilder();
+            await foreach (var ev in _model.StreamAsync(oneShot, Array.Empty<ITool>(), ct).WithCancellation(ct))
+            {
+                if (ev is TextDelta d)
+                {
+                    sb.Append(d.Text);
+                }
+            }
+
+            SaveHarvestedMemories(sb.ToString());
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // non-fatal.
+        }
+    }
+
+    // <memories> 블록의 'name | type | description | content' 라인들을 저장(최대 6건).
+    private void SaveHarvestedMemories(string output)
+    {
+        const string open = "<memories>";
+        const string close = "</memories>";
+        var s = output.IndexOf(open, StringComparison.OrdinalIgnoreCase);
+        var e = output.IndexOf(close, StringComparison.OrdinalIgnoreCase);
+        if (s < 0 || e <= s)
+        {
+            return;
+        }
+
+        var body = output.Substring(s + open.Length, e - s - open.Length);
+        var saved = 0;
+        foreach (var raw in body.Split('\n'))
+        {
+            if (saved >= 6)
+            {
+                break;
+            }
+
+            var line = raw.Trim();
+            if (line.Length == 0 || line.Equals("NONE", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var parts = line.Split('|');
+            if (parts.Length < 4)
+            {
+                continue;
+            }
+
+            var name = parts[0].Trim();
+            var type = parts[1].Trim();
+            var desc = parts[2].Trim();
+            var content = string.Join("|", parts.Skip(3)).Trim();
+            if (name.Length == 0 || content.Length == 0)
+            {
+                continue;
+            }
+
+            try
+            {
+                ProjectMemory.Save(_workingDirectory, name, desc, type, content);
+                saved++;
+            }
+            catch
+            {
+                // 개별 저장 실패는 무시하고 계속.
+            }
+        }
     }
 
     /// <summary>
