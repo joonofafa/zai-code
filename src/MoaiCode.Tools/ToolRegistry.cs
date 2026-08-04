@@ -2,6 +2,7 @@ using MoaiCode.Core.Tools;
 using MoaiCode.Tools.Files;
 using MoaiCode.Tools.Knowledge;
 using MoaiCode.Tools.Media;
+using MoaiCode.Tools.Memory;
 using MoaiCode.Tools.Search;
 using MoaiCode.Tools.Web;
 
@@ -31,5 +32,6 @@ public static class ToolRegistry
         new OrgDatasTool(),
         new ImageCreateTool(),
         new ImageFetchTool(),
+        new MemoryTool(),
     };
 }

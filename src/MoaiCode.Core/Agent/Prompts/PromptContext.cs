@@ -13,6 +13,7 @@ public sealed record PromptContext
     public string CurrentDate { get; init; } = "";
     public string? ModelDescription { get; init; }
     public string? ClaudeMd { get; init; }
+    public string? MemoryIndex { get; init; }
     public string? RepoMap { get; init; }
     public string? OutputStyle { get; init; }
     public IReadOnlyList<string> AdditionalDirectories { get; init; } = Array.Empty<string>();

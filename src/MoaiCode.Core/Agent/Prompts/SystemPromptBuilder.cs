@@ -33,6 +33,7 @@ public static class SystemPromptBuilder
             OutputStyles.PromptFor(ctx.OutputStyle),
             Environment(ctx),
             RepoMap(ctx.RepoMap),
+            MemoryContext(ctx),
             UserInstructions(ctx.ClaudeMd),
         };
 
@@ -297,6 +298,26 @@ public static class SystemPromptBuilder
         return "# Project / user instructions\n\n" +
                "Codebase and user instructions are shown below. Follow them; they may override default behavior.\n\n" +
                claudeMd.Trim();
+    }
+
+    private static string MemoryContext(PromptContext ctx)
+    {
+        var dir = MoaiCode.Core.Memory.ProjectMemory.Dir(ctx.WorkingDirectory);
+        var body =
+            "# Memory\n\n" +
+            "You have a persistent, project-scoped memory that survives across sessions, stored at `" + dir + "`. " +
+            "Use the Memory tool to save durable facts you learn — deployment/build/access procedures, project " +
+            "constraints and decisions, user preferences and corrections — so a future session does not rediscover " +
+            "them. Save what was non-obvious to derive; do NOT save what the repository or git history already " +
+            "records, or details that only matter to this conversation. The index below is what you currently " +
+            "remember — open a specific entry with the Read tool when its hook looks relevant to the task.";
+
+        if (!string.IsNullOrWhiteSpace(ctx.MemoryIndex))
+        {
+            return body + "\n\n" + ctx.MemoryIndex.Trim();
+        }
+
+        return body + "\n\n(No memories saved yet — save the first durable fact you learn.)";
     }
 
     private static string? RepoMap(string? repoMap)

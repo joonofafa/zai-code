@@ -3,6 +3,7 @@ using System.Security;
 using MoaiCode.Config;
 using MoaiCode.Core.Agent;
 using MoaiCode.Core.Agent.Prompts;
+using MoaiCode.Core.Memory;
 using MoaiCode.Core.Messages;
 using MoaiCode.Core.Security;
 using MoaiCode.Core.Tools;
@@ -323,6 +324,7 @@ public static class AppBootstrap
             CurrentDate = DateTimeOffset.Now.ToString("yyyy-MM-dd"),
             ModelDescription = modelDescription,
             ClaudeMd = LoadProjectInstructions(cwd),
+            MemoryIndex = ProjectMemory.LoadIndex(cwd),
             RepoMap = RepoMapBuilder.Build(cwd, settings.RepoMapTokens),
             OutputStyle = settings.OutputStyle,
             ToolNames = tools.Select(t => t.Name).ToList(),
