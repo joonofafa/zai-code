@@ -52,6 +52,11 @@ public sealed class PowerPointEditTool : ITool
           - export_pdf: export the presentation to PDF ("path" = output .pdf; if omitted, next to the file).
           - delete_slide: delete the slide at "slide_index".
           - delete_shape: delete the target shape (by slide_index+shape_id/shape_name, or current selection).
+          - insert_table: add a table to slide_index (or the current slide) and fill it. Provide "cells" (rows
+            of cell strings); size is inferred and the first row is bolded as a header. Optional
+            "left"/"top"/"width"/"height" in points. Prefer this over set_text when the user wants content "표로".
+          - set_cell: edit an existing table cell. Target the table shape by slide_index+shape_id (from
+            PowerPointInspect) or the current selection; "row"/"col" (1-based), "text" = new cell content.
           - new_presentation: start a brand-new presentation with one blank title slide (launches PowerPoint
             if not running) so you can then build it with add_slide/set_text/etc. Use this when none is open.
         Target the shape by shape_id (from PowerPointInspect) on slide_index; shape_name is a fallback.
@@ -73,7 +78,12 @@ public sealed class PowerPointEditTool : ITool
         {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape", "new_presentation"], "description": "Edit action" },
+            "action": { "type": "string", "enum": ["set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape", "new_presentation", "insert_table", "set_cell"], "description": "Edit action" },
+            "rows": { "type": "integer", "description": "insert_table row count (or inferred from cells)" },
+            "cols": { "type": "integer", "description": "insert_table column count (or inferred from cells)" },
+            "row": { "type": "integer", "description": "1-based cell row (set_cell)" },
+            "col": { "type": "integer", "description": "1-based cell column (set_cell)" },
+            "cells": { "type": "array", "items": { "type": "array", "items": { "type": "string" } }, "description": "insert_table content: rows of cell strings. Table size inferred; first row bolded as header. Placed on slide_index (or current slide); optional left/top/width/height in points." },
             "find_text": { "type": "string", "description": "Text to find (replace)" },
             "replace_text": { "type": "string", "description": "Replacement text (replace)" },
             "bullets": { "type": "array", "items": { "type": "string" }, "description": "add_slide: body bullet lines" },
@@ -120,10 +130,15 @@ public sealed class PowerPointEditTool : ITool
         [property: JsonPropertyName("bullets")] List<string>? Bullets,
         [property: JsonPropertyName("layout")] string? Layout,
         [property: JsonPropertyName("find_text")] string? FindText,
-        [property: JsonPropertyName("replace_text")] string? ReplaceText);
+        [property: JsonPropertyName("replace_text")] string? ReplaceText,
+        [property: JsonPropertyName("rows")] int? Rows,
+        [property: JsonPropertyName("cols")] int? Cols,
+        [property: JsonPropertyName("cells")] List<List<string>>? Cells,
+        [property: JsonPropertyName("row")] int? Row,
+        [property: JsonPropertyName("col")] int? Col);
 
     private static readonly string[] Actions =
-        { "set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape", "new_presentation" };
+        { "set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape", "new_presentation", "insert_table", "set_cell" };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -206,6 +221,11 @@ public sealed class PowerPointEditTool : ITool
             "insert_picture" when string.IsNullOrWhiteSpace(inp.Path) => "insert_picture 에는 path 가 필요합니다.",
             "replace" when string.IsNullOrEmpty(inp.FindText) => "replace 에는 find_text 가 필요합니다.",
             "delete_slide" when inp.SlideIndex is null => "delete_slide 에는 slide_index 가 필요합니다.",
+            "insert_table" when (inp.Rows is null or < 1 || inp.Cols is null or < 1)
+                    && (inp.Cells is null || inp.Cells.Count == 0)
+                => "insert_table 에는 rows·cols(1 이상) 또는 cells(내용)가 필요합니다.",
+            "set_cell" when inp.Row is null or < 1 || inp.Col is null or < 1 || inp.Text is null
+                => "set_cell 에는 row·col(1 이상)·text 가 필요합니다.",
             _ => null,
         };
     }
@@ -269,6 +289,16 @@ public sealed class PowerPointEditTool : ITool
             return $"OK: 슬라이드 {inp.SlideIndex} 를 삭제했습니다.";
         }
 
+        if (inp.Action == "insert_table")
+        {
+            return InsertTable(app, pres, inp);
+        }
+
+        if (inp.Action == "set_cell")
+        {
+            return SetCell(app, pres, inp);
+        }
+
         var targets = ResolveTargets(app, pres, inp);
         if (targets.Count == 0)
         {
@@ -296,6 +326,90 @@ public sealed class PowerPointEditTool : ITool
     }
 
     // 로컬 이미지 파일을 슬라이드에 삽입한다. slide_index 지정 시 그 슬라이드, 없으면 현재 슬라이드.
+    // 슬라이드에 표를 추가하고 cells 로 채운다. slide_index 지정 시 그 슬라이드, 없으면 현재 슬라이드.
+    private static string InsertTable(dynamic app, dynamic pres, Input inp)
+    {
+        var cells = inp.Cells;
+        int rows = inp.Rows ?? cells?.Count ?? 0;
+        int cols = inp.Cols ?? (cells is { Count: > 0 } ? cells.Max(r => r.Count) : 0);
+        if (rows < 1 || cols < 1)
+        {
+            throw new InvalidOperationException("표 크기를 알 수 없습니다(rows/cols 또는 cells 필요).");
+        }
+
+        dynamic slide;
+        if (inp.SlideIndex is not null)
+        {
+            int slideCount = (int)pres.Slides.Count;
+            if (inp.SlideIndex.Value < 1 || inp.SlideIndex.Value > slideCount)
+            {
+                throw new InvalidOperationException($"슬라이드 {inp.SlideIndex} 없음(현재 {slideCount}개).");
+            }
+
+            slide = pres.Slides[inp.SlideIndex.Value];
+        }
+        else
+        {
+            slide = app.ActiveWindow.View.Slide;
+        }
+
+        var left = (float)(inp.Left ?? 50);
+        var top = (float)(inp.Top ?? 120);
+        var width = (float)(inp.Width ?? 620);
+        var height = (float)(inp.Height ?? Math.Max(30, rows * 28));
+
+        dynamic shape = slide.Shapes.AddTable(rows, cols, left, top, width, height);
+        dynamic table = shape.Table;
+
+        if (cells is not null)
+        {
+            for (var r = 0; r < cells.Count && r < rows; r++)
+            {
+                var row = cells[r];
+                for (var c = 0; c < row.Count && c < cols; c++)
+                {
+                    if (!string.IsNullOrEmpty(row[c]))
+                    {
+                        TrySet(() => table.Cell(r + 1, c + 1).Shape.TextFrame.TextRange.Text = row[c]);
+                    }
+                }
+            }
+
+            // 첫 행(헤더) 굵게.
+            for (var c = 1; c <= cols; c++)
+            {
+                TrySet(() => table.Cell(1, c).Shape.TextFrame.TextRange.Font.Bold = MsoTrue);
+            }
+        }
+
+        var where = inp.SlideIndex is not null ? $"슬라이드 {inp.SlideIndex}" : "현재 슬라이드";
+        return $"OK: {where} 에 {rows}x{cols} 표를 삽입했습니다{(cells is not null ? " (내용 채움)" : string.Empty)}.";
+    }
+
+    // 기존 표 도형의 셀 하나를 수정. 대상 표는 slide_index+shape_id/현재 선택으로 지정.
+    private static string SetCell(dynamic app, dynamic pres, Input inp)
+    {
+        var targets = ResolveTargets(app, pres, inp);
+        dynamic? tableShape = null;
+        foreach (var s in targets)
+        {
+            if (TryInt(() => (int)s.HasTable) == MsoTrue)
+            {
+                tableShape = s;
+                break;
+            }
+        }
+
+        if (tableShape is null)
+        {
+            throw new InvalidOperationException(
+                "표 도형을 찾지 못했습니다. slide_index+shape_id 로 표를 지정하거나, PowerPoint 에서 표를 선택하세요.");
+        }
+
+        tableShape.Table.Cell(inp.Row!.Value, inp.Col!.Value).Shape.TextFrame.TextRange.Text = inp.Text ?? string.Empty;
+        return $"OK: 표 셀 ({inp.Row},{inp.Col}) 을 수정했습니다.";
+    }
+
     private static string InsertPicture(dynamic app, dynamic pres, Input inp, string workingDir)
     {
         var file = OfficePicture.ResolvePath(inp.Path, workingDir);

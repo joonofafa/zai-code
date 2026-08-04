@@ -55,6 +55,8 @@ public sealed class WordEditTool : ITool
           - delete_shape: delete a floating shape (by "shape_index"/"shape_name", or the current selection).
           - new_document: start a brand-new blank Word document (launches Word if it is not running) so you
             can then write into it with insert_paragraph/set_style/etc. Use this when no document is open.
+          - set_cell: edit an existing table cell. "table_index" (1-based, from WordInspect; default 1),
+            "row", "col" (1-based), "text" = new cell content.
         Target the paragraph by 1-based "para_index" (from WordInspect); if omitted, the CURRENT SELECTION.
         IMPORTANT: set_text only edits EXISTING paragraphs (1..N as reported by WordInspect). Never use an
         out-of-range para_index — to ADD new content use insert_paragraph. Always WordInspect first to get N.
@@ -70,7 +72,10 @@ public sealed class WordEditTool : ITool
         {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["set_text","set_font","set_style","insert_paragraph","delete_paragraph","insert_table","set_geometry","insert_picture","add_page","replace","export_pdf","delete_shape","new_document"] },
+            "action": { "type": "string", "enum": ["set_text","set_font","set_style","insert_paragraph","delete_paragraph","insert_table","set_geometry","insert_picture","add_page","replace","export_pdf","delete_shape","new_document","set_cell"] },
+            "table_index": { "type": "integer", "description": "1-based table index in the document (set_cell; default 1)" },
+            "row": { "type": "integer", "description": "1-based cell row (set_cell)" },
+            "col": { "type": "integer", "description": "1-based cell column (set_cell)" },
             "path": { "type": "string", "description": "Local image file path (insert_picture) OR output .pdf path (export_pdf)" },
             "find_text": { "type": "string", "description": "Text to find (replace)" },
             "replace_text": { "type": "string", "description": "Replacement text (replace)" },
@@ -107,6 +112,9 @@ public sealed class WordEditTool : ITool
         [property: JsonPropertyName("rows")] int? Rows,
         [property: JsonPropertyName("cols")] int? Cols,
         [property: JsonPropertyName("cells")] List<List<string>>? Cells,
+        [property: JsonPropertyName("table_index")] int? TableIndex,
+        [property: JsonPropertyName("row")] int? Row,
+        [property: JsonPropertyName("col")] int? Col,
         [property: JsonPropertyName("shape_index")] int? ShapeIndex,
         [property: JsonPropertyName("shape_name")] string? ShapeName,
         [property: JsonPropertyName("left")] double? Left,
@@ -120,7 +128,7 @@ public sealed class WordEditTool : ITool
         [property: JsonPropertyName("replace_text")] string? ReplaceText);
 
     private static readonly string[] Actions =
-        { "set_text", "set_font", "set_style", "insert_paragraph", "delete_paragraph", "insert_table", "set_geometry", "insert_picture", "add_page", "replace", "export_pdf", "delete_shape", "new_document" };
+        { "set_text", "set_font", "set_style", "insert_paragraph", "delete_paragraph", "insert_table", "set_geometry", "insert_picture", "add_page", "replace", "export_pdf", "delete_shape", "new_document", "set_cell" };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -185,6 +193,8 @@ public sealed class WordEditTool : ITool
             "set_geometry" => ShapeGeometry.ValidateFlip(inp.Flip),
             "insert_picture" when string.IsNullOrWhiteSpace(inp.Path) => "insert_picture 에는 path 가 필요합니다.",
             "replace" when string.IsNullOrEmpty(inp.FindText) => "replace 에는 find_text 가 필요합니다.",
+            "set_cell" when inp.Row is null or < 1 || inp.Col is null or < 1 || inp.Text is null
+                => "set_cell 에는 row·col(1 이상)·text 가 필요합니다.",
             _ => null,
         };
     }
@@ -354,6 +364,20 @@ public sealed class WordEditTool : ITool
                 dynamic shape = ResolveShape(app, doc, inp);
                 shape.Delete();
                 return "OK: 도형을 삭제했습니다.";
+            }
+
+            case "set_cell":
+            {
+                int ti = inp.TableIndex ?? 1;
+                int tcount = (int)doc.Tables.Count;
+                if (ti < 1 || ti > tcount)
+                {
+                    throw new System.InvalidOperationException($"표 {ti} 없음(현재 {tcount}개). WordInspect 로 확인하세요.");
+                }
+
+                // Cell.Range.Text 대입은 셀 내용을 교체한다(셀마커는 보존).
+                doc.Tables[ti].Cell(inp.Row!.Value, inp.Col!.Value).Range.Text = inp.Text;
+                return $"OK: 표 {ti} 의 ({inp.Row},{inp.Col}) 셀을 수정했습니다.";
             }
         }
 
