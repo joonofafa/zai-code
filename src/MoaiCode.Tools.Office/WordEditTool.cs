@@ -40,7 +40,10 @@ public sealed class WordEditTool : ITool
           - insert_paragraph: append a new paragraph at end (needs "text"; optional "style").
             Body text defaults to Normal style (does NOT inherit the previous heading). Set "style" only for headings.
           - delete_paragraph: delete paragraph at "para_index"
-          - insert_table: insert a table (needs "rows","cols")
+          - insert_table: insert a table AND fill it. Provide "cells" (array of rows, each an array of cell
+            strings) to create a bordered table with content — size is inferred and the first row is bolded as
+            a header. (Or give "rows"/"cols" for an empty table.) Prefer "cells" whenever the user asks to
+            "정리/표로" real content, so it becomes a real Word table, not tab-separated text.
           - set_geometry: move/resize/rotate/flip a floating shape (any of "left","top","width","height"
             in points, "rotation" in degrees clockwise, "flip": horizontal|vertical). Target the shape by
             1-based "shape_index" or "shape_name" (from WordInspect's shapes); if omitted, the CURRENT SELECTION.
@@ -79,6 +82,7 @@ public sealed class WordEditTool : ITool
             "style": { "type": "string", "description": "heading1|heading2|heading3|title|normal" },
             "rows": { "type": "integer" },
             "cols": { "type": "integer" },
+            "cells": { "type": "array", "items": { "type": "array", "items": { "type": "string" } }, "description": "insert_table content: rows of cell strings. Table size is inferred; first row is bolded as header." },
             "shape_index": { "type": "integer", "description": "1-based floating-shape index (set_geometry)" },
             "shape_name": { "type": "string", "description": "Shape name (set_geometry, fallback for shape_index)" },
             "left": { "type": "number", "description": "X position in points (set_geometry)" },
@@ -102,6 +106,7 @@ public sealed class WordEditTool : ITool
         [property: JsonPropertyName("style")] string? Style,
         [property: JsonPropertyName("rows")] int? Rows,
         [property: JsonPropertyName("cols")] int? Cols,
+        [property: JsonPropertyName("cells")] List<List<string>>? Cells,
         [property: JsonPropertyName("shape_index")] int? ShapeIndex,
         [property: JsonPropertyName("shape_name")] string? ShapeName,
         [property: JsonPropertyName("left")] double? Left,
@@ -172,8 +177,9 @@ public sealed class WordEditTool : ITool
             "set_style" when string.IsNullOrWhiteSpace(inp.Style) => "set_style 에는 style 이 필요합니다.",
             "insert_paragraph" when inp.Text is null => "insert_paragraph 에는 text 가 필요합니다.",
             "delete_paragraph" when inp.ParaIndex is null => "delete_paragraph 에는 para_index 가 필요합니다.",
-            "insert_table" when inp.Rows is null or < 1 || inp.Cols is null or < 1
-                => "insert_table 에는 rows, cols(1 이상)가 필요합니다.",
+            "insert_table" when (inp.Rows is null or < 1 || inp.Cols is null or < 1)
+                    && (inp.Cells is null || inp.Cells.Count == 0)
+                => "insert_table 에는 rows·cols(1 이상) 또는 cells(내용)가 필요합니다.",
             "set_geometry" when ShapeGeometry.IsEmpty(inp.Left, inp.Top, inp.Width, inp.Height, inp.Rotation, inp.Flip)
                 => "set_geometry 에는 left, top, width, height, rotation, flip 중 하나가 필요합니다.",
             "set_geometry" => ShapeGeometry.ValidateFlip(inp.Flip),
@@ -274,9 +280,45 @@ public sealed class WordEditTool : ITool
 
             case "insert_table":
             {
+                var cells = inp.Cells;
+                int rows = inp.Rows ?? cells?.Count ?? 0;
+                int cols = inp.Cols ?? (cells is { Count: > 0 } ? cells.Max(r => r.Count) : 0);
+                if (rows < 1 || cols < 1)
+                {
+                    throw new System.InvalidOperationException("표 크기를 알 수 없습니다(rows/cols 또는 cells 필요).");
+                }
+
                 dynamic tRange = Target(app, doc, inp);
-                doc.Tables.Add(tRange, inp.Rows!.Value, inp.Cols!.Value);
-                return $"OK: {inp.Rows}x{inp.Cols} 표를 삽입했습니다.";
+                dynamic table = doc.Tables.Add(tRange, rows, cols);
+                try { table.Borders.Enable = 1; } catch { /* 스타일에 따라 실패 무시 */ }
+
+                if (cells is not null)
+                {
+                    for (var r = 0; r < cells.Count && r < rows; r++)
+                    {
+                        var row = cells[r];
+                        for (var c = 0; c < row.Count && c < cols; c++)
+                        {
+                            if (!string.IsNullOrEmpty(row[c]))
+                            {
+                                // 셀 Range.Text 는 끝에 셀마커를 포함하므로 값만 대입한다.
+                                table.Cell(r + 1, c + 1).Range.Text = row[c];
+                            }
+                        }
+                    }
+
+                    // 첫 행(헤더) 굵게.
+                    try
+                    {
+                        for (var c = 1; c <= cols; c++)
+                        {
+                            table.Cell(1, c).Range.Font.Bold = 1;
+                        }
+                    }
+                    catch { /* 셀 병합 등으로 인덱스 어긋나면 무시 */ }
+                }
+
+                return $"OK: {rows}x{cols} 표를 삽입했습니다{(cells is not null ? " (내용 채움)" : string.Empty)}.";
             }
 
             case "set_geometry":
