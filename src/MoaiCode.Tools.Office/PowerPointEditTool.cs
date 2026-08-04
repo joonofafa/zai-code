@@ -66,6 +66,9 @@ public sealed class PowerPointEditTool : ITool
             "font_size".
           - insert_divider: add a real horizontal line shape across the slide (NOT text). On slide_index or the
             current slide; optional "top" (y), "left"/"width" (extent), "border_color", "line_weight".
+          - set_background: set the SLIDE BACKGROUND fill color ("color"). Without slide_index it applies to the
+            whole deck (master + all slides) — use this to apply a design theme's background. This is the ONLY
+            way to color the slide background; set_fill only colors shapes, not the background.
           - new_presentation: start a brand-new presentation with one blank title slide (launches PowerPoint
             if not running) so you can then build it with add_slide/set_text/etc. Use this when none is open.
         Target the shape by shape_id (from PowerPointInspect) on slide_index; shape_name is a fallback.
@@ -87,7 +90,7 @@ public sealed class PowerPointEditTool : ITool
         {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape", "new_presentation", "insert_table", "set_cell", "insert_divider"], "description": "Edit action" },
+            "action": { "type": "string", "enum": ["set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape", "new_presentation", "insert_table", "set_cell", "insert_divider", "set_background"], "description": "Edit action" },
             "rows": { "type": "integer", "description": "insert_table row count (or inferred from cells)" },
             "cols": { "type": "integer", "description": "insert_table column count (or inferred from cells)" },
             "row": { "type": "integer", "description": "1-based cell row (set_cell)" },
@@ -155,7 +158,7 @@ public sealed class PowerPointEditTool : ITool
         [property: JsonPropertyName("border_color")] string? BorderColor);
 
     private static readonly string[] Actions =
-        { "set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape", "new_presentation", "insert_table", "set_cell", "insert_divider" };
+        { "set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape", "new_presentation", "insert_table", "set_cell", "insert_divider", "set_background" };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -243,6 +246,7 @@ public sealed class PowerPointEditTool : ITool
                 => "insert_table 에는 rows·cols(1 이상) 또는 cells(내용)가 필요합니다.",
             "set_cell" when inp.Row is null or < 1 || inp.Col is null or < 1 || inp.Text is null
                 => "set_cell 에는 row·col(1 이상)·text 가 필요합니다.",
+            "set_background" when string.IsNullOrWhiteSpace(inp.Color) => "set_background 에는 color 가 필요합니다.",
             _ => null,
         };
     }
@@ -314,6 +318,47 @@ public sealed class PowerPointEditTool : ITool
         if (inp.Action == "set_cell")
         {
             return SetCell(app, pres, inp);
+        }
+
+        if (inp.Action == "set_background")
+        {
+            var bg = OfficeColor.ToBgr(inp.Color!);
+
+            void PaintSlide(dynamic s)
+            {
+                TrySet(() =>
+                {
+                    s.FollowMasterBackground = MsoFalse;
+                    s.Background.Fill.Solid();
+                    s.Background.Fill.ForeColor.RGB = bg;
+                });
+            }
+
+            if (inp.SlideIndex is not null)
+            {
+                int scnt = (int)pres.Slides.Count;
+                if (inp.SlideIndex.Value < 1 || inp.SlideIndex.Value > scnt)
+                {
+                    throw new InvalidOperationException($"슬라이드 {inp.SlideIndex} 없음(현재 {scnt}개).");
+                }
+
+                PaintSlide(pres.Slides[inp.SlideIndex.Value]);
+                return $"OK: 슬라이드 {inp.SlideIndex} 배경색을 적용했습니다.";
+            }
+
+            // 전체: 마스터 + 모든 슬라이드(디자인 테마 배경).
+            TrySet(() =>
+            {
+                pres.SlideMaster.Background.Fill.Solid();
+                pres.SlideMaster.Background.Fill.ForeColor.RGB = bg;
+            });
+            int n = (int)pres.Slides.Count;
+            for (var i = 1; i <= n; i++)
+            {
+                PaintSlide(pres.Slides[i]);
+            }
+
+            return "OK: 전체 슬라이드 배경색을 적용했습니다.";
         }
 
         if (inp.Action == "insert_divider")

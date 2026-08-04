@@ -68,13 +68,13 @@ public sealed partial class MainViewModel
 
         PptTemplates.Add(new("PowerPoint", "빈 프레젠테이션", null, blank, true));
         PptTemplates.Add(new("PowerPoint", "디자인 A",
-            "PowerPoint에 「(주제)」 발표자료를 만들어줘. 새 프레젠테이션으로 시작하고, 코퍼레이트 톤(연그레이 배경·남색 포인트), 제목 크게·본문 간결한 불릿, 표지 + 핵심 슬라이드로.", Sw("#2F5496"), false));
+            "PowerPoint에 「(주제)」 발표자료를 만들어줘. 새 프레젠테이션으로 시작하고, 먼저 set_background로 전체 배경을 연그레이 #F7F8FA 로 칠해줘. 제목은 남색 #1F3864 큰 글씨, 강조/포인트는 #2F5496, 본문은 간결한 불릿. 표지 + 핵심 슬라이드로. 코퍼레이트 톤.", Sw("#2F5496"), false));
         PptTemplates.Add(new("PowerPoint", "디자인 B",
-            "PowerPoint에 「(주제)」 발표자료를 만들어줘. 새 프레젠테이션으로 시작하고, 키노트 톤(흰 배경·빨강 포인트), 한 슬라이드 한 메시지, 큰 제목.", Sw("#C00000"), false));
+            "PowerPoint에 「(주제)」 발표자료를 만들어줘. 새 프레젠테이션으로 시작하고, set_background로 전체 배경을 흰색 #FFFFFF 로, 제목·강조는 빨강 #C00000 로. 한 슬라이드 한 메시지, 큰 제목. 키노트 톤.", Sw("#C00000"), false));
         PptTemplates.Add(new("PowerPoint", "디자인 C",
-            "PowerPoint에 「(주제)」 발표자료를 만들어줘. 새 프레젠테이션으로 시작하고, 미니멀 톤(흰 배경·검정, 여백 넉넉), 간결하게.", Sw("#222222"), false));
+            "PowerPoint에 「(주제)」 발표자료를 만들어줘. 새 프레젠테이션으로 시작하고, set_background로 전체 배경을 흰색 #FFFFFF 로, 제목·본문은 검정 #222222 로. 여백 넉넉·간결한 미니멀 톤.", Sw("#222222"), false));
         PptTemplates.Add(new("PowerPoint", "디자인 D",
-            "PowerPoint에 「(주제)」 발표자료를 만들어줘. 새 프레젠테이션으로 시작하고, 다크 톤(짙은 배경·시안 포인트), 임팩트 있게.", Sw("#4FC3F7"), false));
+            "PowerPoint에 「(주제)」 발표자료를 만들어줘. 새 프레젠테이션으로 시작하고, 먼저 set_background로 전체 배경을 짙은 남색 #1F2430 으로 칠해줘. 모든 텍스트는 흰색 #FFFFFF, 강조/포인트는 시안 #4FC3F7. 임팩트 있는 다크 톤.", Sw("#4FC3F7"), false));
 
         ExcelTemplates.Add(new("Excel", "빈 통합문서", null, blank, true));
         ExcelTemplates.Add(new("Excel", "지출결의서",
@@ -85,7 +85,13 @@ public sealed partial class MainViewModel
             "Excel에 재고관리표 양식을 만들어줘. 새 Excel 통합문서로 시작하고, 품목·규격·입고·출고·재고·비고 표.", x, false));
     }
 
-    // 템플릿 카드 클릭 — 빈 문서는 앱 바로 열기, 그 외엔 새 대화로 분리 + 입력창에 프롬프트 자동 입력.
+    // ── 주제 입력 팝업(「(주제)」 가 있는 템플릿) ──
+    [ObservableProperty] private bool _showTopicDialog;
+    [ObservableProperty] private string _topicInput = string.Empty;
+    [ObservableProperty] private string _topicTemplateLabel = string.Empty;
+    private DocTemplate? _pendingTemplateForTopic;
+
+    // 템플릿 카드 클릭 — 빈 문서는 앱 바로 열기, 주제형은 팝업, 양식형(주제 불필요)은 바로 진행.
     [RelayCommand]
     private void UseTemplate(DocTemplate? t)
     {
@@ -94,19 +100,61 @@ public sealed partial class MainViewModel
             return;
         }
 
-        Tab = 1;
         if (t.IsBlank || string.IsNullOrEmpty(t.Prompt))
         {
+            Tab = 1;
             LaunchApp(t.App);
             return;
         }
 
-        StartFreshSession(); // 새 문서 작업은 별도 대화로(기존 문서 연결·대화 이력과 섞이지 않게)
-        Input = t.Prompt;    // 입력창 자동 채움(사용자가 주제 넣고 전송). StartFreshSession 뒤에 세팅
-        ActiveDocApp = t.App; // 하단 컴포저를 대상 앱 색으로 강조(문서 연결 전 힌트)
-        _templateSourcePending = true; // 첫 전송 시 데이터 출처 선택 버튼을 먼저 띄운다(Send 에서 가로챔)
-        ShowHome = false;    // 편집 대화 화면으로 전환
-        TemplateFilled?.Invoke(); // 코드비하인드가 「(주제)」 선택
+        // 「(주제)」 가 있으면 주제 입력 팝업을 먼저(사용자가 놓치지 않도록).
+        if (t.Prompt.Contains("「(주제)」", StringComparison.Ordinal))
+        {
+            _pendingTemplateForTopic = t;
+            TopicTemplateLabel = t.Label;
+            TopicInput = string.Empty;
+            ShowTopicDialog = true;
+            return;
+        }
+
+        StartTemplate(t, t.Prompt); // 양식형(Excel 등) — 주제 없이 바로
+    }
+
+    [RelayCommand]
+    private void ConfirmTopic()
+    {
+        var t = _pendingTemplateForTopic;
+        if (t is null)
+        {
+            return;
+        }
+
+        var topic = string.IsNullOrWhiteSpace(TopicInput) ? null : TopicInput.Trim();
+        var prompt = topic is null
+            ? t.Prompt!.Replace("「(주제)」", string.Empty).Trim()
+            : t.Prompt!.Replace("「(주제)」", $"「{topic}」");
+        ShowTopicDialog = false;
+        _pendingTemplateForTopic = null;
+        StartTemplate(t, prompt);
+    }
+
+    [RelayCommand]
+    private void CancelTopic()
+    {
+        ShowTopicDialog = false;
+        _pendingTemplateForTopic = null;
+    }
+
+    // 프롬프트를 새 대화로 시작하고 바로 전송(→ 출처 선택 카드가 Send 에서 뜬다).
+    private void StartTemplate(DocTemplate t, string prompt)
+    {
+        Tab = 1;
+        StartFreshSession();  // 새 문서 작업은 별도 대화로
+        Input = prompt;
+        ActiveDocApp = t.App;  // 하단 컴포저를 대상 앱 색으로 강조
+        _templateSourcePending = true; // 첫 전송을 Send 가 가로채 출처 선택을 먼저
+        ShowHome = false;
+        SendCommand.Execute(null);
     }
 
     // 템플릿 작성 첫 전송을 가로채 데이터 출처를 먼저 물어보기 위한 상태(모델 무시 불가, GUI 가 결정).

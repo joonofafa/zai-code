@@ -534,5 +534,28 @@
         </StackPanel>
       </Grid>
     </Grid>
+
+    <!-- ═══ 주제 입력 팝업(오버레이) ═══ -->
+    <Border IsVisible="{Binding ShowTopicDialog}" Background="#88000000">
+      <Border Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderSoftBrush}"
+              BorderThickness="1" CornerRadius="16" Padding="22" MaxWidth="440" Width="420"
+              HorizontalAlignment="Center" VerticalAlignment="Center">
+        <StackPanel Spacing="14">
+          <TextBlock FontSize="15.5" FontWeight="SemiBold"
+                     Text="{Binding TopicTemplateLabel, StringFormat='{}{0} · 주제를 입력하세요'}" />
+          <TextBlock Text="어떤 주제로 작성할까요? (예: AI 거버넌스 체계 수립 방안)" FontSize="12.5"
+                     TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+          <TextBox x:Name="TopicBox" Watermark="주제 입력…" Text="{Binding TopicInput}" FontSize="14">
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Enter" Command="{Binding ConfirmTopicCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
+          <StackPanel Orientation="Horizontal" Spacing="9" HorizontalAlignment="Right">
+            <Button Classes="ghost" Content="취소" Command="{Binding CancelTopicCommand}" />
+            <Button Classes="accent" Content="작성 시작" Command="{Binding ConfirmTopicCommand}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Border>
   </Grid>
 </Window>

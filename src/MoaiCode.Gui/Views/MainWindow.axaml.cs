@@ -37,6 +37,7 @@ public partial class MainWindow : Window
         {
             _hooked.ScrollToEndRequested -= StickToBottom;
             _hooked.TemplateFilled -= OnTemplateFilled;
+            _hooked.PropertyChanged -= OnVmPropertyChanged;
         }
 
         _hooked = DataContext as MainViewModel;
@@ -44,6 +45,20 @@ public partial class MainWindow : Window
         {
             _hooked.ScrollToEndRequested += StickToBottom;
             _hooked.TemplateFilled += OnTemplateFilled;
+            _hooked.PropertyChanged += OnVmPropertyChanged;
+        }
+    }
+
+    // 주제 입력 팝업이 열리면 입력창에 포커스.
+    private void OnVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainViewModel.ShowTopicDialog) && _hooked?.ShowTopicDialog == true)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                var tb = this.FindControl<TextBox>("TopicBox");
+                tb?.Focus();
+            });
         }
     }
 
