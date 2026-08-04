@@ -28,6 +28,9 @@ public sealed class PowerPointEditTool : ITool
     // PpFixedFormatType.ppFixedFormatTypePDF.
     private const int PpFixedFormatTypePDF = 2;
 
+    // PpBorderType: 셀 4변.
+    private static readonly int[] PpCellBorders = { 1, 2, 3, 4 }; // top, left, bottom, right
+
     private readonly StaDispatcher _sta;
 
     public PowerPointEditTool(StaDispatcher sta) => _sta = sta;
@@ -55,10 +58,12 @@ public sealed class PowerPointEditTool : ITool
           - insert_table: add a table to slide_index (or the current slide) and fill it. Provide "cells" (rows
             of cell strings); size is inferred and the first row is bolded as a header. Optional
             "left"/"top"/"width"/"height" in points. Prefer this over set_text when the user wants content "표로".
-            Optional "font_size" (cell font), "header_fill" (header row background), "header_color" (header text).
+            Optional "font_size" (cell font), "header_fill" (header row background), "header_color" (header text),
+            "border_color" (table border line color).
           - set_cell: edit an existing table cell. Target the table shape by slide_index+shape_id (from
             PowerPointInspect) or the current selection; "row"/"col" (1-based), "text" = new cell content.
-            Optional "color" (cell text color), "fill_color" (cell background), "font_size".
+            Optional "color" (cell text color), "fill_color" (cell background), "border_color" (cell borders),
+            "font_size".
           - new_presentation: start a brand-new presentation with one blank title slide (launches PowerPoint
             if not running) so you can then build it with add_slide/set_text/etc. Use this when none is open.
         Target the shape by shape_id (from PowerPointInspect) on slide_index; shape_name is a fallback.
@@ -88,6 +93,7 @@ public sealed class PowerPointEditTool : ITool
             "fill_color": { "type": "string", "description": "Cell background color, #RRGGBB or name (set_cell)" },
             "header_fill": { "type": "string", "description": "Header row background color (insert_table)" },
             "header_color": { "type": "string", "description": "Header row text color (insert_table)" },
+            "border_color": { "type": "string", "description": "Table/cell border line color (insert_table/set_cell)" },
             "cells": { "type": "array", "items": { "type": "array", "items": { "type": "string" } }, "description": "insert_table content: rows of cell strings. Table size inferred; first row bolded as header. Placed on slide_index (or current slide); optional left/top/width/height in points." },
             "find_text": { "type": "string", "description": "Text to find (replace)" },
             "replace_text": { "type": "string", "description": "Replacement text (replace)" },
@@ -143,7 +149,8 @@ public sealed class PowerPointEditTool : ITool
         [property: JsonPropertyName("col")] int? Col,
         [property: JsonPropertyName("fill_color")] string? FillColor,
         [property: JsonPropertyName("header_fill")] string? HeaderFill,
-        [property: JsonPropertyName("header_color")] string? HeaderColor);
+        [property: JsonPropertyName("header_color")] string? HeaderColor,
+        [property: JsonPropertyName("border_color")] string? BorderColor);
 
     private static readonly string[] Actions =
         { "set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape", "new_presentation", "insert_table", "set_cell" };
@@ -419,6 +426,24 @@ public sealed class PowerPointEditTool : ITool
             }
         }
 
+        // 표 테두리선 색: 전체 셀의 4변에 적용(값범위 오류 방지 위해 셀·변별 best-effort).
+        if (!string.IsNullOrWhiteSpace(inp.BorderColor))
+        {
+            var lc = OfficeColor.ToBgr(inp.BorderColor);
+            for (var r = 1; r <= rows; r++)
+            {
+                for (var c = 1; c <= cols; c++)
+                {
+                    var rr = r; var cc = c;
+                    foreach (var bi in PpCellBorders)
+                    {
+                        var b = bi;
+                        TrySet(() => table.Cell(rr, cc).Borders[b].ForeColor.RGB = lc);
+                    }
+                }
+            }
+        }
+
         var where = inp.SlideIndex is not null ? $"슬라이드 {inp.SlideIndex}" : "현재 슬라이드";
         return $"OK: {where} 에 {rows}x{cols} 표를 삽입했습니다{(cells is not null ? " (내용 채움)" : string.Empty)}.";
     }
@@ -465,6 +490,16 @@ public sealed class PowerPointEditTool : ITool
                 targetCell.Shape.Fill.Solid();
                 targetCell.Shape.Fill.ForeColor.RGB = bg;
             });
+        }
+
+        if (!string.IsNullOrWhiteSpace(inp.BorderColor))
+        {
+            var lc = OfficeColor.ToBgr(inp.BorderColor);
+            foreach (var bi in PpCellBorders)
+            {
+                var b = bi;
+                TrySet(() => targetCell.Borders[b].ForeColor.RGB = lc);
+            }
         }
 
         return $"OK: 표 셀 ({inp.Row},{inp.Col}) 을 수정했습니다.";

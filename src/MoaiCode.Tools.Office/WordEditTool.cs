@@ -50,6 +50,7 @@ public sealed class WordEditTool : ITool
             avoids the table inheriting a big heading font.
             HEADER COLOR: pass "header_fill" (header row background) and/or "header_color" (header text color)
             to theme the first row (e.g. brand color). For a single cell's color later, use set_cell.
+            BORDER COLOR: pass "border_color" to color all table border lines.
           - set_geometry: move/resize/rotate/flip a floating shape (any of "left","top","width","height"
             in points, "rotation" in degrees clockwise, "flip": horizontal|vertical). Target the shape by
             1-based "shape_index" or "shape_name" (from WordInspect's shapes); if omitted, the CURRENT SELECTION.
@@ -63,7 +64,10 @@ public sealed class WordEditTool : ITool
             can then write into it with insert_paragraph/set_style/etc. Use this when no document is open.
           - set_cell: edit an existing table cell. "table_index" (1-based, from WordInspect; default 1),
             "row", "col" (1-based), "text" = new cell content. Optional "color" (cell text color),
-            "fill_color" (cell background), "font_size".
+            "fill_color" (cell background), "border_color" (cell border line color), "font_size".
+          - set_shape_fill: fill (background) color of a floating shape (needs "color"). Target by
+            "shape_index"/"shape_name" or the current selection.
+          - set_shape_line: outline color/weight of a shape (any of "color", "line_weight" in points).
         Target the paragraph by 1-based "para_index" (from WordInspect); if omitted, the CURRENT SELECTION.
         IMPORTANT: set_text only edits EXISTING paragraphs (1..N as reported by WordInspect). Never use an
         out-of-range para_index — to ADD new content use insert_paragraph. Always WordInspect first to get N.
@@ -79,7 +83,9 @@ public sealed class WordEditTool : ITool
         {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["set_text","set_font","set_style","insert_paragraph","delete_paragraph","insert_table","set_geometry","insert_picture","add_page","replace","export_pdf","delete_shape","new_document","set_cell"] },
+            "action": { "type": "string", "enum": ["set_text","set_font","set_style","insert_paragraph","delete_paragraph","insert_table","set_geometry","insert_picture","add_page","replace","export_pdf","delete_shape","new_document","set_cell","set_shape_fill","set_shape_line"] },
+            "border_color": { "type": "string", "description": "Table/cell border line color, #RRGGBB or name (insert_table/set_cell)" },
+            "line_weight": { "type": "number", "description": "Shape outline weight in points (set_shape_line)" },
             "table_index": { "type": "integer", "description": "1-based table index in the document (set_cell; default 1)" },
             "row": { "type": "integer", "description": "1-based cell row (set_cell)" },
             "col": { "type": "integer", "description": "1-based cell column (set_cell)" },
@@ -128,6 +134,8 @@ public sealed class WordEditTool : ITool
         [property: JsonPropertyName("fill_color")] string? FillColor,
         [property: JsonPropertyName("header_fill")] string? HeaderFill,
         [property: JsonPropertyName("header_color")] string? HeaderColor,
+        [property: JsonPropertyName("border_color")] string? BorderColor,
+        [property: JsonPropertyName("line_weight")] double? LineWeight,
         [property: JsonPropertyName("shape_index")] int? ShapeIndex,
         [property: JsonPropertyName("shape_name")] string? ShapeName,
         [property: JsonPropertyName("left")] double? Left,
@@ -141,7 +149,7 @@ public sealed class WordEditTool : ITool
         [property: JsonPropertyName("replace_text")] string? ReplaceText);
 
     private static readonly string[] Actions =
-        { "set_text", "set_font", "set_style", "insert_paragraph", "delete_paragraph", "insert_table", "set_geometry", "insert_picture", "add_page", "replace", "export_pdf", "delete_shape", "new_document", "set_cell" };
+        { "set_text", "set_font", "set_style", "insert_paragraph", "delete_paragraph", "insert_table", "set_geometry", "insert_picture", "add_page", "replace", "export_pdf", "delete_shape", "new_document", "set_cell", "set_shape_fill", "set_shape_line" };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -208,6 +216,9 @@ public sealed class WordEditTool : ITool
             "replace" when string.IsNullOrEmpty(inp.FindText) => "replace 에는 find_text 가 필요합니다.",
             "set_cell" when inp.Row is null or < 1 || inp.Col is null or < 1 || inp.Text is null
                 => "set_cell 에는 row·col(1 이상)·text 가 필요합니다.",
+            "set_shape_fill" when string.IsNullOrWhiteSpace(inp.Color) => "set_shape_fill 에는 color 가 필요합니다.",
+            "set_shape_line" when string.IsNullOrWhiteSpace(inp.Color) && inp.LineWeight is null
+                => "set_shape_line 에는 color 또는 line_weight 가 필요합니다.",
             _ => null,
         };
     }
@@ -321,6 +332,16 @@ public sealed class WordEditTool : ITool
                 dynamic table = doc.Tables.Add(tRange, rows, cols);
                 try { table.Borders.Enable = 1; } catch { /* 스타일에 따라 실패 무시 */ }
 
+                if (!string.IsNullOrWhiteSpace(inp.BorderColor))
+                {
+                    var bc = OfficeColor.ToBgr(inp.BorderColor);
+                    // WdBorderType: top(-1) left(-2) bottom(-3) right(-4) horizontal(-5) vertical(-6).
+                    foreach (var bi in new[] { -1, -2, -3, -4, -5, -6 })
+                    {
+                        try { table.Borders[bi].LineStyle = 1; table.Borders[bi].Color = bc; } catch { }
+                    }
+                }
+
                 // 셀 폰트: font_size 지정값, 없으면 문서 본문(Normal) 크기로 통일 — 삽입 위치의
                 // 큰 폰트(제목 근처 등) 상속으로 표 글자가 커지는 것을 막는다.
                 float tblSize = 0;
@@ -403,6 +424,30 @@ public sealed class WordEditTool : ITool
                 return "OK: 도형을 삭제했습니다.";
             }
 
+            case "set_shape_fill":
+            {
+                dynamic shape = ResolveShape(app, doc, inp);
+                shape.Fill.Solid();
+                shape.Fill.ForeColor.RGB = OfficeColor.ToBgr(inp.Color!);
+                return "OK: 도형 채우기 색을 적용했습니다.";
+            }
+
+            case "set_shape_line":
+            {
+                dynamic shape = ResolveShape(app, doc, inp);
+                if (!string.IsNullOrWhiteSpace(inp.Color))
+                {
+                    shape.Line.ForeColor.RGB = OfficeColor.ToBgr(inp.Color);
+                }
+
+                if (inp.LineWeight is not null)
+                {
+                    shape.Line.Weight = (float)inp.LineWeight.Value;
+                }
+
+                return "OK: 도형 테두리 색/두께를 적용했습니다.";
+            }
+
             case "set_cell":
             {
                 int ti = inp.TableIndex ?? 1;
@@ -428,6 +473,15 @@ public sealed class WordEditTool : ITool
                 if (!string.IsNullOrWhiteSpace(inp.Color))
                 {
                     try { cell.Range.Font.Color = OfficeColor.ToBgr(inp.Color); } catch { /* 무시 */ }
+                }
+
+                if (!string.IsNullOrWhiteSpace(inp.BorderColor))
+                {
+                    var bc = OfficeColor.ToBgr(inp.BorderColor);
+                    foreach (var bi in new[] { -1, -2, -3, -4 }) // 셀 4변(top/left/bottom/right)
+                    {
+                        try { cell.Borders[bi].LineStyle = 1; cell.Borders[bi].Color = bc; } catch { }
+                    }
                 }
 
                 return $"OK: 표 {ti} 의 ({inp.Row},{inp.Col}) 셀을 수정했습니다.";

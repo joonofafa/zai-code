@@ -41,6 +41,9 @@ public sealed class ExcelEditTool : ITool
           - set_fill: cell background color (needs "color")
           - set_border: draw borders on the "cell" range (thin continuous by default). "color" = line color,
             "border_weight" = thin|medium|thick. Applies to all edges + inside gridlines of the range.
+          - set_shape_fill: fill (background) color of a shape on the active sheet (needs "color"). Target by
+            "shape_index"/"shape_name".
+          - set_shape_line: outline color/weight of a shape (any of "color", "line_weight" in points).
           - insert_chart: chart from data (needs source via "cell"; "chart_type": column|line|pie|bar)
           - add_sheet: add a worksheet (optional "sheet_name")
           - set_geometry: move/resize/rotate/flip a shape on the active sheet (any of "left","top","width",
@@ -77,8 +80,9 @@ public sealed class ExcelEditTool : ITool
         {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["set_value","set_formula","set_font","set_fill","set_border","insert_chart","add_sheet","set_geometry","insert_picture","insert_pivot","replace","merge_cells","delete_sheet","delete_row","delete_column","delete_shape","export_pdf","new_workbook"] },
+            "action": { "type": "string", "enum": ["set_value","set_formula","set_font","set_fill","set_border","insert_chart","add_sheet","set_geometry","insert_picture","insert_pivot","replace","merge_cells","delete_sheet","delete_row","delete_column","delete_shape","export_pdf","new_workbook","set_shape_fill","set_shape_line"] },
             "border_weight": { "type": "string", "description": "set_border line weight: thin|medium|thick (default thin)" },
+            "line_weight": { "type": "number", "description": "Shape outline weight in points (set_shape_line)" },
             "path": { "type": "string", "description": "Local image file path (insert_picture) OR output .pdf path (export_pdf)" },
             "find_text": { "type": "string", "description": "Text to find (replace)" },
             "replace_text": { "type": "string", "description": "Replacement text (replace)" },
@@ -147,14 +151,15 @@ public sealed class ExcelEditTool : ITool
         [property: JsonPropertyName("values")] List<PivotValueIn>? Values,
         [property: JsonPropertyName("find_text")] string? FindText,
         [property: JsonPropertyName("replace_text")] string? ReplaceText,
-        [property: JsonPropertyName("border_weight")] string? BorderWeight);
+        [property: JsonPropertyName("border_weight")] string? BorderWeight,
+        [property: JsonPropertyName("line_weight")] double? LineWeight);
 
     private sealed record PivotValueIn(
         [property: JsonPropertyName("field")] string? Field,
         [property: JsonPropertyName("func")] string? Func);
 
     private static readonly string[] Actions =
-        { "set_value", "set_formula", "set_font", "set_fill", "set_border", "insert_chart", "add_sheet", "set_geometry", "insert_picture", "insert_pivot", "replace", "merge_cells", "delete_sheet", "delete_row", "delete_column", "delete_shape", "export_pdf", "new_workbook" };
+        { "set_value", "set_formula", "set_font", "set_fill", "set_border", "insert_chart", "add_sheet", "set_geometry", "insert_picture", "insert_pivot", "replace", "merge_cells", "delete_sheet", "delete_row", "delete_column", "delete_shape", "export_pdf", "new_workbook", "set_shape_fill", "set_shape_line" };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -212,6 +217,9 @@ public sealed class ExcelEditTool : ITool
             "set_fill" when string.IsNullOrWhiteSpace(inp.Color) => "set_fill 에는 color 가 필요합니다.",
             "set_geometry" when inp.ShapeIndex is null && string.IsNullOrWhiteSpace(inp.ShapeName)
                 => "set_geometry 에는 shape_index 또는 shape_name 이 필요합니다.",
+            "set_shape_fill" when string.IsNullOrWhiteSpace(inp.Color) => "set_shape_fill 에는 color 가 필요합니다.",
+            "set_shape_line" when string.IsNullOrWhiteSpace(inp.Color) && inp.LineWeight is null
+                => "set_shape_line 에는 color 또는 line_weight 가 필요합니다.",
             "set_geometry" when ShapeGeometry.IsEmpty(inp.Left, inp.Top, inp.Width, inp.Height, inp.Rotation, inp.Flip)
                 => "set_geometry 에는 left, top, width, height, rotation, flip 중 하나가 필요합니다.",
             "set_geometry" => ShapeGeometry.ValidateFlip(inp.Flip),
@@ -357,6 +365,30 @@ public sealed class ExcelEditTool : ITool
             dynamic shape = ResolveShape(app, inp);
             shape.Delete();
             return "OK: 도형을 삭제했습니다.";
+        }
+
+        if (inp.Action == "set_shape_fill")
+        {
+            dynamic shape = ResolveShape(app, inp);
+            shape.Fill.Solid();
+            shape.Fill.ForeColor.RGB = OfficeColor.ToBgr(inp.Color!);
+            return "OK: 도형 채우기 색을 적용했습니다.";
+        }
+
+        if (inp.Action == "set_shape_line")
+        {
+            dynamic shape = ResolveShape(app, inp);
+            if (!string.IsNullOrWhiteSpace(inp.Color))
+            {
+                shape.Line.ForeColor.RGB = OfficeColor.ToBgr(inp.Color);
+            }
+
+            if (inp.LineWeight is not null)
+            {
+                shape.Line.Weight = (float)inp.LineWeight.Value;
+            }
+
+            return "OK: 도형 테두리 색/두께를 적용했습니다.";
         }
 
         dynamic range = ResolveRange(app, inp.Cell);
