@@ -44,6 +44,10 @@ public sealed class WordEditTool : ITool
             strings) to create a bordered table with content — size is inferred and the first row is bolded as
             a header. (Or give "rows"/"cols" for an empty table.) Prefer "cells" whenever the user asks to
             "정리/표로" real content, so it becomes a real Word table, not tab-separated text.
+            PLACEMENT: the table goes AFTER "para_index" (1-based, from WordInspect) — inspect first to find the
+            RIGHT paragraph (e.g. the end of the "2. 기본 원칙" section) instead of dropping it at the cursor.
+            FONT: cell font defaults to the document body (Normal) size; pass "font_size" to override. This
+            avoids the table inheriting a big heading font.
           - set_geometry: move/resize/rotate/flip a floating shape (any of "left","top","width","height"
             in points, "rotation" in degrees clockwise, "flip": horizontal|vertical). Target the shape by
             1-based "shape_index" or "shape_name" (from WordInspect's shapes); if omitted, the CURRENT SELECTION.
@@ -299,8 +303,31 @@ public sealed class WordEditTool : ITool
                 }
 
                 dynamic tRange = Target(app, doc, inp);
+                // para_index 로 위치 지정 시 그 문단 '뒤'에 삽입(문단 전체를 표로 흡수하지 않도록 끝으로 축소).
+                if (inp.ParaIndex is not null)
+                {
+                    try { tRange.Collapse(WdCollapseEnd); } catch { /* 축소 실패 시 그대로 */ }
+                }
+
                 dynamic table = doc.Tables.Add(tRange, rows, cols);
                 try { table.Borders.Enable = 1; } catch { /* 스타일에 따라 실패 무시 */ }
+
+                // 셀 폰트: font_size 지정값, 없으면 문서 본문(Normal) 크기로 통일 — 삽입 위치의
+                // 큰 폰트(제목 근처 등) 상속으로 표 글자가 커지는 것을 막는다.
+                float tblSize = 0;
+                if (inp.FontSize is > 0)
+                {
+                    tblSize = (float)inp.FontSize.Value;
+                }
+                else
+                {
+                    try { tblSize = (float)doc.Styles[WdStyleNormal].Font.Size; } catch { tblSize = 0; }
+                }
+
+                if (tblSize > 0)
+                {
+                    try { table.Range.Font.Size = tblSize; } catch { /* 무시 */ }
+                }
 
                 if (cells is not null)
                 {
@@ -376,7 +403,13 @@ public sealed class WordEditTool : ITool
                 }
 
                 // Cell.Range.Text 대입은 셀 내용을 교체한다(셀마커는 보존).
-                doc.Tables[ti].Cell(inp.Row!.Value, inp.Col!.Value).Range.Text = inp.Text;
+                dynamic cell = doc.Tables[ti].Cell(inp.Row!.Value, inp.Col!.Value);
+                cell.Range.Text = inp.Text;
+                if (inp.FontSize is > 0)
+                {
+                    try { cell.Range.Font.Size = (float)inp.FontSize.Value; } catch { /* 무시 */ }
+                }
+
                 return $"OK: 표 {ti} 의 ({inp.Row},{inp.Col}) 셀을 수정했습니다.";
             }
         }

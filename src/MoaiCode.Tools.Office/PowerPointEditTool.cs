@@ -382,6 +382,19 @@ public sealed class PowerPointEditTool : ITool
             }
         }
 
+        // 셀 폰트 크기: font_size 지정 시 전체 셀에 적용(PPT 표 기본 폰트가 커서 넘치는 것 방지).
+        if (inp.FontSize is > 0)
+        {
+            var fs = (float)inp.FontSize.Value;
+            for (var r = 1; r <= rows; r++)
+            {
+                for (var c = 1; c <= cols; c++)
+                {
+                    TrySet(() => table.Cell(r, c).Shape.TextFrame.TextRange.Font.Size = fs);
+                }
+            }
+        }
+
         var where = inp.SlideIndex is not null ? $"슬라이드 {inp.SlideIndex}" : "현재 슬라이드";
         return $"OK: {where} 에 {rows}x{cols} 표를 삽입했습니다{(cells is not null ? " (내용 채움)" : string.Empty)}.";
     }
@@ -406,7 +419,13 @@ public sealed class PowerPointEditTool : ITool
                 "표 도형을 찾지 못했습니다. slide_index+shape_id 로 표를 지정하거나, PowerPoint 에서 표를 선택하세요.");
         }
 
-        tableShape.Table.Cell(inp.Row!.Value, inp.Col!.Value).Shape.TextFrame.TextRange.Text = inp.Text ?? string.Empty;
+        dynamic cellRange = tableShape.Table.Cell(inp.Row!.Value, inp.Col!.Value).Shape.TextFrame.TextRange;
+        cellRange.Text = inp.Text ?? string.Empty;
+        if (inp.FontSize is > 0)
+        {
+            TrySet(() => cellRange.Font.Size = (float)inp.FontSize.Value);
+        }
+
         return $"OK: 표 셀 ({inp.Row},{inp.Col}) 을 수정했습니다.";
     }
 
