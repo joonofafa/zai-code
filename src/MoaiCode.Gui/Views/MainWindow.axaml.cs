@@ -36,16 +36,41 @@ public partial class MainWindow : Window
         if (_hooked is not null)
         {
             _hooked.ScrollToEndRequested -= StickToBottom;
+            _hooked.TemplateFilled -= OnTemplateFilled;
         }
 
         _hooked = DataContext as MainViewModel;
         if (_hooked is not null)
         {
             _hooked.ScrollToEndRequested += StickToBottom;
+            _hooked.TemplateFilled += OnTemplateFilled;
         }
     }
 
     private void StickToBottom() => _sticky?.StickToBottom();
+
+    // 템플릿 프롬프트 자동입력 직후 — 입력창의 「(주제)」 를 선택해 바로 타이핑 가능하게.
+    private void OnTemplateFilled() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+    {
+        var tb = this.FindControl<TextBox>("Composer");
+        if (tb is null)
+        {
+            return;
+        }
+
+        tb.Focus();
+        const string ph = "「(주제)」";
+        var i = tb.Text?.IndexOf(ph, StringComparison.Ordinal) ?? -1;
+        if (i >= 0)
+        {
+            tb.SelectionStart = i;
+            tb.SelectionEnd = i + ph.Length;
+        }
+        else
+        {
+            tb.CaretIndex = tb.Text?.Length ?? 0;
+        }
+    });
 
     // 참조 문서 첨부(모드 B) — 로컬 파일 다중 선택 → ViewModel 에 원문 추출 위임.
     private async void OnAttachClick(object? sender, RoutedEventArgs e)

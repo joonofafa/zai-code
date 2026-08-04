@@ -426,6 +426,13 @@
           </ItemsControl>
         </Grid>
         </ScrollViewer>
+        <StackPanel Grid.Row="1" IsVisible="{Binding IsEditChatEmpty}" IsHitTestVisible="False"
+                    VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8" MaxWidth="440">
+          <TextBlock Text="주제를 입력해 주세요" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center" />
+          <TextBlock TextWrapping="Wrap" TextAlignment="Center" FontSize="12.5"
+                     Foreground="{DynamicResource TextMutedBrush}"
+                     Text="아래 입력창의 「(주제)」 자리에 주제를 넣고 보내면 그 서식으로 작성합니다." />
+        </StackPanel>
       </Grid>
 
       <!-- ── 하단 작성 영역 (Row3; 편집 대화일 때만) ── -->
@@ -489,7 +496,7 @@
                       Click="OnOrgClick" ToolTip.Tip="조직 문서함에서 검색·첨부">
                 <Path Classes="icon" Data="{StaticResource Icon.FolderOpen}" Width="16" Height="16" />
               </Button>
-              <TextBox Grid.Column="3" Classes="composer" Margin="8,0,8,0"
+              <TextBox Grid.Column="3" x:Name="Composer" Classes="composer" Margin="8,0,8,0"
                        Watermark="열린 문서에 지시하세요…" Text="{Binding Input}">
                 <TextBox.KeyBindings>
                   <KeyBinding Gesture="Enter" Command="{Binding SendCommand}" />
