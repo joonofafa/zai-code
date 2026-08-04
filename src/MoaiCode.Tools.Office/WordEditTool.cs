@@ -48,6 +48,8 @@ public sealed class WordEditTool : ITool
             RIGHT paragraph (e.g. the end of the "2. 기본 원칙" section) instead of dropping it at the cursor.
             FONT: cell font defaults to the document body (Normal) size; pass "font_size" to override. This
             avoids the table inheriting a big heading font.
+            HEADER COLOR: pass "header_fill" (header row background) and/or "header_color" (header text color)
+            to theme the first row (e.g. brand color). For a single cell's color later, use set_cell.
           - set_geometry: move/resize/rotate/flip a floating shape (any of "left","top","width","height"
             in points, "rotation" in degrees clockwise, "flip": horizontal|vertical). Target the shape by
             1-based "shape_index" or "shape_name" (from WordInspect's shapes); if omitted, the CURRENT SELECTION.
@@ -60,7 +62,8 @@ public sealed class WordEditTool : ITool
           - new_document: start a brand-new blank Word document (launches Word if it is not running) so you
             can then write into it with insert_paragraph/set_style/etc. Use this when no document is open.
           - set_cell: edit an existing table cell. "table_index" (1-based, from WordInspect; default 1),
-            "row", "col" (1-based), "text" = new cell content.
+            "row", "col" (1-based), "text" = new cell content. Optional "color" (cell text color),
+            "fill_color" (cell background), "font_size".
         Target the paragraph by 1-based "para_index" (from WordInspect); if omitted, the CURRENT SELECTION.
         IMPORTANT: set_text only edits EXISTING paragraphs (1..N as reported by WordInspect). Never use an
         out-of-range para_index — to ADD new content use insert_paragraph. Always WordInspect first to get N.
@@ -80,6 +83,9 @@ public sealed class WordEditTool : ITool
             "table_index": { "type": "integer", "description": "1-based table index in the document (set_cell; default 1)" },
             "row": { "type": "integer", "description": "1-based cell row (set_cell)" },
             "col": { "type": "integer", "description": "1-based cell column (set_cell)" },
+            "fill_color": { "type": "string", "description": "Cell background color, #RRGGBB or name (set_cell)" },
+            "header_fill": { "type": "string", "description": "Header row (first row) background color (insert_table)" },
+            "header_color": { "type": "string", "description": "Header row text color (insert_table)" },
             "path": { "type": "string", "description": "Local image file path (insert_picture) OR output .pdf path (export_pdf)" },
             "find_text": { "type": "string", "description": "Text to find (replace)" },
             "replace_text": { "type": "string", "description": "Replacement text (replace)" },
@@ -119,6 +125,9 @@ public sealed class WordEditTool : ITool
         [property: JsonPropertyName("table_index")] int? TableIndex,
         [property: JsonPropertyName("row")] int? Row,
         [property: JsonPropertyName("col")] int? Col,
+        [property: JsonPropertyName("fill_color")] string? FillColor,
+        [property: JsonPropertyName("header_fill")] string? HeaderFill,
+        [property: JsonPropertyName("header_color")] string? HeaderColor,
         [property: JsonPropertyName("shape_index")] int? ShapeIndex,
         [property: JsonPropertyName("shape_name")] string? ShapeName,
         [property: JsonPropertyName("left")] double? Left,
@@ -344,15 +353,16 @@ public sealed class WordEditTool : ITool
                         }
                     }
 
-                    // 첫 행(헤더) 굵게.
-                    try
+                    // 첫 행(헤더) 굵게 + 선택적 색상(배경·글자).
+                    var hFill = string.IsNullOrWhiteSpace(inp.HeaderFill) ? (int?)null : OfficeColor.ToBgr(inp.HeaderFill);
+                    var hColor = string.IsNullOrWhiteSpace(inp.HeaderColor) ? (int?)null : OfficeColor.ToBgr(inp.HeaderColor);
+                    for (var c = 1; c <= cols; c++)
                     {
-                        for (var c = 1; c <= cols; c++)
-                        {
-                            table.Cell(1, c).Range.Font.Bold = 1;
-                        }
+                        dynamic hcell = table.Cell(1, c);
+                        try { hcell.Range.Font.Bold = 1; } catch { }
+                        if (hFill is int f) { try { hcell.Shading.BackgroundPatternColor = f; } catch { } }
+                        if (hColor is int fc) { try { hcell.Range.Font.Color = fc; } catch { } }
                     }
-                    catch { /* 셀 병합 등으로 인덱스 어긋나면 무시 */ }
                 }
 
                 return $"OK: {rows}x{cols} 표를 삽입했습니다{(cells is not null ? " (내용 채움)" : string.Empty)}.";
@@ -408,6 +418,16 @@ public sealed class WordEditTool : ITool
                 if (inp.FontSize is > 0)
                 {
                     try { cell.Range.Font.Size = (float)inp.FontSize.Value; } catch { /* 무시 */ }
+                }
+
+                if (!string.IsNullOrWhiteSpace(inp.FillColor))
+                {
+                    try { cell.Shading.BackgroundPatternColor = OfficeColor.ToBgr(inp.FillColor); } catch { /* 무시 */ }
+                }
+
+                if (!string.IsNullOrWhiteSpace(inp.Color))
+                {
+                    try { cell.Range.Font.Color = OfficeColor.ToBgr(inp.Color); } catch { /* 무시 */ }
                 }
 
                 return $"OK: 표 {ti} 의 ({inp.Row},{inp.Col}) 셀을 수정했습니다.";
