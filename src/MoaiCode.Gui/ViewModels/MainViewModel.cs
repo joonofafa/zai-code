@@ -490,14 +490,16 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        // Office 가 문서를 로드해 COM 목록에 나타날 때까지 잠깐 기다렸다가 잡아 편집 세션으로 전환.
+        // Office 가 문서를 로드해 COM 목록(ROT)에 나타날 때까지 폴링(콜드 스타트가 길 수 있어 최대 ~24초).
+        // 매칭은 전체 경로 우선, 없으면 파일명(확장자 제외)으로.
         var stem = System.IO.Path.GetFileNameWithoutExtension(item.FileName);
-        for (var i = 0; i < 10; i++)
+        for (var i = 0; i < 24; i++)
         {
-            await Task.Delay(700).ConfigureAwait(true);
+            await Task.Delay(1000).ConfigureAwait(true);
             RefreshOffice();
-            var match = OfficeDocs.FirstOrDefault(d => string.Equals(
-                stem, System.IO.Path.GetFileNameWithoutExtension(d.Name), StringComparison.OrdinalIgnoreCase));
+            var match = OfficeDocs.FirstOrDefault(d =>
+                (!string.IsNullOrEmpty(d.Path) && string.Equals(d.Path, item.Path, StringComparison.OrdinalIgnoreCase))
+                || string.Equals(stem, System.IO.Path.GetFileNameWithoutExtension(d.Name), StringComparison.OrdinalIgnoreCase));
             if (match is not null)
             {
                 SelectedOfficeDoc = match;
