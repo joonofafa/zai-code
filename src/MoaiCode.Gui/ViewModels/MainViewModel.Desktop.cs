@@ -104,8 +104,44 @@ public sealed partial class MainViewModel
         StartFreshSession(); // 새 문서 작업은 별도 대화로(기존 문서 연결·대화 이력과 섞이지 않게)
         Input = t.Prompt;    // 입력창 자동 채움(사용자가 주제 넣고 전송). StartFreshSession 뒤에 세팅
         ActiveDocApp = t.App; // 하단 컴포저를 대상 앱 색으로 강조(문서 연결 전 힌트)
+        _templateSourcePending = true; // 첫 전송 시 데이터 출처 선택 버튼을 먼저 띄운다(Send 에서 가로챔)
         ShowHome = false;    // 편집 대화 화면으로 전환
         TemplateFilled?.Invoke(); // 코드비하인드가 「(주제)」 선택
+    }
+
+    // 템플릿 작성 첫 전송을 가로채 데이터 출처를 먼저 물어보기 위한 상태(모델 무시 불가, GUI 가 결정).
+    private bool _templateSourcePending;
+    private string? _pendingTemplatePrompt;
+
+    // 출처 선택 카드 버튼 — 선택한 출처 지시를 원 요청에 결합해 실제 전송.
+    [RelayCommand]
+    private void SelectSource(string? key)
+    {
+        if (string.IsNullOrEmpty(_pendingTemplatePrompt))
+        {
+            return;
+        }
+
+        var (label, extra) = key switch
+        {
+            "org" => ("조직 데이터 검색", "조직 문서함(OrgDocs)에서 관련 자료를 검색해 근거·수치로 반영해줘."),
+            "web" => ("웹 검색", "웹에서 관련 자료를 검색해 근거·수치로 반영해줘."),
+            "both" => ("조직 + 웹", "조직 문서함(OrgDocs)과 웹에서 자료를 검색해 근거·수치로 반영해줘."),
+            _ => ("자료 없이", "추가 자료 조사 없이 바로 작성해줘."),
+        };
+
+        // 출처 카드 제거 + 선택 표시.
+        if (Items.OfType<SourceChoiceItem>().LastOrDefault() is { } card)
+        {
+            Items.Remove(card);
+        }
+
+        Items.Add(new ActivityItem { Text = $"자료 출처: {label}", Done = true });
+
+        var prompt = _pendingTemplatePrompt + "\n\n[자료 출처] " + extra;
+        _pendingTemplatePrompt = null;
+        Input = prompt;
+        SendCommand.Execute(null); // 원 요청 + 출처 지시를 한 번에 모델로
     }
 
     // ── 공유 폴더 대시보드 ──

@@ -71,6 +71,12 @@ public sealed class SuggestionItem : ChatItem
     public IReadOnlyList<string> Suggestions { get; init; } = Array.Empty<string>();
 }
 
+/// <summary>데이터 출처 선택 카드(템플릿 작성 시 GUI 가 결정적으로 삽입). 버튼: 조직/웹/둘 다/안 가져옴.</summary>
+public sealed class SourceChoiceItem : ChatItem
+{
+    public string Topic { get; init; } = string.Empty; // 사용자가 입력한 요청(주제) 에코
+}
+
 /// <summary>생성된 문서 카드.</summary>
 public sealed partial class DocumentItem : ChatItem
 {
