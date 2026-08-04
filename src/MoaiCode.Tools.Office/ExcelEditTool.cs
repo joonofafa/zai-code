@@ -19,6 +19,10 @@ public sealed class ExcelEditTool : ITool
     private const int XlLine = 4;
     private const int XlPie = 5;
     private const int XlBarClustered = 57;
+    private const int XlContinuous = 1;   // XlLineStyle.xlContinuous
+    private const int XlThin = 2;         // XlBorderWeight.xlThin
+    private const int XlMedium = -4138;   // XlBorderWeight.xlMedium
+    private const int XlThick = 4;        // XlBorderWeight.xlThick
     private const int XlTypePDF = 0;    // XlFixedFormatType.xlTypePDF
     private const int XlPart = 2;       // XlLookAt.xlPart
     private const int XlCenter = -4108; // XlHAlign/XlVAlign.xlCenter
@@ -35,6 +39,8 @@ public sealed class ExcelEditTool : ITool
           - set_formula: set a formula (needs "formula", e.g. "=SUM(A1:A10)")
           - set_font: color/size/bold (any of "color","font_size","bold")
           - set_fill: cell background color (needs "color")
+          - set_border: draw borders on the "cell" range (thin continuous by default). "color" = line color,
+            "border_weight" = thin|medium|thick. Applies to all edges + inside gridlines of the range.
           - insert_chart: chart from data (needs source via "cell"; "chart_type": column|line|pie|bar)
           - add_sheet: add a worksheet (optional "sheet_name")
           - set_geometry: move/resize/rotate/flip a shape on the active sheet (any of "left","top","width",
@@ -71,7 +77,8 @@ public sealed class ExcelEditTool : ITool
         {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["set_value","set_formula","set_font","set_fill","insert_chart","add_sheet","set_geometry","insert_picture","insert_pivot","replace","merge_cells","delete_sheet","delete_row","delete_column","delete_shape","export_pdf","new_workbook"] },
+            "action": { "type": "string", "enum": ["set_value","set_formula","set_font","set_fill","set_border","insert_chart","add_sheet","set_geometry","insert_picture","insert_pivot","replace","merge_cells","delete_sheet","delete_row","delete_column","delete_shape","export_pdf","new_workbook"] },
+            "border_weight": { "type": "string", "description": "set_border line weight: thin|medium|thick (default thin)" },
             "path": { "type": "string", "description": "Local image file path (insert_picture) OR output .pdf path (export_pdf)" },
             "find_text": { "type": "string", "description": "Text to find (replace)" },
             "replace_text": { "type": "string", "description": "Replacement text (replace)" },
@@ -139,14 +146,15 @@ public sealed class ExcelEditTool : ITool
         [property: JsonPropertyName("filters")] List<string>? Filters,
         [property: JsonPropertyName("values")] List<PivotValueIn>? Values,
         [property: JsonPropertyName("find_text")] string? FindText,
-        [property: JsonPropertyName("replace_text")] string? ReplaceText);
+        [property: JsonPropertyName("replace_text")] string? ReplaceText,
+        [property: JsonPropertyName("border_weight")] string? BorderWeight);
 
     private sealed record PivotValueIn(
         [property: JsonPropertyName("field")] string? Field,
         [property: JsonPropertyName("func")] string? Func);
 
     private static readonly string[] Actions =
-        { "set_value", "set_formula", "set_font", "set_fill", "insert_chart", "add_sheet", "set_geometry", "insert_picture", "insert_pivot", "replace", "merge_cells", "delete_sheet", "delete_row", "delete_column", "delete_shape", "export_pdf", "new_workbook" };
+        { "set_value", "set_formula", "set_font", "set_fill", "set_border", "insert_chart", "add_sheet", "set_geometry", "insert_picture", "insert_pivot", "replace", "merge_cells", "delete_sheet", "delete_row", "delete_column", "delete_shape", "export_pdf", "new_workbook" };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -391,6 +399,17 @@ public sealed class ExcelEditTool : ITool
             case "set_fill":
                 range.Interior.Color = OfficeColor.ToBgr(inp.Color!);
                 break;
+
+            case "set_border":
+                dynamic borders = range.Borders;
+                borders.LineStyle = XlContinuous;
+                borders.Weight = BorderWeightId(inp.BorderWeight);
+                if (!string.IsNullOrWhiteSpace(inp.Color))
+                {
+                    borders.Color = OfficeColor.ToBgr(inp.Color);
+                }
+
+                break;
         }
 
         var scope = string.IsNullOrWhiteSpace(inp.Cell) ? "현재 선택" : inp.Cell;
@@ -570,6 +589,13 @@ public sealed class ExcelEditTool : ITool
             throw new System.InvalidOperationException($"도형 '{inp.ShapeName}' 을 활성 시트에서 찾지 못했습니다.");
         }
     }
+
+    private static int BorderWeightId(string? weight) => weight?.Trim().ToLowerInvariant() switch
+    {
+        "medium" or "중간" => XlMedium,
+        "thick" or "굵게" or "두껍게" => XlThick,
+        _ => XlThin,
+    };
 
     private static int ChartTypeId(string? type) => type?.Trim().ToLowerInvariant() switch
     {
