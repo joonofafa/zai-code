@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Threading;
+using Avalonia.Media;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -33,6 +34,71 @@ public sealed partial class MainViewModel
     // 편집 대화 → 열린 문서 목록으로 복귀("← 목록"). 세션/문서 연결은 유지.
     [RelayCommand] private void BackToList() => ShowHome = true;
 
+    // ── 새 문서 템플릿(프롬프트 프리셋) — 카드 클릭 시 입력창에 프롬프트 자동 입력 ──
+    public ObservableCollection<DocTemplate> WordTemplates { get; } = new();
+    public ObservableCollection<DocTemplate> PptTemplates { get; } = new();
+    public ObservableCollection<DocTemplate> ExcelTemplates { get; } = new();
+
+    private static IBrush Sw(string hex) => new SolidColorBrush(Color.Parse(hex));
+
+    private void BuildTemplates()
+    {
+        if (WordTemplates.Count > 0)
+        {
+            return;
+        }
+
+        var blank = Sw("#8A93A3");
+        var w = Sw("#2B579A");
+        var x = Sw("#217346");
+
+        WordTemplates.Add(new("Word", "빈 문서", null, blank, true));
+        WordTemplates.Add(new("Word", "보고서",
+            "「(주제)」 주제로 보고서를 작성해줘. 개요·배경·현황·분석·결론 및 제언 섹션 구조로, 핵심 내용은 실제 표로 정리하고 글자 크기는 본문에 맞춰줘.", w, false));
+        WordTemplates.Add(new("Word", "경위서",
+            "「(주제)」 경위서를 작성해줘. 발생 개요·경위·원인·조치 사항·재발 방지 대책 섹션으로.", w, false));
+        WordTemplates.Add(new("Word", "제안서",
+            "「(주제)」 제안서를 작성해줘. 배경 및 목적·제안 내용·기대 효과·추진 일정·소요 예산 섹션으로, 일정·예산은 표로.", w, false));
+
+        PptTemplates.Add(new("PowerPoint", "빈 프레젠테이션", null, blank, true));
+        PptTemplates.Add(new("PowerPoint", "디자인 A",
+            "「(주제)」 발표자료를 만들어줘. 코퍼레이트 톤(연그레이 배경·남색 포인트), 제목 크게·본문 간결한 불릿, 표지 + 핵심 슬라이드로.", Sw("#2F5496"), false));
+        PptTemplates.Add(new("PowerPoint", "디자인 B",
+            "「(주제)」 발표자료를 만들어줘. 키노트 톤(흰 배경·빨강 포인트), 한 슬라이드 한 메시지, 큰 제목.", Sw("#C00000"), false));
+        PptTemplates.Add(new("PowerPoint", "디자인 C",
+            "「(주제)」 발표자료를 만들어줘. 미니멀 톤(흰 배경·검정, 여백 넉넉), 간결하게.", Sw("#222222"), false));
+        PptTemplates.Add(new("PowerPoint", "디자인 D",
+            "「(주제)」 발표자료를 만들어줘. 다크 톤(짙은 배경·시안 포인트), 임팩트 있게.", Sw("#4FC3F7"), false));
+
+        ExcelTemplates.Add(new("Excel", "빈 통합문서", null, blank, true));
+        ExcelTemplates.Add(new("Excel", "지출결의서",
+            "지출결의서 양식을 만들어줘. 일자·적요·금액·비고 표에 합계 행, 금액은 원화 서식으로.", x, false));
+        ExcelTemplates.Add(new("Excel", "거래명세서",
+            "거래명세서 양식을 만들어줘. 품목·규격·수량·단가·금액 표에 합계 행.", x, false));
+        ExcelTemplates.Add(new("Excel", "재고관리표",
+            "재고관리표 양식을 만들어줘. 품목·규격·입고·출고·재고·비고 표.", x, false));
+    }
+
+    // 템플릿 카드 클릭 — 빈 문서는 앱 바로 열기, 그 외엔 입력창에 프롬프트 자동 입력 후 편집 대화로.
+    [RelayCommand]
+    private void UseTemplate(DocTemplate? t)
+    {
+        if (t is null)
+        {
+            return;
+        }
+
+        Tab = 1;
+        if (t.IsBlank || string.IsNullOrEmpty(t.Prompt))
+        {
+            LaunchApp(t.App);
+            return;
+        }
+
+        Input = t.Prompt;   // 입력창 자동 채움(사용자가 주제 넣고 전송)
+        ShowHome = false;   // 편집 대화 화면으로 전환
+    }
+
     // ── 공유 폴더 대시보드 ──
     public ObservableCollection<FolderRow> Folders { get; } = new();
     public int WatchedFolderCount => Folders.Count;
@@ -44,6 +110,7 @@ public sealed partial class MainViewModel
     private void InitDesktop()
     {
         LoadFolders();
+        BuildTemplates();
         var svc = FolderSyncService.Instance;
         if (svc is not null)
         {
@@ -187,6 +254,9 @@ public sealed partial class MainViewModel
         }
     }
 }
+
+/// <summary>새 문서 템플릿 카드(프롬프트 프리셋). Prompt 가 null 이면 빈 문서(앱만 열기).</summary>
+public sealed record DocTemplate(string App, string Label, string? Prompt, IBrush Swatch, bool IsBlank);
 
 /// <summary>공유 폴더 대시보드 행(표시용).</summary>
 public sealed record FolderRow(string Path, string? OrgId, string Visibility)

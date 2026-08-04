@@ -11,6 +11,24 @@
         FontFamily="avares://Avalonia.Fonts.Inter/Assets#Inter"
         WindowStartupLocation="CenterScreen">
 
+  <Window.Resources>
+    <!-- 새 문서 템플릿 카드(문서 편집 탭, 열린 문서 없음) -->
+    <DataTemplate x:Key="DocTemplateCard" x:DataType="vm:DocTemplate">
+      <Button Classes="recentcard" Margin="0,0,10,10" Padding="11,10"
+              Command="{Binding $parent[ItemsControl].DataContext.UseTemplateCommand}"
+              CommandParameter="{Binding}">
+        <StackPanel Orientation="Horizontal" Spacing="11" VerticalAlignment="Center">
+          <Border Width="28" Height="28" CornerRadius="7" Background="{Binding Swatch}">
+            <TextBlock Text="＋" FontSize="15" FontWeight="Bold" Foreground="White"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       IsVisible="{Binding IsBlank}" />
+          </Border>
+          <TextBlock Text="{Binding Label}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </StackPanel>
+      </Button>
+    </DataTemplate>
+  </Window.Resources>
+
   <Grid>
 
     <!-- ═══ 로그인 (전체 창, 미인증) ═══ -->
@@ -210,55 +228,54 @@
         </ScrollViewer>
       </Grid>
 
-      <!-- 탭2-B: 열려 있는 오피스 없음 → 앱 열기 -->
-      <Grid Grid.Row="2" IsVisible="{Binding IsEditNone}">
-        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20" MaxWidth="440">
-          <Path Classes="icon" Data="{StaticResource Icon.Presentation}" Width="40" Height="40"
-                Stroke="{DynamicResource TextMutedBrush}" HorizontalAlignment="Center" />
-          <StackPanel Spacing="7">
-            <TextBlock Text="열려 있는 오피스 프로그램이 없습니다" FontSize="16" FontWeight="SemiBold"
-                       HorizontalAlignment="Center" TextAlignment="Center" />
-            <TextBlock Text="편집·작성하려면 아래에서 프로그램을 열어 주세요. 여는 즉시 여기에 나타나 말로 편집할 수 있습니다."
-                       FontSize="13" TextWrapping="Wrap" TextAlignment="Center"
-                       Foreground="{DynamicResource TextMutedBrush}" HorizontalAlignment="Center" />
+      <!-- 탭2-B: 열린 문서 없음 → 새 문서 템플릿 갤러리(카드 클릭=프롬프트 자동입력, 빈 문서=바로 열기) -->
+      <ScrollViewer Grid.Row="2" IsVisible="{Binding IsEditNone}" Padding="24,20,24,26"
+                    HorizontalScrollBarVisibility="Disabled">
+        <StackPanel MaxWidth="680" HorizontalAlignment="Left" Spacing="18">
+          <StackPanel Spacing="3">
+            <TextBlock Text="새 문서로 시작" FontSize="17" FontWeight="SemiBold" />
+            <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextMutedBrush}"
+                       Text="템플릿을 고르면 입력창에 프롬프트가 채워집니다. 주제를 넣고 보내면 그 서식으로 작성해요. 빈 문서는 바로 열립니다." />
           </StackPanel>
-          <StackPanel Spacing="10" MaxWidth="380" HorizontalAlignment="Stretch">
-            <Button Classes="recentcard" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                    Command="{Binding OpenWordCommand}">
-              <StackPanel Orientation="Horizontal" Spacing="13" VerticalAlignment="Center">
-                <Path Data="{StaticResource Icon.FileText}" Stroke="#2B579A"
-                      StrokeThickness="1.7" StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                      Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center" />
-                <TextBlock Text="Word 열기" FontSize="13.5" FontWeight="SemiBold" VerticalAlignment="Center" />
-              </StackPanel>
-            </Button>
-            <Button Classes="recentcard" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                    Command="{Binding OpenPowerPointCommand}">
-              <StackPanel Orientation="Horizontal" Spacing="13" VerticalAlignment="Center">
-                <Path Data="{StaticResource Icon.Presentation}" Stroke="#C43E1C"
-                      StrokeThickness="1.7" StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                      Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center" />
-                <TextBlock Text="PowerPoint 열기" FontSize="13.5" FontWeight="SemiBold" VerticalAlignment="Center" />
-              </StackPanel>
-            </Button>
-            <Button Classes="recentcard" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                    Command="{Binding OpenExcelCommand}">
-              <StackPanel Orientation="Horizontal" Spacing="13" VerticalAlignment="Center">
-                <Path Data="{StaticResource Icon.FileSpreadsheet}" Stroke="#217346"
-                      StrokeThickness="1.7" StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                      Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center" />
-                <TextBlock Text="Excel 열기" FontSize="13.5" FontWeight="SemiBold" VerticalAlignment="Center" />
-              </StackPanel>
-            </Button>
+
+          <StackPanel Spacing="9">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Border Width="9" Height="9" CornerRadius="2" Background="#2B579A" VerticalAlignment="Center" />
+              <TextBlock Text="Word" FontSize="12.5" FontWeight="Bold" />
+            </StackPanel>
+            <ItemsControl ItemsSource="{Binding WordTemplates}" ItemTemplate="{StaticResource DocTemplateCard}">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            </ItemsControl>
           </StackPanel>
-          <Button Classes="ghost" HorizontalAlignment="Center" Command="{Binding RefreshOfficeCommand}">
+
+          <StackPanel Spacing="9">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Border Width="9" Height="9" CornerRadius="2" Background="#C43E1C" VerticalAlignment="Center" />
+              <TextBlock Text="PowerPoint" FontSize="12.5" FontWeight="Bold" />
+            </StackPanel>
+            <ItemsControl ItemsSource="{Binding PptTemplates}" ItemTemplate="{StaticResource DocTemplateCard}">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            </ItemsControl>
+          </StackPanel>
+
+          <StackPanel Spacing="9">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Border Width="9" Height="9" CornerRadius="2" Background="#217346" VerticalAlignment="Center" />
+              <TextBlock Text="Excel" FontSize="12.5" FontWeight="Bold" />
+            </StackPanel>
+            <ItemsControl ItemsSource="{Binding ExcelTemplates}" ItemTemplate="{StaticResource DocTemplateCard}">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            </ItemsControl>
+          </StackPanel>
+
+          <Button Classes="ghost" HorizontalAlignment="Left" Command="{Binding RefreshOfficeCommand}">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <Path Classes="icon sm" Data="{StaticResource Icon.RefreshCw}" VerticalAlignment="Center" />
-              <TextBlock Text="새로고침" FontSize="12.5" VerticalAlignment="Center" />
+              <TextBlock Text="열린 문서 새로고침" FontSize="12.5" VerticalAlignment="Center" />
             </StackPanel>
           </Button>
         </StackPanel>
-      </Grid>
+      </ScrollViewer>
 
       <!-- 탭2-C: 편집 대화 (문서 선택 후) -->
       <Grid Grid.Row="2" IsVisible="{Binding IsEditChat}" RowDefinitions="Auto,*">
