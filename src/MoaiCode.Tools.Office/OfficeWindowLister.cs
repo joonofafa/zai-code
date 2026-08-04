@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using MoaiCode.Config;
 
 namespace MoaiCode.Tools.Office;
@@ -19,6 +20,54 @@ public sealed record OfficeDoc(string App, string Name, string ProgId, string? P
 /// </summary>
 public static class OfficeWindowLister
 {
+    // COM must never run on the UI thread: a busy/modal Office (e.g. a "[Repaired]" recovery pane)
+    // makes automation calls block, which would freeze the whole app. All COM here is serialized on a
+    // dedicated STA thread and callers use the *Async wrappers with a timeout so a wedged Office
+    // degrades to "couldn't connect" instead of hanging the UI. Separate from the edit-tool dispatcher
+    // so a stuck lister call never blocks actual editing.
+    private static readonly StaDispatcher _com = new("office-lister");
+
+    /// <summary>List open docs off the UI thread, bounded by a timeout. Returns null on timeout/busy
+    /// (distinct from an empty list = enumerated OK, nothing open) so callers don't mistake a wedged
+    /// Office for "all documents closed".</summary>
+    public static Task<IReadOnlyList<OfficeDoc>?> ListOpenDocumentsAsync(int timeoutMs = 4000)
+        => RunBoundedAsync<IReadOnlyList<OfficeDoc>?>(ListOpenDocuments, null, timeoutMs);
+
+    /// <summary>Activate a doc off the UI thread, bounded by a timeout. False on timeout/busy.</summary>
+    public static Task<bool> ActivateAsync(OfficeDoc doc, int timeoutMs = 4000)
+        => RunBoundedAsync(() => Activate(doc), false, timeoutMs);
+
+    // Run a COM body on the STA thread and give up after timeoutMs so the UI thread never blocks.
+    // On timeout we do NOT await the still-running call (Office may be modal); we just observe its
+    // eventual exception to avoid unobserved-task noise and return the fallback.
+    private static async Task<T> RunBoundedAsync<T>(Func<T> body, T fallback, int timeoutMs)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return body(); // cheap no-op path off Windows (returns empty/false)
+        }
+
+        Task<T> work;
+        try
+        {
+            work = _com.InvokeAsync(body);
+        }
+        catch (ObjectDisposedException)
+        {
+            return fallback;
+        }
+
+        var done = await Task.WhenAny(work, Task.Delay(timeoutMs)).ConfigureAwait(false);
+        if (!ReferenceEquals(done, work))
+        {
+            MoaiLog.Warn($"OfficeCom: operation timed out after {timeoutMs}ms (Office busy or modal dialog open)");
+            _ = work.ContinueWith(t => _ = t.Exception, TaskScheduler.Default);
+            return fallback;
+        }
+
+        return await work.ConfigureAwait(false);
+    }
+
     public static IReadOnlyList<OfficeDoc> ListOpenDocuments()
     {
         var list = new List<OfficeDoc>();

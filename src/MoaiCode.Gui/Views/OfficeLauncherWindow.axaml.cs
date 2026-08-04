@@ -28,9 +28,9 @@ public partial class OfficeLauncherWindow : Window
         return _picked;
     }
 
-    private void LoadOpenDocuments()
+    private async void LoadOpenDocuments()
     {
-        var docs = OfficeWindowLister.ListOpenDocuments();
+        var docs = await OfficeWindowLister.ListOpenDocumentsAsync() ?? System.Array.Empty<OfficeDoc>();
         var list = this.FindControl<ListBox>("OpenList")!;
         var empty = this.FindControl<TextBlock>("EmptyLabel")!;
 

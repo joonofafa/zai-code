@@ -199,6 +199,7 @@ public sealed partial class MainViewModel
     [ObservableProperty] private string _syncStatus = "대기 중";
 
     private Timer? _aliveTimer;
+    private bool _aliveChecking; // COM 열거 재진입 방지(모달 Office 로 타임아웃이 쌓이는 것을 막음)
 
     private void InitDesktop()
     {
@@ -218,22 +219,35 @@ public sealed partial class MainViewModel
             null, 5000, 5000);
     }
 
-    /// <summary>연결된 Office 문서가 아직 열려 있는지 확인. 닫혔으면 연결 해제 + 목록으로 복귀.</summary>
-    public void CheckActiveDocAlive()
+    /// <summary>연결된 Office 문서가 아직 열려 있는지 확인. 닫혔으면 연결 해제 + 목록으로 복귀.
+    /// COM 열거는 UI 를 막지 않도록 비동기(타임아웃). 재진입은 무시한다.</summary>
+    public async void CheckActiveDocAlive()
     {
-        if (!IsDocConnected || string.IsNullOrEmpty(_sessionTargetDoc))
+        if (_aliveChecking || !IsDocConnected || string.IsNullOrEmpty(_sessionTargetDoc))
         {
             return;
         }
 
-        System.Collections.Generic.IReadOnlyList<OfficeDoc> open;
+        System.Collections.Generic.IReadOnlyList<OfficeDoc>? open;
+        _aliveChecking = true;
         try
         {
-            open = OfficeWindowLister.ListOpenDocuments();
+            open = await OfficeWindowLister.ListOpenDocumentsAsync();
         }
         catch
         {
             return; // 열거 실패 시 상태 유지(오탐 방지)
+        }
+        finally
+        {
+            _aliveChecking = false;
+        }
+
+        // 열거 타임아웃(null)은 "닫힘"이 아니다 — 모달/busy 일 뿐이므로 연결 유지. 연결 상태가
+        // 그새 바뀌었으면(사용자가 해제 등)도 무시.
+        if (open is null || !IsDocConnected || string.IsNullOrEmpty(_sessionTargetDoc))
+        {
+            return;
         }
 
         var alive = open.Any(d =>

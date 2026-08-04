@@ -312,11 +312,21 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     // ── 좌패널: Office 창 ──
+    // COM 열거는 UI 스레드를 막지 않도록 비동기(전용 STA 스레드)로 수행한다. 커맨드는 동기 진입점을
+    // 유지해 기존 호출부(RefreshOffice(), RefreshOfficeCommand)를 그대로 둔다(fire-and-forget).
     [RelayCommand]
-    private void RefreshOffice()
+    private void RefreshOffice() => _ = RefreshOfficeAsync();
+
+    private async Task RefreshOfficeAsync()
     {
+        var docs = await OfficeWindowLister.ListOpenDocumentsAsync();
+        if (docs is null)
+        {
+            return; // 열거 실패/타임아웃 — 기존 목록 유지(오탐 방지)
+        }
+
         OfficeDocs.Clear();
-        foreach (var d in OfficeWindowLister.ListOpenDocuments())
+        foreach (var d in docs)
         {
             OfficeDocs.Add(d);
         }
@@ -324,19 +334,11 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(HasOpenDocs));
     }
 
-    partial void OnSelectedOfficeDocChanged(OfficeDoc? value)
-    {
-        if (value is not null)
-        {
-            OfficeWindowLister.Activate(value);
-        }
-    }
-
     /// <summary>
     /// 홈의 "새로운 오피스 문서 작업"에서 고른 열린 문서로 세션을 시작한다.
     /// COM 으로 해당 문서를 활성화(편집 툴 대상 지정)하고, 채팅 화면을 연다.
     /// </summary>
-    public void OpenOfficeSession(OfficeDoc doc)
+    public async Task OpenOfficeSession(OfficeDoc doc)
     {
         if (IsBusy)
         {
@@ -358,7 +360,7 @@ public sealed partial class MainViewModel : ObservableObject
             StartFreshSession();
         }
 
-        // 좌패널 목록에도 반영하고 활성화(OnSelectedOfficeDocChanged 가 Activate 호출).
+        // 좌패널 목록에도 반영.
         if (!OfficeDocs.Contains(doc))
         {
             OfficeDocs.Add(doc);
@@ -366,14 +368,17 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         SelectedOfficeDoc = doc;
-        var connected = OfficeWindowLister.Activate(doc);
 
-        // 활성 대상 바인딩(세션 = 편집 모드). 칩으로 표시.
+        // 활성 대상 바인딩(세션 = 편집 모드) 후 채팅 화면으로 즉시 전환. 실제 COM 활성화는 UI 를 막지
+        // 않도록 비동기(전용 STA + 타임아웃)로 수행 — "[Repaired]"/보호된 보기 등 모달 상태의 Office 도
+        // 프리즈 없이 처리한다.
         BindActiveDoc(doc);
         _sessionDocId = docId; // 재연결/신규 모두 문서 식별자 기록(다음에 또 1:1 로 찾도록)
 
         ShowSettings = false;
         ShowHome = false; // 채팅 화면 표시
+
+        var connected = await OfficeWindowLister.ActivateAsync(doc);
 
         if (reconnected)
         {
@@ -391,8 +396,8 @@ public sealed partial class MainViewModel : ObservableObject
         {
             Items.Add(new AssistantItem
             {
-                Text = $"**{doc.Display}** 에 연결을 시도했지만 응답이 없어요. " +
-                       "문서가 아직 열려 있는지 확인한 뒤 다시 시도해 주세요.",
+                Text = $"**{doc.Display}** 에 연결하지 못했어요. 문서에 복구·보호된 보기 같은 알림 창이 " +
+                       "떠 있으면 닫은 뒤 다시 시도해 주세요.",
             });
         }
 
@@ -438,11 +443,11 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>사이드바 '열린 문서' 런처에서 문서를 클릭 → 그 문서로 편집 세션 시작.</summary>
     [RelayCommand]
-    private void PickOpenDoc(OfficeDoc? doc)
+    private async Task PickOpenDoc(OfficeDoc? doc)
     {
         if (doc is not null)
         {
-            OpenOfficeSession(doc);
+            await OpenOfficeSession(doc);
         }
     }
 
@@ -496,14 +501,26 @@ public sealed partial class MainViewModel : ObservableObject
         for (var i = 0; i < 24; i++)
         {
             await Task.Delay(1000).ConfigureAwait(true);
-            RefreshOffice();
-            var match = OfficeDocs.FirstOrDefault(d =>
+            var docs = await OfficeWindowLister.ListOpenDocumentsAsync();
+            if (docs is null)
+            {
+                continue; // 열거 타임아웃 — 다음 회차에 재시도
+            }
+
+            OfficeDocs.Clear();
+            foreach (var d in docs)
+            {
+                OfficeDocs.Add(d);
+            }
+
+            OnPropertyChanged(nameof(HasOpenDocs));
+            var match = docs.FirstOrDefault(d =>
                 (!string.IsNullOrEmpty(d.Path) && string.Equals(d.Path, item.Path, StringComparison.OrdinalIgnoreCase))
                 || string.Equals(stem, System.IO.Path.GetFileNameWithoutExtension(d.Name), StringComparison.OrdinalIgnoreCase));
             if (match is not null)
             {
                 SelectedOfficeDoc = match;
-                OfficeWindowLister.Activate(match);
+                await OfficeWindowLister.ActivateAsync(match);
                 BindActiveDoc(match); // 현재 대화를 유지한 채 편집 모드로 전환
                 Items.Add(new AssistantItem
                 {

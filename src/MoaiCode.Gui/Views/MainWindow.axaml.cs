@@ -136,7 +136,7 @@ public partial class MainWindow : Window
         var doc = await new OfficeLauncherWindow().PickAsync(this);
         if (doc is not null && DataContext is MainViewModel vm)
         {
-            vm.OpenOfficeSession(doc);
+            await vm.OpenOfficeSession(doc);
         }
     }
 
