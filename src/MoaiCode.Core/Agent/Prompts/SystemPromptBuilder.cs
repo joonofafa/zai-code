@@ -224,6 +224,8 @@ public static class SystemPromptBuilder
         if (editOnly)
         {
             doc.Add(" - This session has NO standalone file-creation tool. Do NOT generate .docx/.xlsx/.pptx files or write scripts to do so. Create and edit content ONLY inside the Office document that is currently OPEN, in place, via WordEdit/ExcelEdit/PowerPointEdit (add pages/slides/sheets and fill content there). If the app you need is not open, tell the user which app to open — it will be launched for them.");
+            doc.Add(" - Call a new-document action (new_document / new_workbook / new_presentation) AT MOST ONCE per task. After the blank document is open, keep editing THAT SAME document. If a step went wrong, FIX the existing cells/paragraphs/shapes in place — never call new_* again, or you will create duplicate documents. Only start another new document if the user explicitly asks for a separate one.");
+            doc.Add(" - Excel tables: write ONE value per cell with set_value on explicit cells (A1, B1, … for the header row; A2, B2, … for each data row). Never put a whole row or multiple values into a single cell.");
         }
 
         doc.AddRange(new[]
