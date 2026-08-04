@@ -68,6 +68,9 @@ public sealed class WordEditTool : ITool
           - set_shape_fill: fill (background) color of a floating shape (needs "color"). Target by
             "shape_index"/"shape_name" or the current selection.
           - set_shape_line: outline color/weight of a shape (any of "color", "line_weight" in points).
+          - insert_divider: insert a real horizontal rule (a paragraph with a bottom border line), NOT literal
+            "----" text. At "para_index" (after it) or the document end. Optional "border_color" for line color.
+            Use this whenever the user asks for a 구분선/divider/가로줄.
         Target the paragraph by 1-based "para_index" (from WordInspect); if omitted, the CURRENT SELECTION.
         IMPORTANT: set_text only edits EXISTING paragraphs (1..N as reported by WordInspect). Never use an
         out-of-range para_index — to ADD new content use insert_paragraph. Always WordInspect first to get N.
@@ -83,7 +86,7 @@ public sealed class WordEditTool : ITool
         {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["set_text","set_font","set_style","insert_paragraph","delete_paragraph","insert_table","set_geometry","insert_picture","add_page","replace","export_pdf","delete_shape","new_document","set_cell","set_shape_fill","set_shape_line"] },
+            "action": { "type": "string", "enum": ["set_text","set_font","set_style","insert_paragraph","delete_paragraph","insert_table","set_geometry","insert_picture","add_page","replace","export_pdf","delete_shape","new_document","set_cell","set_shape_fill","set_shape_line","insert_divider"] },
             "border_color": { "type": "string", "description": "Table/cell border line color, #RRGGBB or name (insert_table/set_cell)" },
             "line_weight": { "type": "number", "description": "Shape outline weight in points (set_shape_line)" },
             "table_index": { "type": "integer", "description": "1-based table index in the document (set_cell; default 1)" },
@@ -149,7 +152,7 @@ public sealed class WordEditTool : ITool
         [property: JsonPropertyName("replace_text")] string? ReplaceText);
 
     private static readonly string[] Actions =
-        { "set_text", "set_font", "set_style", "insert_paragraph", "delete_paragraph", "insert_table", "set_geometry", "insert_picture", "add_page", "replace", "export_pdf", "delete_shape", "new_document", "set_cell", "set_shape_fill", "set_shape_line" };
+        { "set_text", "set_font", "set_style", "insert_paragraph", "delete_paragraph", "insert_table", "set_geometry", "insert_picture", "add_page", "replace", "export_pdf", "delete_shape", "new_document", "set_cell", "set_shape_fill", "set_shape_line", "insert_divider" };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -446,6 +449,27 @@ public sealed class WordEditTool : ITool
                 }
 
                 return "OK: 도형 테두리 색/두께를 적용했습니다.";
+            }
+
+            case "insert_divider":
+            {
+                // 실제 가로줄 = 빈 문단 + 아래쪽 테두리(텍스트 '----' 가 아님).
+                dynamic anchor = inp.ParaIndex is not null ? Target(app, doc, inp) : doc.Content;
+                anchor.Collapse(WdCollapseEnd);
+                anchor.InsertParagraphAfter();
+                try
+                {
+                    dynamic b = anchor.Paragraphs[1].Range.Borders[-3]; // wdBorderBottom
+                    b.LineStyle = 1;   // wdLineStyleSingle
+                    b.LineWidth = 6;   // wdLineWidth075pt
+                    if (!string.IsNullOrWhiteSpace(inp.BorderColor))
+                    {
+                        b.Color = OfficeColor.ToBgr(inp.BorderColor);
+                    }
+                }
+                catch { /* 테두리 적용 실패 시에도 문단은 추가됨 */ }
+
+                return "OK: 구분선(가로줄)을 추가했습니다.";
             }
 
             case "set_cell":
