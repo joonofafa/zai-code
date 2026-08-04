@@ -208,10 +208,9 @@ public static class SystemPromptBuilder
             return null;
         }
 
-        // Create(OpenXML) 툴 없이 COM 편집 툴만 있는 세션(MoAI Desktop) — 열린 문서에서만 작업.
-        var editOnly =
-            !(has.Contains("DocxCreate") || has.Contains("XlsxCreate") || has.Contains("PptxCreate"))
-            && (has.Contains("WordEdit") || has.Contains("ExcelEdit") || has.Contains("PowerPointEdit"));
+        // MoAI Desktop: template(디자인/양식)로 새 문서를 '생성' + 열린 문서는 COM 편집.
+        var hasCreate = has.Contains("DocxCreate") || has.Contains("XlsxCreate") || has.Contains("PptxCreate");
+        var hasCom = has.Contains("WordEdit") || has.Contains("ExcelEdit") || has.Contains("PowerPointEdit");
 
         var doc = new List<string>
         {
@@ -221,11 +220,14 @@ public static class SystemPromptBuilder
             "",
         };
 
-        if (editOnly)
+        if (hasCreate)
         {
-            doc.Add(" - This session has NO standalone file-creation tool. Do NOT generate .docx/.xlsx/.pptx files or write scripts to do so. Create and edit content ONLY inside the Office document that is currently OPEN, in place, via WordEdit/ExcelEdit/PowerPointEdit (add pages/slides/sheets and fill content there). If the app you need is not open, tell the user which app to open — it will be launched for them.");
-            doc.Add(" - Call a new-document action (new_document / new_workbook / new_presentation) AT MOST ONCE per task. After the blank document is open, keep editing THAT SAME document. If a step went wrong, FIX the existing cells/paragraphs/shapes in place — never call new_* again, or you will create duplicate documents. Only start another new document if the user explicitly asks for a separate one.");
-            doc.Add(" - Excel tables: write ONE value per cell with set_value on explicit cells (A1, B1, … for the header row; A2, B2, … for each data row). Never put a whole row or multiple values into a single cell.");
+            doc.Add(" - To produce a NEW document, create the FILE with DocxCreate / XlsxCreate / PptxCreate using a \"template\" — Word: report(보고서)/incident(경위서)/proposal(제안서); Excel: expense(지출결의서)/invoice(거래명세서)/inventory(재고관리표); PowerPoint: design \"A\"/\"B\"/\"C\"/\"D\" with a per-slide layout (cover/section/content/two_col/table/quote). Fill every section/slide with real, substantive content for the user's topic. Prefer this template path for a fresh document — it yields proper design and structure that hand-built slides/cells cannot match. Just create the file; the user opens it afterward.");
+        }
+
+        if (hasCom)
+        {
+            doc.Add(" - To EDIT an already-OPEN Office document, edit it in place with WordEdit/ExcelEdit/PowerPointEdit. Call a new-document COM action (new_document / new_workbook / new_presentation) AT MOST ONCE per task, then keep editing that same document — fix mistakes in place, never create duplicate documents. Excel via COM: write ONE value per cell (A1, B1, … header row; A2, B2, … data rows), never a whole row in one cell.");
         }
 
         doc.AddRange(new[]

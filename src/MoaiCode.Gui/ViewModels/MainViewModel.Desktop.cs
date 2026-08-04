@@ -60,29 +60,29 @@ public sealed partial class MainViewModel
 
         WordTemplates.Add(new("Word", "빈 문서", null, blank, true));
         WordTemplates.Add(new("Word", "보고서",
-            "Word에 「(주제)」 주제로 보고서를 작성해줘. 새 Word 문서로 시작하고, 개요·배경·현황·분석·결론 및 제언 섹션 구조로, 핵심 내용은 실제 표로 정리하고 글자 크기는 본문에 맞춰줘.", w, false));
+            "DocxCreate 로 「(주제)」 보고서를 만들어줘. template \"report\", 개요·배경·현황·분석·결론 및 제언 섹션에 주제에 맞는 실질 내용을 채우고, 핵심은 표로 정리해서.", w, false));
         WordTemplates.Add(new("Word", "경위서",
-            "Word에 「(주제)」 경위서를 작성해줘. 새 Word 문서로 시작하고, 발생 개요·경위·원인·조치 사항·재발 방지 대책 섹션으로.", w, false));
+            "DocxCreate 로 「(주제)」 경위서를 만들어줘. template \"incident\", 발생 개요·경위·원인·조치 사항·재발 방지 대책 섹션을 채워서.", w, false));
         WordTemplates.Add(new("Word", "제안서",
-            "Word에 「(주제)」 제안서를 작성해줘. 새 Word 문서로 시작하고, 배경 및 목적·제안 내용·기대 효과·추진 일정·소요 예산 섹션으로, 일정·예산은 표로.", w, false));
+            "DocxCreate 로 「(주제)」 제안서를 만들어줘. template \"proposal\", 배경 및 목적·제안 내용·기대 효과·추진 일정·소요 예산 섹션을 채우고, 일정·예산은 표로.", w, false));
 
         PptTemplates.Add(new("PowerPoint", "빈 프레젠테이션", null, blank, true));
         PptTemplates.Add(new("PowerPoint", "디자인 A",
-            "PowerPoint에 「(주제)」 발표자료를 만들어줘. 새 프레젠테이션으로 시작하고, 먼저 set_background로 전체 배경을 연그레이 #F7F8FA 로 칠해줘. 제목은 남색 #1F3864 큰 글씨, 강조/포인트는 #2F5496, 본문은 간결한 불릿. 표지 + 핵심 슬라이드로. 코퍼레이트 톤.", Sw("#2F5496"), false));
+            "PptxCreate 로 「(주제)」 발표자료를 만들어줘. template \"A\"(코퍼레이트), 표지(cover)+핵심 슬라이드(section/content/two_col/table 레이아웃 적절히), 주제에 맞는 제목·간결한 불릿 내용으로 채워서.", Sw("#2F5496"), false));
         PptTemplates.Add(new("PowerPoint", "디자인 B",
-            "PowerPoint에 「(주제)」 발표자료를 만들어줘. 새 프레젠테이션으로 시작하고, set_background로 전체 배경을 흰색 #FFFFFF 로, 제목·강조는 빨강 #C00000 로. 한 슬라이드 한 메시지, 큰 제목. 키노트 톤.", Sw("#C00000"), false));
+            "PptxCreate 로 「(주제)」 발표자료를 만들어줘. template \"B\"(키노트), 한 슬라이드 한 메시지·큰 제목, 표지+핵심 슬라이드를 주제 내용으로 채워서.", Sw("#C00000"), false));
         PptTemplates.Add(new("PowerPoint", "디자인 C",
-            "PowerPoint에 「(주제)」 발표자료를 만들어줘. 새 프레젠테이션으로 시작하고, set_background로 전체 배경을 흰색 #FFFFFF 로, 제목·본문은 검정 #222222 로. 여백 넉넉·간결한 미니멀 톤.", Sw("#222222"), false));
+            "PptxCreate 로 「(주제)」 발표자료를 만들어줘. template \"C\"(미니멀), 여백 넉넉·간결하게, 표지+핵심 슬라이드를 주제 내용으로 채워서.", Sw("#222222"), false));
         PptTemplates.Add(new("PowerPoint", "디자인 D",
-            "PowerPoint에 「(주제)」 발표자료를 만들어줘. 새 프레젠테이션으로 시작하고, 먼저 set_background로 전체 배경을 짙은 남색 #1F2430 으로 칠해줘. 모든 텍스트는 흰색 #FFFFFF, 강조/포인트는 시안 #4FC3F7. 임팩트 있는 다크 톤.", Sw("#4FC3F7"), false));
+            "PptxCreate 로 「(주제)」 발표자료를 만들어줘. template \"D\"(다크), 임팩트 있게, 표지+핵심 슬라이드를 주제 내용으로 채워서.", Sw("#4FC3F7"), false));
 
         ExcelTemplates.Add(new("Excel", "빈 통합문서", null, blank, true));
         ExcelTemplates.Add(new("Excel", "지출결의서",
-            "Excel에 지출결의서 양식을 만들어줘. 새 Excel 통합문서로 시작하고, 일자·적요·금액·비고 표에 합계 행, 금액은 원화 서식으로.", x, false));
+            "XlsxCreate 로 지출결의서 양식을 만들어줘. template \"expense\".", x, false));
         ExcelTemplates.Add(new("Excel", "거래명세서",
-            "Excel에 거래명세서 양식을 만들어줘. 새 Excel 통합문서로 시작하고, 품목·규격·수량·단가·금액 표에 합계 행.", x, false));
+            "XlsxCreate 로 거래명세서 양식을 만들어줘. template \"invoice\".", x, false));
         ExcelTemplates.Add(new("Excel", "재고관리표",
-            "Excel에 재고관리표 양식을 만들어줘. 새 Excel 통합문서로 시작하고, 품목·규격·입고·출고·재고·비고 표.", x, false));
+            "XlsxCreate 로 재고관리표 양식을 만들어줘. template \"inventory\".", x, false));
     }
 
     // ── 주제 입력 팝업(「(주제)」 가 있는 템플릿) ──

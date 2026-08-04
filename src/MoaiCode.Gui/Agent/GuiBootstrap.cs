@@ -81,8 +81,12 @@ public static class GuiBootstrap
             .Where(t => t.Name is not "OrgDatas" and not "OrgDatasList" and not "OrgDocsDelete")
             .ToList();
 
-        // 문서 생성(OpenXML)은 Desktop 에서 제거 — 작성·편집은 열려 있는 Office(COM)로만 한다.
-        // OpenXml 어셈블리는 읽기용(DocumentTextExtractor/OfficeDocInspect)·공유 동기화에 계속 필요해 유지.
+        // 템플릿(디자인/양식) 문서는 OpenXML 로 '생성 후 Office 로 열어 COM 편집' 한다(세 앱).
+        // 기존 template 시스템 재활용 — PPT 디자인 A~D×레이아웃 / Word 보고서·경위서·제안서 /
+        // Excel 지출결의서·거래명세서·재고관리표. 자유 편집은 여전히 열린 문서(COM).
+        list.Add(new DocxCreateTool());
+        list.Add(new XlsxCreateTool());
+        list.Add(new PptxCreateTool());
         list.Add(new OfficeDocInspectTool());
         list.Add(new ChunkBuildTool());
         list.Add(new ChunkFetchTool());
