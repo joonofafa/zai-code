@@ -64,6 +64,8 @@ public sealed class PowerPointEditTool : ITool
             PowerPointInspect) or the current selection; "row"/"col" (1-based), "text" = new cell content.
             Optional "color" (cell text color), "fill_color" (cell background), "border_color" (cell borders),
             "font_size".
+          - insert_divider: add a real horizontal line shape across the slide (NOT text). On slide_index or the
+            current slide; optional "top" (y), "left"/"width" (extent), "border_color", "line_weight".
           - new_presentation: start a brand-new presentation with one blank title slide (launches PowerPoint
             if not running) so you can then build it with add_slide/set_text/etc. Use this when none is open.
         Target the shape by shape_id (from PowerPointInspect) on slide_index; shape_name is a fallback.
@@ -85,7 +87,7 @@ public sealed class PowerPointEditTool : ITool
         {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape", "new_presentation", "insert_table", "set_cell"], "description": "Edit action" },
+            "action": { "type": "string", "enum": ["set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape", "new_presentation", "insert_table", "set_cell", "insert_divider"], "description": "Edit action" },
             "rows": { "type": "integer", "description": "insert_table row count (or inferred from cells)" },
             "cols": { "type": "integer", "description": "insert_table column count (or inferred from cells)" },
             "row": { "type": "integer", "description": "1-based cell row (set_cell)" },
@@ -153,7 +155,7 @@ public sealed class PowerPointEditTool : ITool
         [property: JsonPropertyName("border_color")] string? BorderColor);
 
     private static readonly string[] Actions =
-        { "set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape", "new_presentation", "insert_table", "set_cell" };
+        { "set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape", "new_presentation", "insert_table", "set_cell", "insert_divider" };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -312,6 +314,43 @@ public sealed class PowerPointEditTool : ITool
         if (inp.Action == "set_cell")
         {
             return SetCell(app, pres, inp);
+        }
+
+        if (inp.Action == "insert_divider")
+        {
+            dynamic dslide;
+            if (inp.SlideIndex is not null)
+            {
+                int slCount = (int)pres.Slides.Count;
+                if (inp.SlideIndex.Value < 1 || inp.SlideIndex.Value > slCount)
+                {
+                    throw new InvalidOperationException($"슬라이드 {inp.SlideIndex} 없음(현재 {slCount}개).");
+                }
+
+                dslide = pres.Slides[inp.SlideIndex.Value];
+            }
+            else
+            {
+                dslide = app.ActiveWindow.View.Slide;
+            }
+
+            var slideW = (float)pres.PageSetup.SlideWidth;
+            var x1 = (float)(inp.Left ?? 40);
+            var x2 = inp.Width is not null ? x1 + (float)inp.Width.Value : slideW - 40;
+            var y = (float)(inp.Top ?? 200);
+            dynamic line = dslide.Shapes.AddLine(x1, y, x2, y);
+            if (!string.IsNullOrWhiteSpace(inp.BorderColor))
+            {
+                var lc = OfficeColor.ToBgr(inp.BorderColor);
+                TrySet(() => line.Line.ForeColor.RGB = lc);
+            }
+
+            if (inp.LineWeight is not null)
+            {
+                TrySet(() => line.Line.Weight = (float)inp.LineWeight.Value);
+            }
+
+            return "OK: 구분선(가로줄)을 추가했습니다.";
         }
 
         var targets = ResolveTargets(app, pres, inp);

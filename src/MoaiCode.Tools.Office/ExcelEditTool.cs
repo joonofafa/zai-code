@@ -23,6 +23,7 @@ public sealed class ExcelEditTool : ITool
     private const int XlThin = 2;         // XlBorderWeight.xlThin
     private const int XlMedium = -4138;   // XlBorderWeight.xlMedium
     private const int XlThick = 4;        // XlBorderWeight.xlThick
+    private const int XlEdgeBottom = 9;   // XlBordersIndex.xlEdgeBottom
     private const int XlTypePDF = 0;    // XlFixedFormatType.xlTypePDF
     private const int XlPart = 2;       // XlLookAt.xlPart
     private const int XlCenter = -4108; // XlHAlign/XlVAlign.xlCenter
@@ -44,6 +45,8 @@ public sealed class ExcelEditTool : ITool
           - set_shape_fill: fill (background) color of a shape on the active sheet (needs "color"). Target by
             "shape_index"/"shape_name".
           - set_shape_line: outline color/weight of a shape (any of "color", "line_weight" in points).
+          - insert_divider: draw a horizontal divider = the BOTTOM border of the "cell" range/row (e.g. "A3:E3").
+            "color" = line color, "border_weight" = thin|medium|thick.
           - insert_chart: chart from data (needs source via "cell"; "chart_type": column|line|pie|bar)
           - add_sheet: add a worksheet (optional "sheet_name")
           - set_geometry: move/resize/rotate/flip a shape on the active sheet (any of "left","top","width",
@@ -80,7 +83,7 @@ public sealed class ExcelEditTool : ITool
         {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["set_value","set_formula","set_font","set_fill","set_border","insert_chart","add_sheet","set_geometry","insert_picture","insert_pivot","replace","merge_cells","delete_sheet","delete_row","delete_column","delete_shape","export_pdf","new_workbook","set_shape_fill","set_shape_line"] },
+            "action": { "type": "string", "enum": ["set_value","set_formula","set_font","set_fill","set_border","insert_chart","add_sheet","set_geometry","insert_picture","insert_pivot","replace","merge_cells","delete_sheet","delete_row","delete_column","delete_shape","export_pdf","new_workbook","set_shape_fill","set_shape_line","insert_divider"] },
             "border_weight": { "type": "string", "description": "set_border line weight: thin|medium|thick (default thin)" },
             "line_weight": { "type": "number", "description": "Shape outline weight in points (set_shape_line)" },
             "path": { "type": "string", "description": "Local image file path (insert_picture) OR output .pdf path (export_pdf)" },
@@ -159,7 +162,7 @@ public sealed class ExcelEditTool : ITool
         [property: JsonPropertyName("func")] string? Func);
 
     private static readonly string[] Actions =
-        { "set_value", "set_formula", "set_font", "set_fill", "set_border", "insert_chart", "add_sheet", "set_geometry", "insert_picture", "insert_pivot", "replace", "merge_cells", "delete_sheet", "delete_row", "delete_column", "delete_shape", "export_pdf", "new_workbook", "set_shape_fill", "set_shape_line" };
+        { "set_value", "set_formula", "set_font", "set_fill", "set_border", "insert_chart", "add_sheet", "set_geometry", "insert_picture", "insert_pivot", "replace", "merge_cells", "delete_sheet", "delete_row", "delete_column", "delete_shape", "export_pdf", "new_workbook", "set_shape_fill", "set_shape_line", "insert_divider" };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -389,6 +392,21 @@ public sealed class ExcelEditTool : ITool
             }
 
             return "OK: 도형 테두리 색/두께를 적용했습니다.";
+        }
+
+        if (inp.Action == "insert_divider")
+        {
+            dynamic dr = ResolveRange(app, inp.Cell);
+            dynamic edge = dr.Borders[XlEdgeBottom];
+            edge.LineStyle = XlContinuous;
+            edge.Weight = BorderWeightId(inp.BorderWeight);
+            if (!string.IsNullOrWhiteSpace(inp.Color))
+            {
+                edge.Color = OfficeColor.ToBgr(inp.Color);
+            }
+
+            var dscope = string.IsNullOrWhiteSpace(inp.Cell) ? "현재 선택" : inp.Cell;
+            return $"OK: {dscope} 아래에 구분선을 추가했습니다.";
         }
 
         dynamic range = ResolveRange(app, inp.Cell);
