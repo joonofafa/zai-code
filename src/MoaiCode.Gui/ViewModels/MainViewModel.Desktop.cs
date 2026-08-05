@@ -210,7 +210,7 @@ public sealed partial class MainViewModel
         if (svc is not null)
         {
             svc.Status += OnSyncStatus;
-            SyncStatus = svc.FolderCount == 0 ? "대기 중 (연결된 폴더 없음)" : $"{svc.FolderCount}개 폴더 감시 중";
+            SyncStatus = svc.FolderCount == 0 ? "연결된 폴더 없음" : $"연결된 폴더 {svc.FolderCount}개";
         }
 
         // 연결된 문서가 사용자에 의해 닫혔는지 주기 확인(연결 중일 때만 COM 열거). 창 포커스 복귀 시에도 확인.
@@ -284,8 +284,8 @@ public sealed partial class MainViewModel
         OnPropertyChanged(nameof(WatchedFolderCount));
     }
 
-    /// <summary>공유 폴더 연결(코드비하인드에서 폴더 선택 후 호출). 설정 저장 + 즉시 감시 시작.</summary>
-    public void AddFolder(string path, string? orgId = null, string visibility = "organization")
+    /// <summary>로컬 폴더 연결(코드비하인드에서 폴더 선택 후 호출). 설정에 등록만 한다(자동 업로드 없음).</summary>
+    public void AddFolder(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -298,7 +298,7 @@ public sealed partial class MainViewModel
             return;
         }
 
-        var folder = new ConnectedFolder(path, orgId, visibility);
+        var folder = new ConnectedFolder(path, null, "local");
         s.ConnectedFolders.Add(folder);
         s.Save();
         FolderSyncService.Instance?.Connect(folder);

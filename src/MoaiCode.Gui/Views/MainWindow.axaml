@@ -53,16 +53,6 @@
           </StackPanel>
         </StackPanel>
 
-        <!-- 공유 동기화 상태(공유 폴더 탭에서만) -->
-        <Border Grid.Column="2" IsVisible="{Binding IsFoldersTab}" VerticalAlignment="Center" Margin="0,0,12,0"
-                Background="{DynamicResource ActivityBgBrush}" CornerRadius="999" Padding="10,4">
-          <StackPanel Orientation="Horizontal" Spacing="7">
-            <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{DynamicResource GoodBrush}" />
-            <TextBlock Text="{Binding SyncStatus}" FontSize="12" VerticalAlignment="Center"
-                       Foreground="{DynamicResource GoodBrush}" />
-          </StackPanel>
-        </Border>
-
         <TextBlock Grid.Column="3" Text="{Binding AccountLabel}" FontSize="12.5" VerticalAlignment="Center"
                    Margin="0,0,8,0" TextTrimming="CharacterEllipsis" MaxWidth="220"
                    Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -79,8 +69,8 @@
                   Command="{Binding ShowFoldersTabCommand}">
             <StackPanel Spacing="8">
               <StackPanel Orientation="Horizontal" Spacing="8">
-                <Path Classes="icon sm" Data="{StaticResource Icon.RefreshCw}" VerticalAlignment="Center" />
-                <TextBlock Text="공유 폴더" FontSize="13.5" FontWeight="SemiBold" VerticalAlignment="Center"
+                <Path Classes="icon sm" Data="{StaticResource Icon.FolderOpen}" VerticalAlignment="Center" />
+                <TextBlock Text="로컬 폴더" FontSize="13.5" FontWeight="SemiBold" VerticalAlignment="Center"
                            Foreground="{DynamicResource TextPrimaryBrush}" />
               </StackPanel>
               <Border Height="2.5" CornerRadius="2" IsVisible="{Binding IsFoldersTab}"
@@ -116,16 +106,13 @@
                   BorderThickness="1" CornerRadius="12" Padding="16">
             <Grid ColumnDefinitions="*,Auto">
               <StackPanel Grid.Column="0" Spacing="3">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                  <Ellipse Width="8" Height="8" VerticalAlignment="Center" Fill="{DynamicResource GoodBrush}" />
-                  <TextBlock Text="공유 동기화 실행 중" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
-                </StackPanel>
+                <TextBlock Text="로컬 폴더" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
                 <TextBlock Text="{Binding SyncStatus}" FontSize="12" Foreground="{DynamicResource TextMutedBrush}" />
               </StackPanel>
               <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right">
                 <TextBlock Text="{Binding WatchedFolderCount}" FontSize="24" FontWeight="Bold"
                            HorizontalAlignment="Right" Foreground="{DynamicResource TextPrimaryBrush}" />
-                <TextBlock Text="감시 중 폴더" FontSize="11.5" Foreground="{DynamicResource TextMutedBrush}" />
+                <TextBlock Text="연결된 폴더" FontSize="11.5" Foreground="{DynamicResource TextMutedBrush}" />
               </StackPanel>
             </Grid>
           </Border>
@@ -144,16 +131,6 @@
                     <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
                       <TextBlock Text="{Binding Display}" FontSize="13.5" FontWeight="SemiBold"
                                  TextTrimming="CharacterEllipsis" />
-                      <StackPanel Orientation="Horizontal" Spacing="6">
-                        <Border Background="{DynamicResource AccentSoftBrush}" CornerRadius="999" Padding="7,1">
-                          <TextBlock Text="{Binding OrgLabel}" FontSize="10.5"
-                                     Foreground="{DynamicResource AccentHoverBrush}" />
-                        </Border>
-                        <Border Background="{DynamicResource ActivityBgBrush}" CornerRadius="999" Padding="7,1">
-                          <TextBlock Text="{Binding VisibilityLabel}" FontSize="10.5"
-                                     Foreground="{DynamicResource TextMutedBrush}" />
-                        </Border>
-                      </StackPanel>
                     </StackPanel>
                     <Button Grid.Column="2" Classes="ghost" Padding="8,6" VerticalAlignment="Center"
                             ToolTip.Tip="폴더 열기"
@@ -173,26 +150,16 @@
             </ItemsControl.ItemTemplate>
           </ItemsControl>
 
-          <Grid ColumnDefinitions="*,*">
-            <Button Grid.Column="0" Classes="ghost" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                    Padding="12" Margin="0,0,5,0" Click="OnAddSharedFolderClick" ToolTip.Tip="이 폴더의 문서를 조직 구성원과 공유"
-                    BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1" CornerRadius="10">
-              <StackPanel Orientation="Horizontal" Spacing="7" HorizontalAlignment="Center">
-                <Path Classes="icon sm" Data="{StaticResource Icon.Plus}" VerticalAlignment="Center" />
-                <TextBlock Text="조직 공유 폴더" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
-              </StackPanel>
-            </Button>
-            <Button Grid.Column="1" Classes="ghost" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                    Padding="12" Margin="5,0,0,0" Click="OnAddPrivateFolderClick" ToolTip.Tip="이 폴더의 문서는 나만 볼 수 있게 반영"
-                    BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1" CornerRadius="10">
-              <StackPanel Orientation="Horizontal" Spacing="7" HorizontalAlignment="Center">
-                <Path Classes="icon sm" Data="{StaticResource Icon.Plus}" VerticalAlignment="Center" />
-                <TextBlock Text="나만 보기 폴더" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
-              </StackPanel>
-            </Button>
-          </Grid>
+          <Button Classes="ghost" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                  Padding="12" Click="OnAddFolderClick" ToolTip.Tip="로컬 폴더를 등록합니다"
+                  BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1" CornerRadius="10">
+            <StackPanel Orientation="Horizontal" Spacing="7" HorizontalAlignment="Center">
+              <Path Classes="icon sm" Data="{StaticResource Icon.Plus}" VerticalAlignment="Center" />
+              <TextBlock Text="폴더 추가" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
 
-          <TextBlock Text="조직 공유 폴더의 문서는 조직 구성원이, 나만 보기 폴더의 문서는 본인만 검색할 수 있습니다. 창을 닫아도 트레이에서 계속 동작합니다."
+          <TextBlock Text="연결한 폴더는 로컬 용도로 등록됩니다. 서버(조직 문서함)에는 자동으로 올라가지 않습니다. 조직과 공유할 문서는 대화에서 직접 업로드하세요."
                      FontSize="11.5" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" Margin="2,4,0,0" />
         </StackPanel>
       </ScrollViewer>
