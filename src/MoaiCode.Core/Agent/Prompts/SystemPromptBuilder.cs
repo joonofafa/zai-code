@@ -229,6 +229,7 @@ public static class SystemPromptBuilder
         if (hasCom)
         {
             doc.Add(" - To EDIT an already-OPEN Office document, edit it in place with WordEdit/ExcelEdit/PowerPointEdit. Call a new-document COM action (new_document / new_workbook / new_presentation) AT MOST ONCE per task, then keep editing that same document — fix mistakes in place, never create duplicate documents. Excel via COM: write ONE value per cell (A1, B1, … header row; A2, B2, … data rows), never a whole row in one cell.");
+            doc.Add(" - If the target or scope of an edit is genuinely ambiguous (e.g. nothing meaningful is selected — only a single character — or the request could mean the whole document vs one section), ask the user ONE short clarifying question and then STOP: do NOT call an edit tool in that same turn, and do NOT guess-and-edit. Ending your turn is what lets the user reply; resume editing only after they answer. Never keep working while you are waiting on the user's choice — asking and continuing to act at the same time leaves the user unable to respond. When you can reasonably infer the intended target, just proceed instead of asking.");
         }
 
         doc.AddRange(new[]
