@@ -59,6 +59,9 @@ public sealed class SyncManifest
         return Files.TryGetValue(path, out var e) && e.Size == fi.Length && e.Mtime == fi.LastWriteTimeUtc.Ticks;
     }
 
+    /// <summary>이전 업로드에서 서버가 발급한 문서 id(있으면). 변경 재업로드 시 옛 문서를 지우는 데 쓴다.</summary>
+    public string? GetDocId(string path) => Files.TryGetValue(path, out var e) ? e.DocId : null;
+
     public void MarkUploaded(string path, string? docId)
     {
         var fi = new FileInfo(path);

@@ -11,6 +11,7 @@ using MoaiCode.Config;
 using MoaiCode.Core.Tools;
 using MoaiCode.Gui.Agent;
 using MoaiCode.Tools.Knowledge;
+using MoaiCode.Tools.Office;
 using MoaiCode.Tools.OpenXml;
 
 namespace MoaiCode.Gui.Sync;
@@ -25,6 +26,9 @@ public sealed record ConnectedFolder(string Path, string? OrgId, string Visibili
 public sealed class FolderSyncService : IDisposable
 {
     private static readonly Regex IdRx = new(@"id=(\d+)", RegexOptions.Compiled);
+
+    // 마지막 변경 후 이 시간(ms) 조용해야 업로드 후보. 편집 세션 중 잦은 재업로드를 줄이는 디바운스.
+    private const int QuietMs = 3000;
 
     private readonly SyncManifest _manifest = SyncManifest.Load();
     private readonly List<FileSystemWatcher> _watchers = new();
@@ -149,6 +153,37 @@ public sealed class FolderSyncService : IDisposable
         MoaiLog.Debug($"FolderSync: event queued {Tag(path)} (pending={_pending.Count})");
     }
 
+    // Office 로 편집되는(=열림 판정 대상) 문서형인가. txt/md/csv/pdf 는 Office 열림 판정 없이 디바운스만.
+    private static bool IsOfficeDoc(string path) =>
+        Path.GetExtension(path).ToLowerInvariant() is ".docx" or ".xlsx" or ".pptx";
+
+    // 현재 Office(Word/Excel/PowerPoint)에 열려 있는 문서의 전체경로 집합. 편집 중 문서 업로드 보류에 쓴다.
+    // 비-Windows 는 빈 집합(열린 것 없음), COM 열거 실패/타임아웃은 null(판단 불가).
+    private static async Task<HashSet<string>?> GetOpenOfficePathsAsync()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var docs = await OfficeWindowLister.ListOpenDocumentsAsync().ConfigureAwait(false);
+        if (docs is null)
+        {
+            return null;
+        }
+
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var d in docs)
+        {
+            if (!string.IsNullOrEmpty(d.Path))
+            {
+                set.Add(d.Path);
+            }
+        }
+
+        return set;
+    }
+
     // 로그용 ASCII 식별자 — 원문(한글 가능) 파일명 대신 확장자 + 경로 안정 해시. CLAUDE.md 로깅 규칙 준수.
     private static string Tag(string path)
     {
@@ -173,30 +208,50 @@ public sealed class FolderSyncService : IDisposable
         {
             var now = DateTime.UtcNow;
             var ready = _pending
-                .Where(kv => (now - kv.Value.When).TotalMilliseconds > 1500)
+                .Where(kv => (now - kv.Value.When).TotalMilliseconds > QuietMs)
                 .Select(kv => kv.Key)
                 .ToList();
 
-            if (ready.Count > 0)
+            if (ready.Count == 0)
             {
-                MoaiLog.Debug($"FolderSync: cycle ready={ready.Count} pending={_pending.Count}");
+                return;
             }
+
+            MoaiLog.Debug($"FolderSync: cycle ready={ready.Count} pending={_pending.Count}");
+
+            // '닫힘 시 동기화': 편집 중(Office 에 열려 있는) 문서는 업로드를 미룬다 — 저장할 때마다
+            // 재업로드/재임베딩하는 낭비를 막고, 사용자가 문서를 닫은 뒤 한 번만 올린다. Office 목록을
+            // 못 읽으면(null) 판단 불가 → 디바운스만으로 진행(중복은 아래 교체 로직이 흡수).
+            // 대기열에 Office 문서가 하나도 없으면 COM 열거 자체를 생략(txt/md 등 편집 시 낭비 방지).
+            var anyOfficeDoc = ready.Exists(IsOfficeDoc);
+            var openInOffice = anyOfficeDoc
+                ? await GetOpenOfficePathsAsync().ConfigureAwait(false)
+                : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var path in ready)
             {
-                _pending.TryRemove(path, out var entry);
                 if (!File.Exists(path))
                 {
+                    _pending.TryRemove(path, out _);
                     MoaiLog.Debug($"FolderSync: skip {Tag(path)} (file gone)");
                     continue;
                 }
 
                 if (_manifest.IsUnchanged(path))
                 {
+                    _pending.TryRemove(path, out _);
                     MoaiLog.Debug($"FolderSync: skip {Tag(path)} (unchanged since last upload)");
                     continue;
                 }
 
+                if (openInOffice is not null && openInOffice.Contains(path))
+                {
+                    // 아직 편집 중 → 대기열에 남겨 두고 닫힐 때까지 매 사이클 재확인.
+                    MoaiLog.Debug($"FolderSync: defer {Tag(path)} (open in Office, sync on close)");
+                    continue;
+                }
+
+                _pending.TryRemove(path, out var entry);
                 await UploadAsync(path, entry.Folder).ConfigureAwait(false);
             }
         }
@@ -248,6 +303,11 @@ public sealed class FolderSyncService : IDisposable
             MoaiLog.Warn("FolderSync: upload aborted, credentials/baseUrl missing (login required or settings.json baseUrl unset)");
         }
 
+        // 이 파일의 직전 업로드 문서 id(있으면). 서버는 dedup 을 안 하므로, 재업로드 시 이 옛 문서를
+        // 지워 문서함에 중복이 쌓이지 않게 한다(제자리 교체). 삭제는 새 업로드 성공 '후'에 해야
+        // 업로드 실패 시 옛 문서가 그대로 남아 데이터가 사라지지 않는다.
+        var oldDocId = _manifest.GetDocId(path);
+
         var input = JsonSerializer.SerializeToElement(new
         {
             orgId = folder.OrgId,
@@ -270,15 +330,47 @@ public sealed class FolderSyncService : IDisposable
         if (ok)
         {
             var docId = last is not null && IdRx.Match(last) is { Success: true } m ? m.Groups[1].Value : null;
+
+            // 새 버전이 올라갔으니 옛 문서 제거(제자리 교체). best-effort — 실패해도 새 문서는 유효.
+            if (!string.IsNullOrEmpty(oldDocId) && !string.Equals(oldDocId, docId, StringComparison.Ordinal))
+            {
+                await DeleteRemoteAsync(oldDocId, folder.OrgId).ConfigureAwait(false);
+            }
+
             _manifest.MarkUploaded(path, docId);
             _manifest.Save();
-            MoaiLog.Info($"FolderSync: upload ok {Tag(path)} docId={docId ?? "?"}");
+            MoaiLog.Info($"FolderSync: upload ok {Tag(path)} docId={docId ?? "?"} replacedOld={(string.IsNullOrEmpty(oldDocId) ? "no" : "yes")}");
             Status?.Invoke($"문서함 반영됨: {name}");
         }
         else
         {
             MoaiLog.Warn($"FolderSync: upload failed {Tag(path)} reason={ClassifyFailure(last)}");
             Status?.Invoke($"실패: {name} — {last}");
+        }
+    }
+
+    // 서버 문서 1건을 삭제(변경 재업로드 시 옛 버전 제거). OrgDocsDeleteTool 재사용, best-effort.
+    private static async Task DeleteRemoteAsync(string docId, string? orgId)
+    {
+        try
+        {
+            var input = JsonSerializer.SerializeToElement(new { documentId = docId, orgId });
+            var ctx = new ToolContext(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), PermissionMode.Auto);
+            var ok = false;
+            await foreach (var p in new OrgDocsDeleteTool().ExecuteAsync(input, ctx, CancellationToken.None).ConfigureAwait(false))
+            {
+                if (p is ToolOutput o)
+                {
+                    ok = !o.IsError;
+                }
+            }
+
+            MoaiLog.Info($"FolderSync: prior-doc delete id={docId} ok={ok}");
+        }
+        catch (Exception ex)
+        {
+            MoaiLog.Warn($"FolderSync: prior-doc delete threw: {ex.GetType().Name}");
         }
     }
 
