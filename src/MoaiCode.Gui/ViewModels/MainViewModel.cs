@@ -781,17 +781,6 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        // 템플릿 작성 첫 전송(주제) → 모델 호출 전에 데이터 출처 선택 버튼을 먼저 표시(결정적).
-        if (_templateSourcePending)
-        {
-            _templateSourcePending = false;
-            _pendingTemplatePrompt = text;
-            Input = string.Empty;
-            Items.Add(new SourceChoiceItem { Topic = text });
-            RequestScroll();
-            return;
-        }
-
         Input = string.Empty;
         Items.Add(new UserItem { Text = References.Count > 0 ? $"{text}\n\n참조 {References.Count}개" : text });
         _transcript.Add(new TurnLine("user", text));

@@ -85,10 +85,14 @@ public sealed partial class MainViewModel
             "XlsxCreate 로 재고관리표 양식을 만들어줘. template \"inventory\".", x, false));
     }
 
-    // ── 주제 입력 팝업(「(주제)」 가 있는 템플릿) ──
+    // ── 주제 입력 팝업(「(주제)」 가 있는 템플릿) — 자료 출처 토글 포함 ──
     [ObservableProperty] private bool _showTopicDialog;
     [ObservableProperty] private string _topicInput = string.Empty;
     [ObservableProperty] private string _topicTemplateLabel = string.Empty;
+    [ObservableProperty] private bool _srcWeb;
+    [ObservableProperty] private bool _srcOrg;
+    // 연결된 로컬 폴더 각각을 참고 대상 토글로. 작성 시 선택된 폴더를 LocalDocsSearch 로 검색.
+    public ObservableCollection<FolderChoice> TopicFolders { get; } = new();
     private DocTemplate? _pendingTemplateForTopic;
 
     // 템플릿 카드 클릭 — 빈 문서는 앱 바로 열기, 주제형은 팝업, 양식형(주제 불필요)은 바로 진행.
@@ -107,12 +111,20 @@ public sealed partial class MainViewModel
             return;
         }
 
-        // 「(주제)」 가 있으면 주제 입력 팝업을 먼저(사용자가 놓치지 않도록).
+        // 「(주제)」 가 있으면 주제 입력 팝업을 먼저(사용자가 놓치지 않도록). 자료 출처 토글도 초기화.
         if (t.Prompt.Contains("「(주제)」", StringComparison.Ordinal))
         {
             _pendingTemplateForTopic = t;
             TopicTemplateLabel = t.Label;
             TopicInput = string.Empty;
+            SrcWeb = false;
+            SrcOrg = false;
+            TopicFolders.Clear();
+            foreach (var f in Folders)
+            {
+                TopicFolders.Add(new FolderChoice(f.Path));
+            }
+
             ShowTopicDialog = true;
             return;
         }
@@ -133,6 +145,30 @@ public sealed partial class MainViewModel
         var prompt = topic is null
             ? t.Prompt!.Replace("「(주제)」", string.Empty).Trim()
             : t.Prompt!.Replace("「(주제)」", $"「{topic}」");
+
+        // 선택된 자료 출처를 프롬프트에 결정적으로 결합(모델이 반드시 해당 소스로 근거 수집).
+        var sources = new List<string>();
+        if (SrcWeb)
+        {
+            sources.Add("웹에서 관련 자료를 검색(WebSearch)해 근거·수치로 반영");
+        }
+
+        if (SrcOrg)
+        {
+            sources.Add("조직 문서함(OrgDocsSearch)에서 관련 자료를 검색해 근거로 반영");
+        }
+
+        foreach (var fc in TopicFolders.Where(f => f.Selected))
+        {
+            sources.Add($"로컬 폴더 \"{fc.Path}\" 를 LocalDocsSearch(path=\"{fc.Path}\")로 검색해 근거로 반영");
+        }
+
+        if (sources.Count > 0)
+        {
+            prompt += "\n\n[자료 출처] 아래 소스에서 근거를 수집해 작성하고 어떤 자료를 참고했는지 밝혀줘:\n- "
+                      + string.Join("\n- ", sources);
+        }
+
         ShowTopicDialog = false;
         _pendingTemplateForTopic = null;
         StartTemplate(t, prompt);
@@ -145,51 +181,15 @@ public sealed partial class MainViewModel
         _pendingTemplateForTopic = null;
     }
 
-    // 프롬프트를 새 대화로 시작하고 바로 전송(→ 출처 선택 카드가 Send 에서 뜬다).
+    // 프롬프트(자료 출처 포함)를 새 대화로 시작하고 바로 전송.
     private void StartTemplate(DocTemplate t, string prompt)
     {
         Tab = 1;
         StartFreshSession();  // 새 문서 작업은 별도 대화로
         Input = prompt;
         ActiveDocApp = t.App;  // 하단 컴포저를 대상 앱 색으로 강조
-        _templateSourcePending = true; // 첫 전송을 Send 가 가로채 출처 선택을 먼저
         ShowHome = false;
         SendCommand.Execute(null);
-    }
-
-    // 템플릿 작성 첫 전송을 가로채 데이터 출처를 먼저 물어보기 위한 상태(모델 무시 불가, GUI 가 결정).
-    private bool _templateSourcePending;
-    private string? _pendingTemplatePrompt;
-
-    // 출처 선택 카드 버튼 — 선택한 출처 지시를 원 요청에 결합해 실제 전송.
-    [RelayCommand]
-    private void SelectSource(string? key)
-    {
-        if (string.IsNullOrEmpty(_pendingTemplatePrompt))
-        {
-            return;
-        }
-
-        var (label, extra) = key switch
-        {
-            "org" => ("조직 데이터 검색", "조직 문서함(OrgDocs)에서 관련 자료를 검색해 근거·수치로 반영해줘."),
-            "web" => ("웹 검색", "웹에서 관련 자료를 검색해 근거·수치로 반영해줘."),
-            "both" => ("조직 + 웹", "조직 문서함(OrgDocs)과 웹에서 자료를 검색해 근거·수치로 반영해줘."),
-            _ => ("자료 없이", "추가 자료 조사 없이 바로 작성해줘."),
-        };
-
-        // 출처 카드 제거 + 선택 표시.
-        if (Items.OfType<SourceChoiceItem>().LastOrDefault() is { } card)
-        {
-            Items.Remove(card);
-        }
-
-        Items.Add(new ActivityItem { Text = $"자료 출처: {label}", Done = true });
-
-        var prompt = _pendingTemplatePrompt + "\n\n[자료 출처] " + extra;
-        _pendingTemplatePrompt = null;
-        Input = prompt;
-        SendCommand.Execute(null); // 원 요청 + 출처 지시를 한 번에 모델로
     }
 
     // ── 공유 폴더 대시보드 ──
@@ -385,6 +385,22 @@ public sealed partial class MainViewModel
 
 /// <summary>새 문서 템플릿 카드(프롬프트 프리셋). Prompt 가 null 이면 빈 문서(앱만 열기).</summary>
 public sealed record DocTemplate(string App, string Label, string? Prompt, IBrush Swatch, bool IsBlank);
+
+/// <summary>주제 팝업의 '연결 폴더 참고' 토글 항목(체크박스 바인딩용 observable).</summary>
+public partial class FolderChoice : ObservableObject
+{
+    public FolderChoice(string path)
+    {
+        Path = path;
+        Label = "내 PC - " + path;
+    }
+
+    public string Path { get; }
+
+    public string Label { get; }
+
+    [ObservableProperty] private bool _selected;
+}
 
 /// <summary>공유 폴더 대시보드 행(표시용).</summary>
 public sealed record FolderRow(string Path, string? OrgId, string Visibility)

@@ -371,29 +371,6 @@
                 </ItemsControl>
               </DataTemplate>
 
-              <!-- 데이터 출처 선택 카드(템플릿 작성) -->
-              <DataTemplate DataType="vm:SourceChoiceItem">
-                <Border Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource AccentHoverBrush}"
-                        BorderThickness="1" CornerRadius="14" Padding="16,13" HorizontalAlignment="Left" MaxWidth="560">
-                  <StackPanel Spacing="11">
-                    <TextBlock Text="입력할 데이터를 어디서 가져올까요?" FontSize="13.5" FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextPrimaryBrush}" />
-                    <TextBlock Text="{Binding Topic}" FontSize="12" TextWrapping="Wrap"
-                               Foreground="{DynamicResource TextMutedBrush}" />
-                    <WrapPanel>
-                      <Button Classes="chip" Margin="0,0,7,7" Content="조직 데이터 검색"
-                              Command="{Binding $parent[ItemsControl].DataContext.SelectSourceCommand}" CommandParameter="org" />
-                      <Button Classes="chip" Margin="0,0,7,7" Content="웹 검색"
-                              Command="{Binding $parent[ItemsControl].DataContext.SelectSourceCommand}" CommandParameter="web" />
-                      <Button Classes="chip" Margin="0,0,7,7" Content="둘 다"
-                              Command="{Binding $parent[ItemsControl].DataContext.SelectSourceCommand}" CommandParameter="both" />
-                      <Button Classes="chip" Margin="0,0,7,7" Content="안 가져옴"
-                              Command="{Binding $parent[ItemsControl].DataContext.SelectSourceCommand}" CommandParameter="none" />
-                    </WrapPanel>
-                  </StackPanel>
-                </Border>
-              </DataTemplate>
-
               <DataTemplate DataType="vm:DocumentItem">
                 <Border Background="{DynamicResource BgCardBrush}" CornerRadius="14"
                         BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1"
@@ -530,6 +507,23 @@
               <KeyBinding Gesture="Enter" Command="{Binding ConfirmTopicCommand}" />
             </TextBox.KeyBindings>
           </TextBox>
+
+          <!-- 참고할 자료 출처(선택) — 선택한 소스로 근거를 수집해 작성 -->
+          <TextBlock Text="참고할 자료 (선택)" FontSize="12" FontWeight="SemiBold"
+                     Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" />
+          <StackPanel Spacing="6">
+            <CheckBox IsChecked="{Binding SrcWeb}" Content="웹 검색" FontSize="13" />
+            <CheckBox IsChecked="{Binding SrcOrg}" Content="조직 문서함 참고" FontSize="13" />
+            <ItemsControl ItemsSource="{Binding TopicFolders}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:FolderChoice">
+                  <CheckBox IsChecked="{Binding Selected}" Content="{Binding Label}" FontSize="13"
+                            Margin="0,2,0,0" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+
           <StackPanel Orientation="Horizontal" Spacing="9" HorizontalAlignment="Right">
             <Button Classes="ghost" Content="취소" Command="{Binding CancelTopicCommand}" />
             <Button Classes="accent" Content="작성 시작" Command="{Binding ConfirmTopicCommand}" />
