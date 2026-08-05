@@ -71,6 +71,10 @@ public sealed class PowerPointEditTool : ITool
             way to color the slide background; set_fill only colors shapes, not the background.
           - new_presentation: start a brand-new presentation with one blank title slide (launches PowerPoint
             if not running) so you can then build it with add_slide/set_text/etc. Use this when none is open.
+          - apply_template: apply a design template's THEME (color scheme, fonts, slide master & layouts) from
+            a .pptx or .potx file ("path") to the WHOLE active presentation. This is the deterministic way to
+            "apply the attached deck's theme / 첨부 pptx 테마 적용" — do NOT web-search or hand-recolor shapes;
+            just open/select the target deck and call apply_template with the attached file's path.
         Target the shape by shape_id (from PowerPointInspect) on slide_index; shape_name is a fallback.
         If no shape target is given, the action applies to the CURRENTLY SELECTED shape(s).
         "scope" selects where the shape lives: "slide" (default, body shapes), "layout" (the slide's
@@ -90,7 +94,7 @@ public sealed class PowerPointEditTool : ITool
         {
           "type": "object",
           "properties": {
-            "action": { "type": "string", "enum": ["set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape", "new_presentation", "insert_table", "set_cell", "insert_divider", "set_background"], "description": "Edit action" },
+            "action": { "type": "string", "enum": ["set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape", "new_presentation", "insert_table", "set_cell", "insert_divider", "set_background", "apply_template"], "description": "Edit action" },
             "rows": { "type": "integer", "description": "insert_table row count (or inferred from cells)" },
             "cols": { "type": "integer", "description": "insert_table column count (or inferred from cells)" },
             "row": { "type": "integer", "description": "1-based cell row (set_cell)" },
@@ -158,7 +162,7 @@ public sealed class PowerPointEditTool : ITool
         [property: JsonPropertyName("border_color")] string? BorderColor);
 
     private static readonly string[] Actions =
-        { "set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape", "new_presentation", "insert_table", "set_cell", "insert_divider", "set_background" };
+        { "set_text", "set_fill", "set_font", "set_line", "set_geometry", "insert_picture", "add_slide", "replace", "export_pdf", "delete_slide", "delete_shape", "new_presentation", "insert_table", "set_cell", "insert_divider", "set_background", "apply_template" };
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -247,6 +251,7 @@ public sealed class PowerPointEditTool : ITool
             "set_cell" when inp.Row is null or < 1 || inp.Col is null or < 1 || inp.Text is null
                 => "set_cell 에는 row·col(1 이상)·text 가 필요합니다.",
             "set_background" when string.IsNullOrWhiteSpace(inp.Color) => "set_background 에는 color 가 필요합니다.",
+            "apply_template" when string.IsNullOrWhiteSpace(inp.Path) => "apply_template 에는 path(템플릿 pptx/potx)가 필요합니다.",
             _ => null,
         };
     }
@@ -296,6 +301,21 @@ public sealed class PowerPointEditTool : ITool
             var outPath = OfficePdf.Resolve(inp.Path, TryStr(() => (string)pres.FullName), workingDir);
             pres.ExportAsFixedFormat(outPath, PpFixedFormatTypePDF);
             return $"OK: PDF 로 내보냈습니다 — {outPath}";
+        }
+
+        if (inp.Action == "apply_template")
+        {
+            // 첨부 pptx/potx 의 디자인(테마·색·폰트·마스터·레이아웃)을 활성 프레젠테이션에 통째로 적용.
+            // 형식을 PowerPoint 가 거부하면 가짜 성공을 만들지 않고 실제 COM 예외를 그대로 올린다.
+            var tpl = System.IO.Path.GetFullPath(
+                System.IO.Path.IsPathRooted(inp.Path!) ? inp.Path! : System.IO.Path.Combine(workingDir, inp.Path!));
+            if (!System.IO.File.Exists(tpl))
+            {
+                throw new InvalidOperationException($"템플릿 파일이 없습니다: {tpl}");
+            }
+
+            pres.ApplyTemplate(tpl);
+            return $"OK: 템플릿 테마를 적용했습니다 — {System.IO.Path.GetFileName(tpl)}";
         }
 
         if (inp.Action == "delete_slide")
