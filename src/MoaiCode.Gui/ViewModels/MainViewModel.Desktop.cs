@@ -392,7 +392,8 @@ public partial class FolderChoice : ObservableObject
     public FolderChoice(string path)
     {
         Path = path;
-        Label = "내 PC - " + path;
+        var name = System.IO.Path.GetFileName(path.TrimEnd('/', '\\'));
+        Label = "내 로컬 폴더 · " + (string.IsNullOrEmpty(name) ? path : name);
     }
 
     public string Path { get; }

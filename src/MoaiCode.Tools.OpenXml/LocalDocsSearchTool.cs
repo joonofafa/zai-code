@@ -109,42 +109,7 @@ public sealed class LocalDocsSearchTool : ITool
     private static async System.Threading.Tasks.Task<string> SearchAsync(
         ChunkStore store, VectorManifest vm, string query, int topK, CancellationToken ct)
     {
-        // 질의를 저장 벡터와 같은 모델로 임베딩(서버 compute-only). dim 이 다르면 stale 인덱스.
-        var emb = await EmbeddingClient.EmbedAsync(new[] { query }, ct, vm.EmbModel).ConfigureAwait(false);
-        var q = emb.Vectors[0];
-        if (q.Length != vm.Dim)
-        {
-            throw new InvalidDataException($"질의 차원({q.Length})이 인덱스 dim({vm.Dim})과 다릅니다. 재인덱싱이 필요합니다.");
-        }
-
-        var hits = new List<(float Score, string Source, int Index, string Text)>();
-        foreach (var doc in vm.Documents)
-        {
-            ct.ThrowIfCancellationRequested();
-            var chunks = store.ReadChunks(doc.Source + ".jsonl");
-            if (chunks.Count != doc.Chunks)
-            {
-                continue; // stale: 텍스트가 바뀌어 청크 수 불일치 → 건너뜀
-            }
-
-            IReadOnlyList<float[]> vecs;
-            try
-            {
-                vecs = store.ReadVectors(doc.Vec, vm.Dim);
-            }
-            catch (InvalidDataException)
-            {
-                continue;
-            }
-
-            var n = Math.Min(vecs.Count, chunks.Count);
-            for (var i = 0; i < n; i++)
-            {
-                hits.Add((Cosine(q, vecs[i]), doc.Source, chunks[i].Index, chunks[i].Text));
-            }
-        }
-
-        var top = hits.OrderByDescending(h => h.Score).Take(topK).ToList();
+        var top = await LocalSearch.SearchAsync(store, vm, query, topK, ct).ConfigureAwait(false);
         if (top.Count == 0)
         {
             return "LocalDocsSearch: 일치하는 청크가 없습니다.";
@@ -161,6 +126,67 @@ public sealed class LocalDocsSearchTool : ITool
 
         return sb.ToString();
     }
+}
+
+/// <summary>로컬 인덱스(.moai-chunks) 코사인 검색의 구조적 결과(툴·GUI 검색창 공용).</summary>
+public sealed record LocalHit(string Source, int Index, float Score, string Text);
+
+/// <summary>로컬 벡터 검색 코어 — 질의를 서버 임베딩(compute-only)으로 벡터화한 뒤 오프라인 코사인 top-K.</summary>
+public static class LocalSearch
+{
+    /// <summary>폴더(anchor)의 로컬 인덱스에서 top-K 검색. 인덱스가 없으면 빈 목록.</summary>
+    public static async System.Threading.Tasks.Task<IReadOnlyList<LocalHit>> SearchAsync(
+        string anchor, string query, int topK, CancellationToken ct)
+    {
+        var store = new ChunkStore(anchor);
+        var vm = store.Exists ? store.LoadVectorManifest() : null;
+        if (vm is null || vm.Documents.Count == 0)
+        {
+            return Array.Empty<LocalHit>();
+        }
+
+        return await SearchAsync(store, vm, query, topK, ct).ConfigureAwait(false);
+    }
+
+    public static async System.Threading.Tasks.Task<IReadOnlyList<LocalHit>> SearchAsync(
+        ChunkStore store, VectorManifest vm, string query, int topK, CancellationToken ct)
+    {
+        var emb = await EmbeddingClient.EmbedAsync(new[] { query }, ct, vm.EmbModel).ConfigureAwait(false);
+        var q = emb.Vectors[0];
+        if (q.Length != vm.Dim)
+        {
+            throw new InvalidDataException($"질의 차원({q.Length})이 인덱스 dim({vm.Dim})과 다릅니다. 재인덱싱이 필요합니다.");
+        }
+
+        var hits = new List<LocalHit>();
+        foreach (var doc in vm.Documents)
+        {
+            ct.ThrowIfCancellationRequested();
+            var chunks = store.ReadChunks(doc.Source + ".jsonl");
+            if (chunks.Count != doc.Chunks)
+            {
+                continue; // stale: 청크 수 불일치 → 건너뜀
+            }
+
+            IReadOnlyList<float[]> vecs;
+            try
+            {
+                vecs = store.ReadVectors(doc.Vec, vm.Dim);
+            }
+            catch (InvalidDataException)
+            {
+                continue;
+            }
+
+            var n = Math.Min(vecs.Count, chunks.Count);
+            for (var i = 0; i < n; i++)
+            {
+                hits.Add(new LocalHit(doc.Source, chunks[i].Index, Cosine(q, vecs[i]), chunks[i].Text));
+            }
+        }
+
+        return hits.OrderByDescending(h => h.Score).Take(topK).ToList();
+    }
 
     private static float Cosine(float[] a, float[] b)
     {
@@ -172,11 +198,6 @@ public sealed class LocalDocsSearchTool : ITool
             nb += b[i] * b[i];
         }
 
-        if (na == 0 || nb == 0)
-        {
-            return 0f;
-        }
-
-        return (float)(dot / (Math.Sqrt(na) * Math.Sqrt(nb)));
+        return na == 0 || nb == 0 ? 0f : (float)(dot / (Math.Sqrt(na) * Math.Sqrt(nb)));
     }
 }

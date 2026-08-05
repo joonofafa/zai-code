@@ -181,4 +181,24 @@ public partial class MainWindow : Window
             vm.AddOrgReference(reference);
         }
     }
+
+    // 내 로컬 폴더에서 검색·첨부 — 조직 문서함과 동일 흐름, 대상만 로컬 인덱스(.moai-chunks).
+    private async void OnLocalClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+        {
+            return;
+        }
+
+        var picked = await new LocalSearchWindow().PickAsync(this);
+        if (picked is null)
+        {
+            return;
+        }
+
+        foreach (var reference in picked)
+        {
+            vm.AddOrgReference(reference);
+        }
+    }
 }
