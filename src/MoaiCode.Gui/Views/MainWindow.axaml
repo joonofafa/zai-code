@@ -159,7 +159,7 @@
             </StackPanel>
           </Button>
 
-          <TextBlock Text="연결한 폴더는 로컬 용도로 등록됩니다. 서버(조직 문서함)에는 자동으로 올라가지 않습니다. 조직과 공유할 문서는 대화에서 직접 업로드하세요."
+          <TextBlock Text="연결한 폴더는 자동으로 로컬 인덱싱됩니다(로컬 청킹 + 임베딩 → 로컬 검색). 문서 원본은 서버(조직 문서함)에 올라가지 않습니다. 조직과 공유할 문서는 대화에서 직접 업로드하세요."
                      FontSize="11.5" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" Margin="2,4,0,0" />
         </StackPanel>
       </ScrollViewer>
