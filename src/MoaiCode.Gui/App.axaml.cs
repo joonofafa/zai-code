@@ -115,6 +115,10 @@ public partial class App : Application
         }
     }
 
+    /// <summary>다른 인스턴스가 실행됐을 때 기존 창을 앞으로 올린다(단일 인스턴스). UI 스레드로 마샬링.</summary>
+    public static void BringExistingToFront() =>
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => (Current as App)?.ShowMain());
+
     private void ShowMain()
     {
         if (_mainWindow is null)
@@ -123,7 +127,15 @@ public partial class App : Application
         }
 
         _mainWindow.Show();
+        if (_mainWindow.WindowState == WindowState.Minimized)
+        {
+            _mainWindow.WindowState = WindowState.Normal;
+        }
+
         _mainWindow.Activate();
+        // 포그라운드로 강제(다른 창 위로) — Topmost 토글로 Z-순서 끌어올림.
+        _mainWindow.Topmost = true;
+        _mainWindow.Topmost = false;
     }
 
     private static WindowIcon? LoadIcon()
