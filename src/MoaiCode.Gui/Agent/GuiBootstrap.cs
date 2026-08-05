@@ -92,6 +92,11 @@ public static class GuiBootstrap
         list.Add(new ChunkFetchTool());
         list.Add(new ChunkSearchTool());
 
+        // 로컬 인덱싱 — 로컬 폴더 문서를 로컬 청킹 + 서버 임베딩(compute-only) + 로컬 벡터 검색.
+        // 원본 문서는 서버(조직 문서함)에 저장/공유되지 않는다('나만 보기' 로컬 전용).
+        list.Add(new LocalIndexBuildTool());
+        list.Add(new LocalDocsSearchTool());
+
         // COM Office 편집 툴('열려있는 문서 편집') — Desktop 전용. Windows·Office 없으면 빈 목록.
         list.AddRange(MoaiCode.Tools.Office.OfficeTools.CreateIfAvailable());
 

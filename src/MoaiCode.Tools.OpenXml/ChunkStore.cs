@@ -119,6 +119,58 @@ public sealed class ChunkStore
         return result;
     }
 
+    // 문서 벡터를 .vec(리틀엔디언 float32 행 우선) 로 쓰고 vectors.json 에 upsert 한다(로컬 임베딩).
+    // relSource 는 manifest 의 source(상대경로, 예 "sub/plan.docx") — CHUNK_VEC_FORMAT.md 계약.
+    public void WriteVectors(string relSource, IReadOnlyList<float[]> vectors, string embModel, int dim)
+    {
+        var vecRel = relSource + ".vec";
+        var full = Path.Combine(_chunksDir, vecRel);
+        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+
+        var bytes = new byte[checked(vectors.Count * dim * 4)];
+        for (var r = 0; r < vectors.Count; r++)
+        {
+            Buffer.BlockCopy(vectors[r], 0, bytes, r * dim * 4, dim * 4);
+        }
+
+        File.WriteAllBytes(full, bytes);
+
+        var vm = LoadVectorManifest();
+        var docs = vm?.Documents ?? new List<VectorDocEntry>();
+        docs.RemoveAll(d => string.Equals(d.Source, relSource, StringComparison.Ordinal));
+        docs.Add(new VectorDocEntry(relSource, vecRel, vectors.Count));
+        File.WriteAllText(VectorManifestPath, JsonSerializer.Serialize(new VectorManifest(embModel, dim, docs), Json));
+    }
+
+    // 문서의 벡터를 vectors.json + .vec 에서 제거(원본 삭제 시).
+    public void RemoveVectors(string relSource)
+    {
+        var vm = LoadVectorManifest();
+        if (vm is null)
+        {
+            return;
+        }
+
+        var entry = vm.Documents.FirstOrDefault(d => string.Equals(d.Source, relSource, StringComparison.Ordinal));
+        vm.Documents.RemoveAll(d => string.Equals(d.Source, relSource, StringComparison.Ordinal));
+        File.WriteAllText(VectorManifestPath, JsonSerializer.Serialize(vm, Json));
+        if (entry is not null)
+        {
+            try
+            {
+                var full = Path.Combine(_chunksDir, entry.Vec);
+                if (File.Exists(full))
+                {
+                    File.Delete(full);
+                }
+            }
+            catch
+            {
+                // 벡터 파일 삭제 실패는 치명적 아님.
+            }
+        }
+    }
+
     public IReadOnlyList<ChunkLine> ReadChunks(string relFile)
     {
         var full = Path.Combine(_chunksDir, relFile);
