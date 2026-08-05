@@ -100,8 +100,39 @@ public sealed class FolderSyncService : IDisposable
         watcher.Renamed += (_, e) => Enqueue(folder, e.FullPath);
         _watchers.Add(watcher);
 
+        // 초기 스캔: 연결 시점에 이미 폴더에 있던 문서들도 한 번 큐잉한다. 워처는 '앞으로의 변경'만
+        // 잡으므로 이게 없으면 기존 파일은 영영 안 올라간다. 이미 올린 미변경분은 매니페스트가 스킵.
+        ScanExisting(folder);
+
         // 런타임 추가 시에도 상단 상태 pill 이 갱신되도록 알린다(Start 경로는 뒤에서 한 번 더 덮어씀).
         Status?.Invoke($"{_folders.Count}개 폴더 감시 중");
+    }
+
+    // 연결 폴더의 기존 문서형 파일을 초기 큐잉한다(하위 포함). 실제 업로드는 처리 루프에서 매니페스트
+    // 검사 후 수행되므로, 이미 올린 미변경 파일은 여기서 큐잉돼도 스킵된다.
+    private void ScanExisting(ConnectedFolder folder)
+    {
+        try
+        {
+            var n = 0;
+            foreach (var f in Directory.EnumerateFiles(folder.Path, "*", SearchOption.AllDirectories))
+            {
+                var name = Path.GetFileName(f);
+                if (name.StartsWith('.') || !DocumentTextExtractor.IsSupported(f))
+                {
+                    continue;
+                }
+
+                _pending[f] = (DateTime.UtcNow, folder);
+                n++;
+            }
+
+            MoaiLog.Info($"FolderSync: initial scan queued {n} existing file(s)");
+        }
+        catch (Exception ex)
+        {
+            MoaiLog.Warn($"FolderSync: initial scan failed: {ex.GetType().Name}");
+        }
     }
 
     private void Enqueue(ConnectedFolder folder, string path)
