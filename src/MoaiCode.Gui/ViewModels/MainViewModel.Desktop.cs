@@ -320,6 +320,25 @@ public sealed partial class MainViewModel
         LoadFolders();
     }
 
+    // 연결된 폴더를 파일 탐색기로 연다.
+    [RelayCommand]
+    private void OpenFolder(FolderRow? row)
+    {
+        if (row is null || string.IsNullOrWhiteSpace(row.Path))
+        {
+            return;
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(row.Path) { UseShellExecute = true });
+        }
+        catch
+        {
+            // 폴더 열기 실패는 치명적 아님.
+        }
+    }
+
     // ── 앱 열기(열린 문서 없을 때) — 실행 후 편집 탭으로, 잠시 뒤 목록 새로고침 ──
     [RelayCommand] private void OpenWord() => LaunchApp("Word");
 

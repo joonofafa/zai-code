@@ -138,7 +138,7 @@
               <DataTemplate x:DataType="vm:FolderRow">
                 <Border Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderSoftBrush}"
                         BorderThickness="1" CornerRadius="10" Padding="13,11" Margin="0,0,0,9">
-                  <Grid ColumnDefinitions="Auto,*,Auto">
+                  <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                     <Path Grid.Column="0" Classes="icon" Data="{StaticResource Icon.FolderOpen}"
                           VerticalAlignment="Center" Margin="0,0,12,0" />
                     <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
@@ -155,14 +155,17 @@
                         </Border>
                       </StackPanel>
                     </StackPanel>
-                    <Button Grid.Column="2" Classes="ghost" Padding="9,6" VerticalAlignment="Center"
-                            ToolTip.Tip="이 폴더 공유 해제"
+                    <Button Grid.Column="2" Classes="ghost" Padding="8,6" VerticalAlignment="Center"
+                            ToolTip.Tip="폴더 열기"
+                            Command="{Binding $parent[ItemsControl].DataContext.OpenFolderCommand}"
+                            CommandParameter="{Binding}">
+                      <Path Classes="icon sm" Data="{StaticResource Icon.FolderOpen}" VerticalAlignment="Center" />
+                    </Button>
+                    <Button Grid.Column="3" Classes="ghost" Padding="8,6" VerticalAlignment="Center" Margin="4,0,0,0"
+                            ToolTip.Tip="연결 해제"
                             Command="{Binding $parent[ItemsControl].DataContext.UnlinkFolderCommand}"
                             CommandParameter="{Binding}">
-                      <StackPanel Orientation="Horizontal" Spacing="5">
-                        <Path Classes="icon sm" Data="{StaticResource Icon.X}" VerticalAlignment="Center" />
-                        <TextBlock Text="연결 해제" FontSize="12" VerticalAlignment="Center" />
-                      </StackPanel>
+                      <Path Classes="icon sm" Data="{StaticResource Icon.Unlink}" VerticalAlignment="Center" />
                     </Button>
                   </Grid>
                 </Border>
