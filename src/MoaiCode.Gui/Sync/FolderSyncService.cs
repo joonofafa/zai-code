@@ -94,6 +94,9 @@ public sealed class FolderSyncService : IDisposable
         watcher.Changed += (_, e) => Enqueue(folder, e.FullPath);
         watcher.Renamed += (_, e) => Enqueue(folder, e.FullPath);
         _watchers.Add(watcher);
+
+        // 런타임 추가 시에도 상단 상태 pill 이 갱신되도록 알린다(Start 경로는 뒤에서 한 번 더 덮어씀).
+        Status?.Invoke($"{_folders.Count}개 폴더 감시 중");
     }
 
     private void Enqueue(ConnectedFolder folder, string path)
@@ -144,6 +147,17 @@ public sealed class FolderSyncService : IDisposable
         }
     }
 
+    // UI 의 공개범위 값(team/org/private)을 서버 문서함 enum(private|organization|company)으로 매핑한다.
+    // 서버는 이 세 값만 인정하므로 미매핑 값은 private 로 안전하게 떨어뜨린다. 계층: 팀 ⊂ 조직.
+    private static string MapVisibility(string? ui) => ui?.Trim().ToLowerInvariant() switch
+    {
+        "team" => "organization",       // 팀 공개 → 조직 범위
+        "org" => "company",             // 조직 공개 → 회사 전체
+        "organization" => "organization",
+        "company" => "company",
+        _ => "private",                 // 비공개/미지정
+    };
+
     private async Task UploadAsync(string path, ConnectedFolder folder)
     {
         var name = Path.GetFileName(path);
@@ -153,7 +167,7 @@ public sealed class FolderSyncService : IDisposable
         {
             orgId = folder.OrgId,
             path,
-            visibility = folder.Visibility,
+            visibility = MapVisibility(folder.Visibility),
         });
         var ctx = new ToolContext(Path.GetDirectoryName(path) ?? path, PermissionMode.Auto);
 
