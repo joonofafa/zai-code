@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
@@ -140,8 +141,14 @@ public partial class MainWindow : Window
         }
     }
 
-    // 공유 폴더 연결 — 폴더 선택 → ViewModel 이 설정 저장 + 즉시 감시 시작.
-    private async void OnAddFolderClick(object? sender, RoutedEventArgs e)
+    // 조직 공유 폴더 연결 — 이 폴더 문서는 조직 구성원이 검색 가능(visibility=organization).
+    private void OnAddSharedFolderClick(object? sender, RoutedEventArgs e) => _ = PickAndAddFolder("organization");
+
+    // 나만 보기 폴더 연결 — 이 폴더 문서는 본인만 검색 가능(visibility=private).
+    private void OnAddPrivateFolderClick(object? sender, RoutedEventArgs e) => _ = PickAndAddFolder("private");
+
+    // 폴더 선택 → ViewModel 이 설정 저장 + 즉시 감시 시작. visibility 는 서버 문서함 공개범위로 전달된다.
+    private async Task PickAndAddFolder(string visibility)
     {
         if (DataContext is not MainViewModel vm)
         {
@@ -150,14 +157,14 @@ public partial class MainWindow : Window
 
         var picked = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "공유할 폴더 선택",
+            Title = visibility == "private" ? "나만 볼 폴더 선택" : "조직과 공유할 폴더 선택",
             AllowMultiple = false,
         });
 
         var folder = picked.Count > 0 ? picked[0].TryGetLocalPath() : null;
         if (!string.IsNullOrEmpty(folder))
         {
-            vm.AddFolder(folder);
+            vm.AddFolder(folder, visibility: visibility);
         }
     }
 

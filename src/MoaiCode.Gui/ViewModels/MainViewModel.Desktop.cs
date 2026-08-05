@@ -285,7 +285,7 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>공유 폴더 연결(코드비하인드에서 폴더 선택 후 호출). 설정 저장 + 즉시 감시 시작.</summary>
-    public void AddFolder(string path, string? orgId = null, string visibility = "team")
+    public void AddFolder(string path, string? orgId = null, string visibility = "organization")
     {
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -374,9 +374,11 @@ public sealed record FolderRow(string Path, string? OrgId, string Visibility)
 
     public string VisibilityLabel => Visibility switch
     {
-        "org" => "조직 공개",
-        "team" => "팀 공개",
-        "private" => "비공개",
+        "organization" => "조직 공유",
+        "private" => "나만 보기",
+        "company" => "전사 공유",
+        "org" => "조직 공개",   // 구버전 저장값 호환
+        "team" => "조직 공유",  // 구버전 저장값 호환(→ organization 매핑)
         _ => Visibility,
     };
 
