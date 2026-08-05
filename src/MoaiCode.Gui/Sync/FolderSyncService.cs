@@ -7,7 +7,9 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using MoaiCode.Config;
 using MoaiCode.Core.Tools;
+using MoaiCode.Gui.Agent;
 using MoaiCode.Tools.Knowledge;
 using MoaiCode.Tools.OpenXml;
 
@@ -72,6 +74,7 @@ public sealed class FolderSyncService : IDisposable
 
         // 디바운스 처리 루프(1초마다, 마지막 이벤트 후 조용해진 파일만 업로드).
         _timer = new Timer(_ => _ = ProcessPendingAsync(), null, 1000, 1000);
+        MoaiLog.Info($"FolderSync: started (folders={_folders.Count})");
         Status?.Invoke(_folders.Count == 0 ? "대기 중 (연결된 폴더 없음)" : $"{_folders.Count}개 폴더 감시 중");
     }
 
@@ -79,11 +82,13 @@ public sealed class FolderSyncService : IDisposable
     {
         if (!Directory.Exists(folder.Path))
         {
+            MoaiLog.Warn($"FolderSync: connect skipped, folder missing (len={folder.Path?.Length ?? 0})");
             Status?.Invoke($"폴더 없음: {folder.Path}");
             return;
         }
 
         _folders.Add(folder);
+        MoaiLog.Info($"FolderSync: connected folder (total={_folders.Count}, vis={MapVisibility(folder.Visibility)}, orgId={(string.IsNullOrEmpty(folder.OrgId) ? "auto" : "set")})");
         var watcher = new FileSystemWatcher(folder.Path)
         {
             IncludeSubdirectories = true,
@@ -105,10 +110,25 @@ public sealed class FolderSyncService : IDisposable
         var name = Path.GetFileName(path);
         if (name.StartsWith('.') || !DocumentTextExtractor.IsSupported(path))
         {
+            MoaiLog.Debug($"FolderSync: event ignored {Tag(path)} (hidden or unsupported type)");
             return;
         }
 
         _pending[path] = (DateTime.UtcNow, folder);
+        MoaiLog.Debug($"FolderSync: event queued {Tag(path)} (pending={_pending.Count})");
+    }
+
+    // 로그용 ASCII 식별자 — 원문(한글 가능) 파일명 대신 확장자 + 경로 안정 해시. CLAUDE.md 로깅 규칙 준수.
+    private static string Tag(string path)
+    {
+        uint h = 2166136261;
+        foreach (var c in path)
+        {
+            h ^= c;
+            h *= 16777619;
+        }
+
+        return $"{Path.GetExtension(path).ToLowerInvariant()} #{h & 0xffffff:x6}";
     }
 
     private async Task ProcessPendingAsync()
@@ -126,12 +146,24 @@ public sealed class FolderSyncService : IDisposable
                 .Select(kv => kv.Key)
                 .ToList();
 
+            if (ready.Count > 0)
+            {
+                MoaiLog.Debug($"FolderSync: cycle ready={ready.Count} pending={_pending.Count}");
+            }
+
             foreach (var path in ready)
             {
                 _pending.TryRemove(path, out var entry);
-                if (!File.Exists(path) || _manifest.IsUnchanged(path))
+                if (!File.Exists(path))
                 {
-                    continue; // 삭제됐거나 미변경 → 스킵
+                    MoaiLog.Debug($"FolderSync: skip {Tag(path)} (file gone)");
+                    continue;
+                }
+
+                if (_manifest.IsUnchanged(path))
+                {
+                    MoaiLog.Debug($"FolderSync: skip {Tag(path)} (unchanged since last upload)");
+                    continue;
                 }
 
                 await UploadAsync(path, entry.Folder).ConfigureAwait(false);
@@ -139,6 +171,7 @@ public sealed class FolderSyncService : IDisposable
         }
         catch (Exception ex)
         {
+            MoaiLog.Error("FolderSync: process cycle threw", ex);
             Status?.Invoke($"동기화 오류: {ex.Message}");
         }
         finally
@@ -163,11 +196,32 @@ public sealed class FolderSyncService : IDisposable
         var name = Path.GetFileName(path);
         Status?.Invoke($"올리는 중: {name}");
 
+        // 백그라운드 동기화는 채팅 엔진 빌드 전에 돌 수 있어, 여기서 자격증명/서버주소 환경변수를 스스로 확보한다.
+        GuiBootstrap.EnsureEnvReady();
+        var baseSet = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENAI_BASE_URL"));
+        var keySet = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENAI_API_KEY"));
+        var vis = MapVisibility(folder.Visibility);
+        long size = 0;
+        try
+        {
+            size = new FileInfo(path).Length;
+        }
+        catch
+        {
+            // size only for logging
+        }
+
+        MoaiLog.Info($"FolderSync: upload start {Tag(path)} size={size} baseUrl={(baseSet ? "set" : "MISSING")} key={(keySet ? "set" : "MISSING")} vis={vis}");
+        if (!baseSet || !keySet)
+        {
+            MoaiLog.Warn("FolderSync: upload aborted, credentials/baseUrl missing (login required or settings.json baseUrl unset)");
+        }
+
         var input = JsonSerializer.SerializeToElement(new
         {
             orgId = folder.OrgId,
             path,
-            visibility = MapVisibility(folder.Visibility),
+            visibility = vis,
         });
         var ctx = new ToolContext(Path.GetDirectoryName(path) ?? path, PermissionMode.Auto);
 
@@ -187,13 +241,28 @@ public sealed class FolderSyncService : IDisposable
             var docId = last is not null && IdRx.Match(last) is { Success: true } m ? m.Groups[1].Value : null;
             _manifest.MarkUploaded(path, docId);
             _manifest.Save();
+            MoaiLog.Info($"FolderSync: upload ok {Tag(path)} docId={docId ?? "?"}");
             Status?.Invoke($"문서함 반영됨: {name}");
         }
         else
         {
+            MoaiLog.Warn($"FolderSync: upload failed {Tag(path)} reason={ClassifyFailure(last)}");
             Status?.Invoke($"실패: {name} — {last}");
         }
     }
+
+    // 업로드 실패 메시지(한글 가능)를 로그용 ASCII 사유 코드로 분류한다(원문은 로그에 넣지 않음).
+    private static string ClassifyFailure(string? msg) => msg switch
+    {
+        null => "no_output",
+        _ when msg.Contains("연결 정보가 없습니다") => "no_credentials",
+        _ when msg.Contains("엔드포인트") => "endpoint_missing",
+        _ when msg.Contains("타임아웃") => "timeout",
+        _ when msg.Contains("요청 실패") => "request_failed",
+        _ when msg.Contains("거부") => "rejected_by_server",
+        _ when msg.Contains("찾지 못했습니다") => "no_documents_resolved",
+        _ => "other",
+    };
 
     public void Dispose()
     {

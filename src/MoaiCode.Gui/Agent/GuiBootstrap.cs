@@ -139,6 +139,21 @@ public static class GuiBootstrap
         }
     }
 
+    /// <summary>OPENAI_BASE_URL / OPENAI_API_KEY 등 환경변수를 설정에서 채운다(멱등). 엔진 빌드 전에
+    /// 도는 백그라운드 동기화 등도 자격증명을 스스로 확보할 수 있게 공개한다. 이미 있으면 덮지 않는다.</summary>
+    public static void EnsureEnvReady()
+    {
+        try
+        {
+            ApplySettingsToEnv(SettingsLoader.Load(Workspace));
+            ResolveCredentials();
+        }
+        catch
+        {
+            // 자격증명 확보 실패는 non-fatal — 호출부가 미설정을 감지해 처리한다.
+        }
+    }
+
     private static void ApplySettingsToEnv(Settings s)
     {
         if (!string.IsNullOrEmpty(s.Model)
