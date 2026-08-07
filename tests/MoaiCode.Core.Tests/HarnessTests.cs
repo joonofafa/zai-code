@@ -519,6 +519,7 @@ public class CompactionTests
     private sealed class FakeOverflow : Exception, IModelException
     {
         public bool IsContextOverflow => true;
+        public bool IsTransient => false;
     }
 
     // 첫 '메인' 호출에서 컨텍스트 초과를 던지고, 요약 호출엔 응답하고, 재시도 메인 호출엔 정상 응답.

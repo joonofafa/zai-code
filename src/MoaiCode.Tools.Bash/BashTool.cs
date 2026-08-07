@@ -110,7 +110,9 @@ public sealed class BashTool : ITool
                 .WithArguments(args)
                 .WithWorkingDirectory(workDir)
                 .WithValidation(CommandResultValidation.None)
-                .ExecuteBufferedAsync(timeoutCts.Token)
+                // 자식 출력은 UTF-8로 디코딩(Windows는 위에서 chcp 65001로 UTF-8 정규화, Unix는 기본 UTF-8).
+                // 앰비언트 Console.OutputEncoding 에 의존하지 않도록 명시.
+                .ExecuteBufferedAsync(Encoding.UTF8, timeoutCts.Token)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
@@ -186,7 +188,10 @@ public sealed class BashTool : ITool
         // 명령 뒤에 현재 디렉터리를 마커로 출력해, 명령 내부의 cd 효과를 다음 호출까지 유지한다.
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            return ("cmd.exe", new[] { "/c", command + " & echo " + CwdMarker + "%cd%" });
+            // 한국어 Windows에서 cmd 내장 메시지('x'은(는) ... 아닙니다 등)는 OEM 코드페이지(CP949)로
+            // 나가서, UTF-8로 디코딩하면 깨진다. `chcp 65001`로 출력을 UTF-8로 정규화한 뒤 실행한다
+            // (>nul 로 "Active code page" 배너 숨김, &로 chcp 실패해도 명령은 진행). 마커의 %cd%(한글 경로 포함)도 UTF-8로 정상화.
+            return ("cmd.exe", new[] { "/c", "chcp 65001>nul & " + command + " & echo " + CwdMarker + "%cd%" });
         }
 
         var bash = File.Exists("/bin/bash") ? "/bin/bash" : "/bin/sh";

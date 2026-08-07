@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using MoaiCode.Core.Agent;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Messages;
@@ -146,6 +147,21 @@ public sealed class ReplApp
                 continue;
             }
 
+            // '!' 접두: 사용자가 직접 친 셸 명령을 모델/권한 게이트를 거치지 않고 바로 실행하고,
+            // 명령+출력을 대화 컨텍스트에 주입해 다음 턴에 모델이 참조할 수 있게 한다.
+            if (expanded.StartsWith('!'))
+            {
+                await RunShellCommandAsync(expanded[1..].Trim(), ct).ConfigureAwait(false);
+                continue;
+            }
+
+            // '?': 키맵/입력 문법 도움말.
+            if (expanded == "?")
+            {
+                ShowKeymap();
+                continue;
+            }
+
             if (string.IsNullOrWhiteSpace(expanded))
             {
                 continue;
@@ -155,6 +171,7 @@ public sealed class ReplApp
             _ctx.State.LastUserRequest = expanded;
 
             await _ctx.History.AppendAsync(expanded, ct).ConfigureAwait(false);
+            await AttachFileMentionsAsync(expanded, ct).ConfigureAwait(false);
             await ConsumeTurnAsync(expanded, ct).ConfigureAwait(false);
         }
     }
@@ -201,6 +218,180 @@ public sealed class ReplApp
         return result.Quit;
     }
 
+    // '!' 셸 실행: 사용자가 직접 입력한 명령이므로 권한 게이트를 거치지 않고 현재 cwd 서브셸에서 실행한다.
+    // stdout/stderr 를 콘솔에 그대로 흘리고, 명령+출력(캡)을 system-reminder 로 대화 컨텍스트에 주입한다.
+    // cd 등은 서브셸 한정(세션 cwd 로 영속되지 않음).
+    private async Task RunShellCommandAsync(string command, CancellationToken ct)
+    {
+        if (command.Length == 0)
+        {
+            AnsiConsole.MarkupLine("[grey70]Usage: ! <shell command>[/]");
+            return;
+        }
+
+        AnsiConsole.MarkupLine($"[grey58]$ {Markup.Escape(command)}[/]");
+
+        var (file, shellArgs) = OperatingSystem.IsWindows()
+            ? ("cmd.exe", new[] { "/c", command })
+            : (File.Exists("/bin/bash") ? "/bin/bash" : "/bin/sh", new[] { "-c", command });
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = file,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            WorkingDirectory = Directory.GetCurrentDirectory(),
+        };
+        foreach (var a in shellArgs)
+        {
+            psi.ArgumentList.Add(a);
+        }
+
+        var captured = new StringBuilder();
+        var sync = new object();
+        void Sink(string? data, bool err)
+        {
+            if (data is null)
+            {
+                return;
+            }
+
+            lock (sync)
+            {
+                if (err)
+                {
+                    Console.Error.WriteLine(data);
+                }
+                else
+                {
+                    Console.WriteLine(data);
+                }
+
+                captured.AppendLine(data);
+            }
+        }
+
+        int exit;
+        try
+        {
+            using var proc = new Process { StartInfo = psi };
+            proc.OutputDataReceived += (_, e) => Sink(e.Data, false);
+            proc.ErrorDataReceived += (_, e) => Sink(e.Data, true);
+            proc.Start();
+            proc.BeginOutputReadLine();
+            proc.BeginErrorReadLine();
+            try
+            {
+                await proc.WaitForExitAsync(ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                try
+                {
+                    proc.Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                    // best-effort: 취소 시 자식 프로세스 정리.
+                }
+
+                throw;
+            }
+
+            exit = proc.ExitCode;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]! failed:[/] [grey70]{Markup.Escape(ex.Message)}[/]");
+            return;
+        }
+
+        // 명령 + 출력(캡)을 컨텍스트에 주입 — 다음 턴에 모델이 이 실행 결과를 참조할 수 있다.
+        var outText = QueryEngine.CapToolOutput(captured.ToString().TrimEnd(), 8000);
+        var note = $"The user ran a shell command directly with '!':\n$ {command}\n(exit code {exit})\n"
+                   + (outText.Length > 0 ? outText : "(no output)");
+        _ctx.Engine.AddSystemReminder(note);
+    }
+
+    // '?': 키보드 단축키 + 입력 문법(/ ! @) 요약 표시.
+    private static void ShowKeymap()
+    {
+        AnsiConsole.MarkupLine("[aqua]Keys & input[/]");
+        var rows = new (string Key, string Desc)[]
+        {
+            ("/command", "run a slash command (Tab to autocomplete)"),
+            ("!command", "run a shell command directly (output added to context)"),
+            ("@path", "attach a file's contents to the conversation"),
+            ("?", "show this help"),
+            ("Enter", "submit"),
+            ("Up / Down", "recall history"),
+            ("Left / Right, Home / End", "move the cursor"),
+            ("Backspace / Delete", "edit"),
+            ("Shift+Tab", "toggle act / plan mode"),
+            ("Ctrl+C", "cancel the current turn"),
+        };
+        foreach (var (key, desc) in rows)
+        {
+            AnsiConsole.MarkupLine($"  [white]{Markup.Escape(key).PadRight(26)}[/][grey70]{Markup.Escape(desc)}[/]");
+        }
+
+        AnsiConsole.MarkupLine("[grey58]Type /help for the full command list.[/]");
+    }
+
+    // '@path' 멘션 → 존재하는 파일이면 내용을 컨텍스트에 첨부(주입). 파일이 아니면 조용히 무시.
+    private async Task AttachFileMentionsAsync(string input, CancellationToken ct)
+    {
+        foreach (Match m in Regex.Matches(input, @"(?<!\S)@(\S+)"))
+        {
+            var raw = m.Groups[1].Value.TrimEnd('.', ',', ';', ':', ')', ']', '}');
+            var path = ExpandMentionPath(raw);
+            if (path is null || !File.Exists(path))
+            {
+                continue;
+            }
+
+            try
+            {
+                var text = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
+                var capped = QueryEngine.CapToolOutput(text, 40000);
+                _ctx.Engine.AddSystemReminder($"Attached file (via @{raw}): {path}\n---\n{capped}");
+                AnsiConsole.MarkupLine($"[grey58]attached {Markup.Escape(raw)} ({text.Length} chars)[/]");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+            {
+                // 읽을 수 없는 파일은 건너뜀.
+            }
+        }
+    }
+
+    private static string? ExpandMentionPath(string p)
+    {
+        if (string.IsNullOrWhiteSpace(p))
+        {
+            return null;
+        }
+
+        if (p == "~" || p.StartsWith("~/", StringComparison.Ordinal))
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            p = p == "~" ? home : Path.Combine(home, p[2..]);
+        }
+
+        try
+        {
+            return Path.GetFullPath(p, Directory.GetCurrentDirectory());
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private async Task ConsumeTurnAsync(string userInput, CancellationToken ct)
     {
         // 이 턴 전용 취소 토큰. Ctrl+C(시그널) 또는 ESC 로 cancel → 엔진/툴이 멈추고 프롬프트로 복귀(프로세스 유지).
@@ -240,6 +431,10 @@ public sealed class ReplApp
                     case ToolExecuted x:
                         pendingCalls.TryGetValue(x.ToolUseId, out var callBlock);
                         RenderToolResult(x, callBlock);
+                        has = await MoveNextWithSpinnerAsync(e, L10n.Get("repl.spinner.working"), tct).ConfigureAwait(false);
+                        continue;
+                    case StreamNotice sn:
+                        AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(sn.Text)}[/]");
                         has = await MoveNextWithSpinnerAsync(e, L10n.Get("repl.spinner.working"), tct).ConfigureAwait(false);
                         continue;
                     case TurnCompleted:

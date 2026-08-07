@@ -24,6 +24,9 @@ public static class BracketedPaste
     public static ConsoleKeyInfo ReadKey() =>
         Pushback.Count > 0 ? Pushback.Dequeue() : Console.ReadKey(intercept: true);
 
+    /// <summary>대기 중인 키(pushback 또는 콘솔 입력)가 있는가. 폴링 불가 환경에선 Console.KeyAvailable 이 throw.</summary>
+    public static bool KeyAvailable => Pushback.Count > 0 || Console.KeyAvailable;
+
     /// <summary>
     /// ESC 로 시작하는 키가 붙여넣기 시작(ESC[200~)이면 종료 마커까지 본문을 읽어 반환한다.
     /// 아니면 선행 읽은 키를 모두 pushback 하고 false.

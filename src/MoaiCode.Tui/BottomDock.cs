@@ -1,4 +1,5 @@
 using System.Text;
+using System.Threading;
 
 namespace MoaiCode.Tui;
 
@@ -18,6 +19,10 @@ public sealed class BottomDock
     private int _reserved;      // 현재 예약된 하단 줄 수(상태 1 + 입력행)
     private bool _installed;    // 스크롤 영역이 설정돼 있는가
     private IReadOnlyList<string> _slash = Array.Empty<string>();  // ghost 자동완성용 명령 목록
+    private bool _shell;   // '!' 셸 모드: 입력창 빨강 배경 + '❯'/'!' 미표시. 버퍼엔 '!'를 넣지 않는다.
+    private int _lastW, _lastH;   // 마지막으로 그린 터미널 크기(리사이즈 감지용)
+
+    private const int ResizePollMs = 40;   // 키 대기 중 리사이즈 폴링 주기
 
     public BottomDock(Func<string> status) => _status = status;
 
@@ -65,7 +70,7 @@ public sealed class BottomDock
         // 첫 행 버퍼 뒤에 연한 글자로 덧그린다(예약 행수·wrap 계산은 버퍼 기준 그대로 — 레이아웃 안정).
         var ghost = LineEditor.GhostSuffix(buf.ToString(), _slash);
         var blen = LineEditor.DisplayWidth(buf.ToString());
-        var showGhost = ghost.Length > 0 && pos == buf.Length && inputRows == 1
+        var showGhost = !_shell && ghost.Length > 0 && pos == buf.Length && inputRows == 1
                         && plen + blen + LineEditor.DisplayWidth(ghost) <= w;
         // 레이아웃(위→아래): 입력행(배경색으로 구분) / 상태줄("act mode"). 구분선 없음.
         var reserved = inputRows + 1;
@@ -97,20 +102,29 @@ public sealed class BottomDock
         var inputRow0 = scrollBottom + 1;
         var statusRow = inputRow0 + inputRows;
 
-        // 입력행: 각 행을 clear 후 절대 좌표로 직접 출력(auto-wrap 미사용). 어두운 회색 배경(구분선 대체).
-        var bg = LineEditor.InputBg;
+        // 입력행: 각 행을 clear 후 절대 좌표로 직접 출력(auto-wrap 미사용).
+        // '!' 셸 모드면 어두운 빨강 배경 + '❯' 숨김(폭 유지 위해 공백 2칸), 아니면 어두운 회색 배경 + 초록 '❯'.
+        var shell = _shell;
+        var bg = shell ? LineEditor.ShellBg : LineEditor.InputBg;
         for (var i = 0; i < inputRows; i++)
         {
             sb.Append($"\x1b[{inputRow0 + i};1H\x1b[2K");
             if (bg.Length > 0) sb.Append(bg);
             if (i == 0)
             {
-                // 첫 행 앞 프롬프트("❯ ") 초록. rows[0]은 프롬프트로 시작하므로 그 뒤만 기본색.
+                // rows[0]은 프롬프트("❯ ")로 시작하므로 그 뒤(rest)만 버퍼.
                 var rest = rows[0].Length >= LineEditor.PromptText.Length
                     ? rows[0][LineEditor.PromptText.Length..]
                     : "";
-                sb.Append("\x1b[32m").Append(LineEditor.PromptText).Append("\x1b[39m").Append(rest);
-                if (showGhost) sb.Append(LineEditor.GhostColor).Append(ghost).Append("\x1b[39m");
+                if (shell)
+                {
+                    sb.Append("  ").Append("\x1b[39m").Append(rest);
+                }
+                else
+                {
+                    sb.Append("\x1b[32m").Append(LineEditor.PromptText).Append("\x1b[39m").Append(rest);
+                    if (showGhost) sb.Append(LineEditor.GhostColor).Append(ghost).Append("\x1b[39m");
+                }
             }
             else
             {
@@ -133,15 +147,25 @@ public sealed class BottomDock
 
     // 입력 확정: 스크롤 영역을 해제해 턴 동안 '일반 터미널'로 되돌린다(→ 마우스휠 네이티브 스크롤백 정상).
     // 하단 박스를 지우고 입력한 명령을 일반 흐름으로 echo. 하단 고정은 다음 ReadLine 의 Draw 가 다시 세운다.
-    private void SubmitAndTeardown(string text)
+    private void SubmitAndTeardown(string text, bool shell = false)
     {
         var boxTop = Math.Max(1, Height() - _reserved + 1);   // 현재 박스(상단 라인)가 시작하는 행
         var sb = new StringBuilder();
         sb.Append("\x1b[r");                                   // 스크롤 영역 해제(전체 화면 정상)
         sb.Append($"\x1b[{boxTop};1H\x1b[J");                  // 박스 있던 자리부터 이하 전체 지움
         sb.Append("\x1b[?25h");                                // 커서 표시
-        sb.Append("\x1b[0m\x1b[32m").Append(LineEditor.PromptText).Append("\x1b[0m")
-          .Append(text).Append('\n');                         // 명령 echo(일반 흐름 — 이후 출력이 정상 스크롤)
+        if (!string.IsNullOrEmpty(text))                      // 빈 텍스트(예: '?')는 에코 없이 도크만 해제
+        {
+            if (shell)
+            {
+                sb.Append("\x1b[0m\x1b[38;5;246m$ \x1b[0m").Append(text).Append('\n');   // 셸 에코: 회색 '$ '
+            }
+            else
+            {
+                sb.Append("\x1b[0m\x1b[32m").Append(LineEditor.PromptText).Append("\x1b[0m")
+                  .Append(text).Append('\n');                 // 명령 echo(일반 흐름 — 이후 출력이 정상 스크롤)
+            }
+        }
         Console.Write(sb.ToString());
         _installed = false;
         _reserved = 0;
@@ -157,10 +181,13 @@ public sealed class BottomDock
         Func<string>? cycleMode)
     {
         _slash = slashCommands;
+        _shell = false;
         var buf = new StringBuilder();
         var pos = 0;
         var histIdx = history.Count;
         var savedCurrent = "";
+        _lastW = Width();
+        _lastH = Height();
         Draw(buf, pos);
 
         // 붙여넣기를 ESC[200~ … ESC[201~ 로 감싸 받는다 → 붙여넣은 개행이 Enter 로 오인되지 않는다.
@@ -169,7 +196,7 @@ public sealed class BottomDock
         {
         while (true)
         {
-            var key = BracketedPaste.ReadKey();
+            var key = ReadKeyWithResize(buf, pos);
 
             // 붙여넣기: 여러 줄이면 표식으로 접어 넣는다. 도크가 예약한 행수가 그대로 유지된다.
             if (BracketedPaste.TryReadPaste(key, out var pasted))
@@ -181,19 +208,31 @@ public sealed class BottomDock
 
             if (key.Key == ConsoleKey.Enter || key.KeyChar == '\r' || key.KeyChar == '\n')
             {
-                if (buf.ToString().Trim().Length == 0)
+                var content = buf.ToString();
+                if (content.Trim().Length == 0)
                 {
                     continue; // 빈 입력 무시
                 }
 
-                var text = buf.ToString();
-                SubmitAndTeardown(text);
-                return text;
+                if (_shell)
+                {
+                    SubmitAndTeardown(content, shell: true);
+                    return "!" + content;   // ReplApp 이 '!' 접두로 셸 실행
+                }
+
+                SubmitAndTeardown(content);
+                return content;
             }
 
             switch (key.Key)
             {
                 case ConsoleKey.Backspace:
+                    if (_shell && buf.Length == 0)
+                    {
+                        _shell = false;   // 빈 셸 입력에서 Backspace → 셸 모드 해제(회색+'❯' 복귀)
+                        Draw(buf, pos);
+                        break;
+                    }
                     if (pos > 0)
                     {
                         // 붙여넣기 표식은 한 글자씩이 아니라 통째로 지운다.
@@ -259,6 +298,19 @@ public sealed class BottomDock
                         buf.Clear(); pos = 0; Draw(buf, pos);
                         break;
                     }
+                    // 빈 입력에서 '!' → 셸 모드 진입('!' 는 버퍼에 넣지 않음, 빨강 배경으로만 표시).
+                    if (buf.Length == 0 && !_shell && key.KeyChar == '!')
+                    {
+                        _shell = true;
+                        Draw(buf, pos);
+                        break;
+                    }
+                    // 빈 입력에서 '?' → 키맵(터미널에 '?' 표시하지 않음). 도크 해제 후 ReplApp 이 표시.
+                    if (buf.Length == 0 && !_shell && key.KeyChar == '?')
+                    {
+                        SubmitAndTeardown("");
+                        return "?";
+                    }
                     if (!char.IsControl(key.KeyChar))
                     {
                         buf.Insert(pos, key.KeyChar); pos++;
@@ -272,6 +324,44 @@ public sealed class BottomDock
         {
             Console.Write(BracketedPaste.Disable);
         }
+    }
+
+    // 키를 기다리되, 대기 중 터미널 크기가 바뀌면 도크를 재설치한다(리사이즈 잔상 제거).
+    // 폴링 불가 환경(입력 리다이렉트 등, Console.KeyAvailable throw)에선 기존처럼 블로킹으로 폴백.
+    private ConsoleKeyInfo ReadKeyWithResize(StringBuilder buf, int pos)
+    {
+        while (true)
+        {
+            bool avail;
+            try { avail = BracketedPaste.KeyAvailable; }
+            catch { return BracketedPaste.ReadKey(); }   // 폴링 불가 → 블로킹(리사이즈 감지 없음)
+
+            if (avail)
+            {
+                return BracketedPaste.ReadKey();
+            }
+
+            int w = Width(), h = Height();
+            if (w != _lastW || h != _lastH)
+            {
+                _lastW = w;
+                _lastH = h;
+                OnResize(buf, pos);
+            }
+
+            Thread.Sleep(ResizePollMs);
+        }
+    }
+
+    // 리사이즈 처리: 스크롤 영역 해제 + 화면 클리어 → 도크를 새 크기의 하단에 재설치.
+    // 리사이즈 시 터미널이 DECSTBM 영역을 리셋해 이전 입력창이 화면 중간에 잔상으로 남는데,
+    // 전체 클리어로 그 잔상을 확실히 지운다(대화 내용은 터미널 스크롤백에 보존).
+    private void OnResize(StringBuilder buf, int pos)
+    {
+        Console.Write("\x1b[r\x1b[2J\x1b[H");   // 영역 해제 + 화면 클리어 + 커서 홈
+        _installed = false;
+        _reserved = 0;
+        Draw(buf, pos);
     }
 
     // 붙여넣기 등 큐가 차 있으면 큐가 빌 때만 다시 그린다(대량 입력 빠르게).
@@ -313,12 +403,7 @@ public sealed class BottomDock
         buf.Clear(); buf.Append(text); pos = buf.Length;
     }
 
-    // Tab 자동완성: 보이는 ghost(= 첫 매치)를 그대로 확정. LineEditor 와 동일 규칙 공유.
+    // Tab 자동완성: '/' 명령 또는 '@' 파일 멘션 확정. LineEditor 와 동일 규칙 공유.
     private static bool TryComplete(StringBuilder buf, ref int pos, IReadOnlyList<string> slash)
-    {
-        var best = LineEditor.FirstMatch(buf.ToString(), slash);
-        if (best is null) return false;
-        SetBuffer(buf, ref pos, "/" + best + " ");
-        return true;
-    }
+        => LineEditor.AcceptCompletion(buf, ref pos, slash);
 }

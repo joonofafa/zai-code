@@ -118,8 +118,13 @@ public static class AppBootstrap
             var sync = await TeamSkills.SyncAsync(teamBaseUrl!, teamApiKey!, ct).ConfigureAwait(false);
             if (sync.Error is not null)
             {
-                // 사용자에겐 친화 메시지(빨강)만. 원문 오류는 콘솔에 찍지 않고 로그 파일로만 남긴다.
-                Console.WriteLine($"\x1b[31m{L10n.Get("cli.skills.teamLoadFailed")}\x1b[0m");
+                // 인증 거부(401/403)는 이 서버가 CLI 키로 조직 스킬 접근을 허용하지 않는 예상된 상황이라
+                // 사용자가 조치할 수 없다 → 시작 시 빨간 에러로 놀래키지 않고 로그에만 남긴다.
+                // 그 외(네트워크/타임아웃/5xx 등)만 사용자에게 친화 메시지(빨강)로 표시.
+                if (!IsAuthError(sync.Error))
+                {
+                    Console.WriteLine($"\x1b[31m{L10n.Get("cli.skills.teamLoadFailed")}\x1b[0m");
+                }
                 MoaiLog.Warn($"team skills sync failed: {sync.Error}");
             }
         }
@@ -198,7 +203,8 @@ public static class AppBootstrap
             contextWindowTokens: settings.ContextWindowTokens,
             pendingTasks: () => taskStore.All().Any(t => t.Status != MoaiCode.Tools.Tasks.TaskStatus.Completed),
             maxToolResultChars: maxToolResultChars,
-            harvestMemories: true);
+            harvestMemories: true,
+            log: MoaiLog.Info);   // 턴/툴/한도 이벤트를 ~/.moai/logs/moai.log 에 기록(진단용).
         var promptCtx = BuildPromptContext(cwd, settings, toolList);
         engine.Seed(new[] { new SystemMessage(SystemPromptBuilder.Build(promptCtx)) });
 
@@ -378,6 +384,13 @@ public static class AppBootstrap
     // 비대화형에서 위험 툴 자동 승인 opt-in. MOAI_YES / MOAI_APPROVE / MOAI_AUTO_APPROVE = 1/true/yes.
     // 위험 판정 분류기 on/off. 기본 켜짐 — MOAI_RISK_CLASSIFIER=0/false/off 로 끈다.
     // 환경변수가 "1/true/on/yes"(대소문자 무시)면 참. 미설정/그 외는 거짓.
+    // 팀 스킬 sync 오류가 '인증 거부'(서버가 CLI 키로 조직 접근을 허용하지 않는, 사용자가 조치 불가한
+    // 예상된 상황)인지 판별 — TeamSkills 가 "HTTP 401/403: ..." 형태 또는 AUTHENTICATION_REQUIRED 코드를 담아 준다.
+    private static bool IsAuthError(string error) =>
+        error.Contains("HTTP 401", StringComparison.Ordinal)
+        || error.Contains("HTTP 403", StringComparison.Ordinal)
+        || error.Contains("AUTHENTICATION_REQUIRED", StringComparison.Ordinal);
+
     private static bool IsEnvTruthy(string name)
     {
         var v = Environment.GetEnvironmentVariable(name);

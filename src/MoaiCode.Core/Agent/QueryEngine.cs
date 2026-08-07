@@ -27,6 +27,10 @@ public sealed class QueryEngine
     private readonly int _compactTokens;
     private const int MaxContextRecoveries = 3;
 
+    // 스트림이 응답 도중에 끊겼을 때(transient), 부분 응답을 버리고 같은 요청을 재전송하는 최대 횟수.
+    // (RetryingChatModel 은 아직 아무것도 출력 안 된 pre-yield 끊김만 재시도하므로, mid-stream 은 여기서.)
+    private const int MaxStreamRetries = 3;
+
     // 단일 툴 결과가 컨텍스트에 들어갈 때의 문자 상한. 거대한 grep/bash/read 출력이 창을 폭주시켜
     // 잦은(손실 있는) 컴팩션을 유발하는 것을 막는다. <=0 이면 무제한. UI 표시는 원문 그대로.
     private readonly int _maxToolResultChars;
@@ -51,6 +55,10 @@ public sealed class QueryEngine
     // 선제 압축 시 durable 사실을 자동으로 메모리에 저장할지 (main 세션만 true; 서브에이전트/기타는 false).
     private readonly bool _harvestMemories;
 
+    // 턴/툴/한도 이벤트 진단 로그 싱크(ASCII 메타데이터만). Core 는 Config(MoaiLog)를 참조할 수 없어
+    // (순환), CLI 가 MoaiLog.Info 를 주입한다. null 이면 no-op.
+    private readonly Action<string> _log;
+
     public QueryEngine(
         IChatModel model,
         IReadOnlyList<ITool> tools,
@@ -62,7 +70,8 @@ public sealed class QueryEngine
         bool extendTurns = true,
         Func<bool>? pendingTasks = null,
         int maxToolResultChars = 16_000,
-        bool harvestMemories = false)
+        bool harvestMemories = false,
+        Action<string>? log = null)
     {
         _model = model;
         _tools = tools;
@@ -75,6 +84,7 @@ public sealed class QueryEngine
         _pendingTasks = pendingTasks;
         _maxToolResultChars = maxToolResultChars;
         _harvestMemories = harvestMemories;
+        _log = log ?? (_ => { });
     }
 
     public IReadOnlyList<Message> Messages => _messages;
@@ -155,6 +165,9 @@ public sealed class QueryEngine
         _messages.Add(new UserMessage(userInput));
         _goal = userInput;
 
+        // 요청 경계 마커(ASCII만 — 요청 원문은 로그에 넣지 않고 길이만).
+        _log($"submit start: requestChars={userInput.Length} maxTurns={_maxTurns}");
+
         var toolContext = new ToolContext(_workingDirectory, PermissionMode.Auto, _reads);
         var failureCounts = new Dictionary<string, int>(StringComparer.Ordinal);
         var successCounts = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -175,6 +188,7 @@ public sealed class QueryEngine
             {
                 if (!_extendTurns || extensions >= MaxTurnExtensions)
                 {
+                    _log($"max turns reached (maxTurns={_maxTurns} extensions={extensions}) -> final answer");
                     // 빈손으로 멈추지 않는다: 툴을 끄고 마지막 답변을 한 번 받아 결과를 돌려준다.
                     // (그냥 max_turns 로 끊으면 토큰만 쓰고 답이 없다.)
                     await foreach (var ev in StreamFinalAnswerAsync(ct).ConfigureAwait(false))
@@ -187,6 +201,7 @@ public sealed class QueryEngine
 
                 extensions++;
                 turn = 0;
+                _log($"turn limit extended ({extensions}/{MaxTurnExtensions}), compacting and continuing");
                 await ForceCompactAsync(ct).ConfigureAwait(false);
                 _messages.Add(new UserMessage(Reminders.MaxTurnsExtended));
                 // 압축으로 희석된 원래 의도를 다시 고정 — 검증/탐색으로 표류하지 않게.
@@ -198,6 +213,7 @@ public sealed class QueryEngine
             }
 
             turn++;
+            _log($"turn {turn}/{_maxTurns}" + (extensions > 0 ? $" (ext {extensions})" : ""));
 
             // 선제 컴팩션이 실제로 일어났으면, 요약에 묻힌 원래 의도를 다시 고정한다(표류 방지).
             if (await MaybeCompactAsync(ct).ConfigureAwait(false))
@@ -251,6 +267,7 @@ public sealed class QueryEngine
                 stream = _model.StreamAsync(_messages, _tools, ct).GetAsyncEnumerator(ct);
             }
 
+            var streamRetries = 0;
             try
             {
                 while (hasNext)
@@ -272,7 +289,43 @@ public sealed class QueryEngine
                             break;
                     }
 
-                    hasNext = await stream.MoveNextAsync().ConfigureAwait(false);
+                    // 다음 이벤트로 진행. 응답 도중 스트림이 끊기면(transient) 부분 응답을 버리고 같은 요청을
+                    // 재전송한다(최대 MaxStreamRetries). iterator 제약상 yield 는 try/catch 밖에서 한다.
+                    var retried = false;
+                    while (true)
+                    {
+                        IModelException? transient = null;
+                        try
+                        {
+                            hasNext = await stream.MoveNextAsync().ConfigureAwait(false);
+                        }
+                        catch (Exception ex) when (
+                            ex is IModelException { IsTransient: true, IsContextOverflow: false } m
+                            && streamRetries < MaxStreamRetries)
+                        {
+                            transient = m;
+                        }
+
+                        if (transient is null)
+                        {
+                            break; // 정상 진행 (또는 재시도 불가 예외 → 그대로 전파)
+                        }
+
+                        streamRetries++;
+                        retried = true;
+                        await stream.DisposeAsync().ConfigureAwait(false);
+                        // 이미 흘려보낸 부분 응답을 폐기(중복/불완전 tool_call 방지) 후 새 스트림으로 재요청.
+                        assistantText.Clear();
+                        toolCalls.Clear();
+                        stopReason = "end_turn";
+                        stream = _model.StreamAsync(_messages, _tools, ct).GetAsyncEnumerator(ct);
+                    }
+
+                    if (retried)
+                    {
+                        yield return new StreamNotice(
+                            $"connection dropped mid-response — retrying ({streamRetries}/{MaxStreamRetries})");
+                    }
                 }
             }
             finally
@@ -351,6 +404,7 @@ public sealed class QueryEngine
                     continue;
                 }
 
+                _log($"done: stop={stopReason} turns={turn} ext={extensions}");
                 yield return new TurnCompleted(lastUsage, stopReason);
                 yield break;
             }
@@ -380,8 +434,11 @@ public sealed class QueryEngine
                     continue;
                 }
 
+                // ASCII 메타데이터만 로깅(원문/인자 미기록 — 비-ASCII 경로·텍스트가 로그를 깨뜨리지 않게).
+                _log($"tool call: {call.Name} inputBytes={call.Input.GetRawText().Length}");
                 await _observer.BeforeToolAsync(tool, call, toolContext, ct).ConfigureAwait(false);
                 var (output, isError) = await ExecuteToolAsync(tool, call, toolContext, ct).ConfigureAwait(false);
+                _log($"tool done: {call.Name} error={isError} outputChars={output.Length}");
                 // 컨텍스트(모델)로 가는 결과만 상한을 건다 — UI(ToolExecuted)와 관찰자엔 원문 유지.
                 _messages.Add(new ToolResultMessage(call.Id, CapToolOutput(output, _maxToolResultChars), isError));
                 yield return new ToolExecuted(call.Name, call.Id, output, isError);
@@ -409,6 +466,7 @@ public sealed class QueryEngine
                             _messages.Add(new UserMessage(obs));
                         }
 
+                        _log($"tool failure loop: {call.Name} failed x{n}, stopping");
                         var stop = Reminders.ToolFailureLoop(call.Name, n);
                         _messages.Add(new UserMessage(stop));
                         yield return new TurnCompleted(lastUsage, "tool_failure_loop");

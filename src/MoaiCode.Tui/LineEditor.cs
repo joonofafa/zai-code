@@ -40,6 +40,20 @@ public static class LineEditor
         return "\x1b[48;5;236m";
     }
 
+    // 셸 모드('!' 접두) 입력 라인 배경 — 어두운 빨강(256색 52 ≈ #5f0000). 이 모드에선 '❯' 프롬프트를
+    // 숨긴다(폭 유지를 위해 공백 2칸으로 대체 — wrap/커서 계산 불변). MOAI_SHELL_BG 로 256색 조정 가능.
+    internal static readonly string ShellBg = ResolveShellBg();
+
+    private static string ResolveShellBg()
+    {
+        var env = Environment.GetEnvironmentVariable("MOAI_SHELL_BG");
+        if (int.TryParse(env, out var n) && n is >= 0 and <= 255)
+        {
+            return $"\x1b[48;5;{n}m";
+        }
+        return "\x1b[48;5;52m";
+    }
+
     public static string? ReadLine(
         IReadOnlyList<string> history,
         IReadOnlyList<string> slashCommands,
@@ -297,18 +311,35 @@ public static class LineEditor
             // 4) 프롬프트 + 버퍼 출력. 입력 라인 배경을 어두운 회색으로 깔고(InputBg),
             //    \x1b[K 로 마지막 행의 남은 폭까지 같은 배경색으로 채워 입력 필드처럼 보이게 한다.
             //    (배경 없이 쓰려면 MOAI_PROMPT_BG=off)
+            var shell = buf.Length > 0 && buf[0] == '!';   // '!' 셸 모드: 어두운 빨강 배경 + '❯' 숨김
             if (InputBg.Length > 0)
             {
-                sb.Append(InputBg)                         // 배경 on
-                  .Append("\x1b[32m").Append(PromptText)   // 초록 화살표
-                  .Append("\x1b[39m").Append(buf.ToString()); // 전경 기본(배경 유지) + 버퍼
+                sb.Append(shell ? ShellBg : InputBg);      // 배경 on (셸 모드면 빨강)
+                if (shell)
+                {
+                    sb.Append("  ");                       // '❯' 제거 — 폭 유지 위해 공백 2칸(wrap 계산 불변)
+                }
+                else
+                {
+                    sb.Append("\x1b[32m").Append(PromptText).Append("\x1b[39m"); // 초록 화살표
+                }
+
+                sb.Append(buf.ToString());                 // 전경 기본(배경 유지) + 버퍼
                 if (showGhost) sb.Append(GhostColor).Append(ghost).Append("\x1b[39m"); // ghost(연한 글자)
                 sb.Append("\x1b[K")                         // 마지막 행 남은 폭을 배경색으로 채움
                   .Append("\x1b[0m");                       // 리셋
             }
             else
             {
-                sb.Append("\x1b[32m").Append(PromptText).Append("\x1b[0m").Append(buf.ToString());
+                if (shell)
+                {
+                    sb.Append("  ").Append(buf.ToString());
+                }
+                else
+                {
+                    sb.Append("\x1b[32m").Append(PromptText).Append("\x1b[0m").Append(buf.ToString());
+                }
+
                 if (showGhost) sb.Append(GhostColor).Append(ghost).Append("\x1b[0m"); // ghost(연한 글자)
             }
 
@@ -365,12 +396,7 @@ public static class LineEditor
 
     // Tab 자동완성: 현재 보이는 ghost(= 첫 매치)를 그대로 확정한다. 버퍼가 바뀌면 true.
     private static bool TryComplete(StringBuilder buf, ref int pos, IReadOnlyList<string> slashCommands)
-    {
-        var best = FirstMatch(buf.ToString(), slashCommands);
-        if (best is null) return false;
-        SetBuffer(buf, ref pos, "/" + best + " ");
-        return true;
-    }
+        => AcceptCompletion(buf, ref pos, slashCommands);
 
     /// <summary>버퍼가 "/토큰"(공백 없음)일 때 알파벳순 첫 매치 명령. 없으면 null.</summary>
     public static string? FirstMatch(string text, IReadOnlyList<string> slash)
@@ -389,11 +415,125 @@ public static class LineEditor
     /// </summary>
     public static string GhostSuffix(string text, IReadOnlyList<string> slash)
     {
-        if (text.Length < 2) return string.Empty;
+        // '/' 명령 ghost (전체 라인 "/토큰") — 최소 한 글자("/x")는 쳐야 ghost. 바 '/' 단독은 표시 안 함.
+        if (text.Length >= 2)
+        {
+            var best = FirstMatch(text, slash);
+            if (best is not null)
+            {
+                var token = text[1..];
+                return best.Length > token.Length ? best[token.Length..] : string.Empty;
+            }
+        }
+
+        // '@' 파일 멘션 ghost (현재 디렉토리 기준 파일명 자동완성) — "@" 단독(길이 1)도 첫 파일 표시.
+        return FileMentionGhost(text);
+    }
+
+    /// <summary>Tab 확정: '/' 명령(전체 라인 치환) 또는 '@' 파일 멘션(현재 토큰에 완성 부착). 바뀌면 true.</summary>
+    internal static bool AcceptCompletion(StringBuilder buf, ref int pos, IReadOnlyList<string> slash)
+    {
+        var text = buf.ToString();
         var best = FirstMatch(text, slash);
-        if (best is null) return string.Empty;
-        var token = text[1..];
-        return best.Length > token.Length ? best[token.Length..] : string.Empty;
+        if (best is not null)
+        {
+            buf.Clear();
+            buf.Append('/').Append(best).Append(' ');
+            pos = buf.Length;
+            return true;
+        }
+
+        if (pos == buf.Length)
+        {
+            var g = FileMentionGhost(text);
+            if (g.Length > 0)
+            {
+                buf.Append(g);
+                pos = buf.Length;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>텍스트 끝 토큰이 '@경로'면, 경로의 디렉토리(없으면 cwd) 기준 첫 매치 파일의 나머지 글자를 ghost로.</summary>
+    internal static string FileMentionGhost(string text)
+    {
+        var tokenStart = text.LastIndexOfAny(new[] { ' ', '\t' }) + 1;
+        var token = text[tokenStart..];
+        if (token.Length < 1 || token[0] != '@')
+        {
+            return string.Empty;
+        }
+
+        var partial = token[1..]; // '@' 뒤 경로(빈 문자열 가능 → 첫 파일)
+        var match = FirstFileMatch(partial);
+        if (match is null)
+        {
+            return string.Empty;
+        }
+
+        var nameStart = partial.LastIndexOfAny(new[] { '/', '\\' }) + 1;
+        var typedName = partial[nameStart..];
+        var suffix = match.Value.Name.Length > typedName.Length ? match.Value.Name[typedName.Length..] : string.Empty;
+        return match.Value.IsDir ? suffix + "/" : suffix;
+    }
+
+    // '@' 뒤 부분경로에 대한 첫 매치 파일/디렉토리 (이름, 디렉토리 여부). 없으면 null.
+    private static (string Name, bool IsDir)? FirstFileMatch(string partial)
+    {
+        var slashIdx = partial.LastIndexOfAny(new[] { '/', '\\' });
+        var dirPart = slashIdx >= 0 ? partial[..(slashIdx + 1)] : string.Empty;
+        var prefix = slashIdx >= 0 ? partial[(slashIdx + 1)..] : partial;
+
+        string searchDir;
+        try
+        {
+            searchDir = Path.GetFullPath(dirPart.Length == 0 ? "." : dirPart, Directory.GetCurrentDirectory());
+        }
+        catch
+        {
+            return null;
+        }
+
+        if (!Directory.Exists(searchDir))
+        {
+            return null;
+        }
+
+        string? match;
+        try
+        {
+            match = Directory.EnumerateFileSystemEntries(searchDir)
+                .Select(p => Path.GetFileName(p) ?? string.Empty)
+                .Where(n => n.Length > 0
+                            && n.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                            && (prefix.StartsWith('.') || !n.StartsWith('.'))) // prefix가 '.' 아니면 숨김 제외
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault();
+        }
+        catch
+        {
+            return null;
+        }
+
+        if (match is null)
+        {
+            return null;
+        }
+
+        bool isDir;
+        try
+        {
+            isDir = Directory.Exists(Path.Combine(searchDir, match));
+        }
+        catch
+        {
+            isDir = false;
+        }
+
+        return (match, isDir);
     }
 
     internal static int DisplayWidth(string s)

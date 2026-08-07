@@ -9,4 +9,7 @@ public interface IModelException
 {
     /// <summary>컨텍스트 길이 초과로 인한 실패인지 (반응형 컴팩션 트리거).</summary>
     bool IsContextOverflow { get; }
+
+    /// <summary>연결/스트림 끊김·과부하 등 재시도 가능한 일시적 실패인지 (턴 단위 재시도 트리거).</summary>
+    bool IsTransient { get; }
 }
