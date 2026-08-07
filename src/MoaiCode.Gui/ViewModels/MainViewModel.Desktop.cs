@@ -89,6 +89,11 @@ public sealed partial class MainViewModel
     [ObservableProperty] private bool _showTopicDialog;
     [ObservableProperty] private string _topicInput = string.Empty;
     [ObservableProperty] private string _topicTemplateLabel = string.Empty;
+
+    // 주제 팝업 제목("{라벨} · 주제를 입력하세요") — 로컬라이즈된 서식. 라벨 변경 시 갱신.
+    public string TopicDialogTitle => MoaiCode.Localization.L10n.Get("gui.topic.titleFmt", TopicTemplateLabel);
+
+    partial void OnTopicTemplateLabelChanged(string value) => OnPropertyChanged(nameof(TopicDialogTitle));
     [ObservableProperty] private bool _srcWeb;
     [ObservableProperty] private bool _srcOrg;
     // 연결된 로컬 폴더 각각을 참고 대상 토글로. 작성 시 선택된 폴더를 LocalDocsSearch 로 검색.

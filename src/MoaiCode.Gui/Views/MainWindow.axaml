@@ -3,6 +3,7 @@
         xmlns:vm="using:MoaiCode.Gui.ViewModels"
         xmlns:views="using:MoaiCode.Gui.Views"
         xmlns:controls="using:MoaiCode.Gui.Controls"
+        xmlns:l10n="using:MoaiCode.Gui.Localization"
         x:Class="MoaiCode.Gui.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="MoAI Desktop"
@@ -49,7 +50,7 @@
               <TextBlock Text="{Binding AppVersion}" FontSize="10.5" VerticalAlignment="Center"
                          Foreground="{DynamicResource TextMutedBrush}" />
             </StackPanel>
-            <TextBlock Text="문서를 말로 편집하세요" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" />
+            <TextBlock Text="{l10n:Loc gui.header.subtitle}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" />
           </StackPanel>
         </StackPanel>
 
@@ -57,7 +58,7 @@
                    Margin="0,0,8,0" TextTrimming="CharacterEllipsis" MaxWidth="220"
                    Foreground="{DynamicResource TextSecondaryBrush}" />
         <Button Grid.Column="4" Classes="ghost" Padding="7,5" VerticalAlignment="Center"
-                Command="{Binding OpenSettingsCommand}" ToolTip.Tip="계정 · 모델 설정">
+                Command="{Binding OpenSettingsCommand}" ToolTip.Tip="{l10n:Loc gui.header.settingsTip}">
           <Path Classes="icon" Data="{StaticResource Icon.Settings}" />
         </Button>
       </Grid>
@@ -70,7 +71,7 @@
             <StackPanel Spacing="8">
               <StackPanel Orientation="Horizontal" Spacing="8">
                 <Path Classes="icon sm" Data="{StaticResource Icon.FolderOpen}" VerticalAlignment="Center" />
-                <TextBlock Text="로컬 폴더" FontSize="13.5" FontWeight="SemiBold" VerticalAlignment="Center"
+                <TextBlock Text="{l10n:Loc gui.tab.folders}" FontSize="13.5" FontWeight="SemiBold" VerticalAlignment="Center"
                            Foreground="{DynamicResource TextPrimaryBrush}" />
               </StackPanel>
               <Border Height="2.5" CornerRadius="2" IsVisible="{Binding IsFoldersTab}"
@@ -82,7 +83,7 @@
             <StackPanel Spacing="8">
               <StackPanel Orientation="Horizontal" Spacing="8">
                 <Path Classes="icon sm" Data="{StaticResource Icon.Pencil}" VerticalAlignment="Center" />
-                <TextBlock Text="문서 편집" FontSize="13.5" FontWeight="SemiBold" VerticalAlignment="Center"
+                <TextBlock Text="{l10n:Loc gui.tab.edit}" FontSize="13.5" FontWeight="SemiBold" VerticalAlignment="Center"
                            Foreground="{DynamicResource TextPrimaryBrush}" />
               </StackPanel>
               <Border Height="2.5" CornerRadius="2" IsVisible="{Binding IsEditTab}"
@@ -106,18 +107,18 @@
                   BorderThickness="1" CornerRadius="12" Padding="16">
             <Grid ColumnDefinitions="*,Auto">
               <StackPanel Grid.Column="0" Spacing="3">
-                <TextBlock Text="로컬 폴더" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock Text="{l10n:Loc gui.folders.title}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
                 <TextBlock Text="{Binding SyncStatus}" FontSize="12" Foreground="{DynamicResource TextMutedBrush}" />
               </StackPanel>
               <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right">
                 <TextBlock Text="{Binding WatchedFolderCount}" FontSize="24" FontWeight="Bold"
                            HorizontalAlignment="Right" Foreground="{DynamicResource TextPrimaryBrush}" />
-                <TextBlock Text="연결된 폴더" FontSize="11.5" Foreground="{DynamicResource TextMutedBrush}" />
+                <TextBlock Text="{l10n:Loc gui.folders.connectedLabel}" FontSize="11.5" Foreground="{DynamicResource TextMutedBrush}" />
               </StackPanel>
             </Grid>
           </Border>
 
-          <TextBlock Text="연결된 폴더" FontSize="12" FontWeight="SemiBold"
+          <TextBlock Text="{l10n:Loc gui.folders.sectionTitle}" FontSize="12" FontWeight="SemiBold"
                      Foreground="{DynamicResource TextSecondaryBrush}" />
 
           <ItemsControl ItemsSource="{Binding Folders}">
@@ -133,13 +134,13 @@
                                  TextTrimming="CharacterEllipsis" />
                     </StackPanel>
                     <Button Grid.Column="2" Classes="ghost" Padding="8,6" VerticalAlignment="Center"
-                            ToolTip.Tip="폴더 열기"
+                            ToolTip.Tip="{l10n:Loc gui.folders.openTip}"
                             Command="{Binding $parent[ItemsControl].DataContext.OpenFolderCommand}"
                             CommandParameter="{Binding}">
                       <Path Classes="icon sm" Data="{StaticResource Icon.FolderOpen}" VerticalAlignment="Center" />
                     </Button>
                     <Button Grid.Column="3" Classes="ghost" Padding="8,6" VerticalAlignment="Center" Margin="4,0,0,0"
-                            ToolTip.Tip="연결 해제"
+                            ToolTip.Tip="{l10n:Loc gui.common.disconnect}"
                             Command="{Binding $parent[ItemsControl].DataContext.UnlinkFolderCommand}"
                             CommandParameter="{Binding}">
                       <Path Classes="icon sm" Data="{StaticResource Icon.Unlink}" VerticalAlignment="Center" />
@@ -151,15 +152,15 @@
           </ItemsControl>
 
           <Button Classes="ghost" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                  Padding="12" Click="OnAddFolderClick" ToolTip.Tip="로컬 폴더를 등록합니다"
+                  Padding="12" Click="OnAddFolderClick" ToolTip.Tip="{l10n:Loc gui.folders.addTip}"
                   BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1" CornerRadius="10">
             <StackPanel Orientation="Horizontal" Spacing="7" HorizontalAlignment="Center">
               <Path Classes="icon sm" Data="{StaticResource Icon.Plus}" VerticalAlignment="Center" />
-              <TextBlock Text="폴더 추가" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+              <TextBlock Text="{l10n:Loc gui.folders.add}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
             </StackPanel>
           </Button>
 
-          <TextBlock Text="연결한 폴더는 자동으로 로컬 인덱싱됩니다(로컬 청킹 + 임베딩 → 로컬 검색). 문서 원본은 서버(조직 문서함)에 올라가지 않습니다. 조직과 공유할 문서는 대화에서 직접 업로드하세요."
+          <TextBlock Text="{l10n:Loc gui.folders.desc}"
                      FontSize="11.5" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" Margin="2,4,0,0" />
         </StackPanel>
       </ScrollViewer>
@@ -168,11 +169,11 @@
       <Grid Grid.Row="2" IsVisible="{Binding IsEditList}" RowDefinitions="Auto,*">
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="28,20,28,10">
           <StackPanel Grid.Column="0">
-            <TextBlock Text="열려 있는 Office 문서" FontSize="15" FontWeight="SemiBold" />
-            <TextBlock Text="편집할 문서를 눌러 선택하세요" FontSize="12" Foreground="{DynamicResource TextMutedBrush}" />
+            <TextBlock Text="{l10n:Loc gui.edit.openDocsTitle}" FontSize="15" FontWeight="SemiBold" />
+            <TextBlock Text="{l10n:Loc gui.edit.openDocsHint}" FontSize="12" Foreground="{DynamicResource TextMutedBrush}" />
           </StackPanel>
           <Button Grid.Column="1" Classes="ghost" Padding="9,6" VerticalAlignment="Center"
-                  Command="{Binding RefreshOfficeCommand}" ToolTip.Tip="목록 새로고침">
+                  Command="{Binding RefreshOfficeCommand}" ToolTip.Tip="{l10n:Loc gui.edit.refreshTip}">
             <Path Classes="icon sm" Data="{StaticResource Icon.RefreshCw}" />
           </Button>
         </Grid>
@@ -183,7 +184,7 @@
                 <Button Classes="recentcard" Margin="0,0,0,9" HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Left"
                         Command="{Binding $parent[ItemsControl].DataContext.PickOpenDocCommand}"
-                        CommandParameter="{Binding}" ToolTip.Tip="이 문서로 편집 시작">
+                        CommandParameter="{Binding}" ToolTip.Tip="{l10n:Loc gui.edit.pickTip}">
                   <Grid ColumnDefinitions="Auto,*,Auto">
                     <Border Grid.Column="0" Width="38" Height="38" CornerRadius="9" Margin="0,0,13,0"
                             Background="{DynamicResource AccentSoftBrush}">
@@ -197,7 +198,7 @@
                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                     <Border Grid.Column="2" Background="{DynamicResource AccentSoftBrush}" CornerRadius="8"
                             Padding="12,6" VerticalAlignment="Center">
-                      <TextBlock Text="편집" FontSize="12.5" FontWeight="SemiBold"
+                      <TextBlock Text="{l10n:Loc gui.edit.editBtn}" FontSize="12.5" FontWeight="SemiBold"
                                  Foreground="{DynamicResource AccentHoverBrush}" />
                     </Border>
                   </Grid>
@@ -213,9 +214,9 @@
                     HorizontalScrollBarVisibility="Disabled">
         <StackPanel MaxWidth="680" HorizontalAlignment="Left" Spacing="18">
           <StackPanel Spacing="3">
-            <TextBlock Text="새 문서로 시작" FontSize="17" FontWeight="SemiBold" />
+            <TextBlock Text="{l10n:Loc gui.edit.newDocTitle}" FontSize="17" FontWeight="SemiBold" />
             <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextMutedBrush}"
-                       Text="템플릿을 고르면 입력창에 프롬프트가 채워집니다. 주제를 넣고 보내면 그 서식으로 작성해요. 빈 문서는 바로 열립니다." />
+                       Text="{l10n:Loc gui.edit.newDocHint}" />
           </StackPanel>
 
           <StackPanel Spacing="9">
@@ -251,7 +252,7 @@
           <Button Classes="ghost" HorizontalAlignment="Left" Command="{Binding RefreshOfficeCommand}">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <Path Classes="icon sm" Data="{StaticResource Icon.RefreshCw}" VerticalAlignment="Center" />
-              <TextBlock Text="열린 문서 새로고침" FontSize="12.5" VerticalAlignment="Center" />
+              <TextBlock Text="{l10n:Loc gui.edit.refreshOpen}" FontSize="12.5" VerticalAlignment="Center" />
             </StackPanel>
           </Button>
         </StackPanel>
@@ -263,7 +264,7 @@
           <Button Grid.Column="0" Classes="ghost" Padding="10,6" Command="{Binding BackToListCommand}">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <TextBlock Text="←" FontSize="14" VerticalAlignment="Center" />
-              <TextBlock Text="목록" FontSize="12.5" VerticalAlignment="Center" />
+              <TextBlock Text="{l10n:Loc gui.edit.listBtn}" FontSize="12.5" VerticalAlignment="Center" />
             </StackPanel>
           </Button>
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left"
@@ -275,7 +276,7 @@
             <TextBlock Text="{Binding ActiveDocName}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"
                        TextTrimming="CharacterEllipsis" />
             <Border Background="{DynamicResource ActivityBgBrush}" CornerRadius="999" Padding="8,2">
-              <TextBlock Text="연결됨" FontSize="10.5" Foreground="{DynamicResource GoodBrush}" />
+              <TextBlock Text="{l10n:Loc gui.edit.connected}" FontSize="10.5" Foreground="{DynamicResource GoodBrush}" />
             </Border>
           </StackPanel>
         </Grid>
@@ -342,10 +343,10 @@
                     </Grid>
                     <StackPanel Orientation="Horizontal" Spacing="9" HorizontalAlignment="Right"
                                 IsVisible="{Binding !Decided}">
-                      <Button Classes="ghost" Content="취소" Command="{Binding RejectCommand}" />
-                      <Button Classes="ghost" Content="계속 허용" Command="{Binding ApproveAllCommand}"
-                              ToolTip.Tip="이후 이 문서 편집은 확인 없이 자동 적용" />
-                      <Button Classes="accent" Content="적용" Command="{Binding ApproveCommand}" />
+                      <Button Classes="ghost" Content="{l10n:Loc gui.common.cancel}" Command="{Binding RejectCommand}" />
+                      <Button Classes="ghost" Content="{l10n:Loc gui.perm.approveAll}" Command="{Binding ApproveAllCommand}"
+                              ToolTip.Tip="{l10n:Loc gui.perm.approveAllTip}" />
+                      <Button Classes="accent" Content="{l10n:Loc gui.perm.approve}" Command="{Binding ApproveCommand}" />
                     </StackPanel>
                     <TextBlock Text="{Binding ResultLabel}" IsVisible="{Binding Decided}" FontSize="12.5"
                                HorizontalAlignment="Right" Foreground="{DynamicResource TextMutedBrush}" />
@@ -410,10 +411,10 @@
         </ScrollViewer>
         <StackPanel Grid.Row="1" IsVisible="{Binding IsEditChatEmpty}" IsHitTestVisible="False"
                     VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8" MaxWidth="440">
-          <TextBlock Text="주제를 입력해 주세요" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center" />
+          <TextBlock Text="{l10n:Loc gui.edit.topicEmptyTitle}" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center" />
           <TextBlock TextWrapping="Wrap" TextAlignment="Center" FontSize="12.5"
                      Foreground="{DynamicResource TextMutedBrush}"
-                     Text="아래 입력창의 「(주제)」 자리에 주제를 넣고 보내면 그 서식으로 작성합니다." />
+                     Text="{l10n:Loc gui.edit.topicEmptyHint}" />
         </StackPanel>
       </Grid>
 
@@ -454,7 +455,7 @@
                   BorderThickness="1.5" Padding="8,6">
             <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
               <Button Grid.Column="0" x:Name="DocButton" IsVisible="{Binding IsDocConnected}" Classes="ghost"
-                      VerticalAlignment="Center" Padding="8" ToolTip.Tip="연결된 문서 · 클릭하여 해제">
+                      VerticalAlignment="Center" Padding="8" ToolTip.Tip="{l10n:Loc gui.doc.chipTip}">
                 <Path Data="{Binding ActiveDocApp, Converter={x:Static vm:Converters.AppIcon}}"
                       Stroke="{Binding ActiveDocApp, Converter={x:Static vm:Converters.AppBrush}}"
                       StrokeThickness="1.6" StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
@@ -464,31 +465,31 @@
                     <StackPanel Spacing="11" MaxWidth="240" Margin="4">
                       <TextBlock Text="{Binding DetachPrompt}" TextWrapping="Wrap" FontSize="13"
                                  Foreground="{DynamicResource TextPrimaryBrush}" />
-                      <Button Classes="accent" Content="연결 해제" HorizontalAlignment="Right"
+                      <Button Classes="accent" Content="{l10n:Loc gui.common.disconnect}" HorizontalAlignment="Right"
                               Click="OnDetachConfirm" />
                     </StackPanel>
                   </Flyout>
                 </Button.Flyout>
               </Button>
               <Button Grid.Column="1" Classes="ghost" VerticalAlignment="Center" Padding="8"
-                      Click="OnAttachClick" ToolTip.Tip="로컬 참조 문서 첨부">
+                      Click="OnAttachClick" ToolTip.Tip="{l10n:Loc gui.composer.attachTip}">
                 <Path Classes="icon" Data="{StaticResource Icon.Paperclip}" Width="16" Height="16" />
               </Button>
               <Button Grid.Column="2" Classes="ghost" VerticalAlignment="Center" Padding="8"
-                      ToolTip.Tip="자료 검색·첨부 (조직 문서함 / 내 로컬 폴더)">
+                      ToolTip.Tip="{l10n:Loc gui.composer.searchTip}">
                 <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
                   <Path Classes="icon" Data="{StaticResource Icon.FolderOpen}" Width="16" Height="16" />
                   <Path Classes="icon sm" Data="{StaticResource Icon.ChevronDown}" VerticalAlignment="Center" />
                 </StackPanel>
                 <Button.Flyout>
                   <MenuFlyout Placement="Top">
-                    <MenuItem Header="조직 문서함에서 검색" Click="OnOrgClick" />
-                    <MenuItem Header="내 로컬 폴더에서 검색" Click="OnLocalClick" />
+                    <MenuItem Header="{l10n:Loc gui.composer.searchOrg}" Click="OnOrgClick" />
+                    <MenuItem Header="{l10n:Loc gui.composer.searchLocal}" Click="OnLocalClick" />
                   </MenuFlyout>
                 </Button.Flyout>
               </Button>
               <TextBox Grid.Column="3" x:Name="Composer" Classes="composer" Margin="8,0,8,0"
-                       Watermark="열린 문서에 지시하세요…" Text="{Binding Input}">
+                       Watermark="{l10n:Loc gui.composer.watermark}" Text="{Binding Input}">
                 <TextBox.KeyBindings>
                   <KeyBinding Gesture="Enter" Command="{Binding SendCommand}" />
                 </TextBox.KeyBindings>
@@ -510,21 +511,21 @@
               HorizontalAlignment="Center" VerticalAlignment="Center">
         <StackPanel Spacing="14">
           <TextBlock FontSize="15.5" FontWeight="SemiBold"
-                     Text="{Binding TopicTemplateLabel, StringFormat='{}{0} · 주제를 입력하세요'}" />
-          <TextBlock Text="어떤 주제로 작성할까요? (예: AI 거버넌스 체계 수립 방안)" FontSize="12.5"
+                     Text="{Binding TopicDialogTitle}" />
+          <TextBlock Text="{l10n:Loc gui.topic.question}" FontSize="12.5"
                      TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
-          <TextBox x:Name="TopicBox" Watermark="주제 입력…" Text="{Binding TopicInput}" FontSize="14">
+          <TextBox x:Name="TopicBox" Watermark="{l10n:Loc gui.topic.watermark}" Text="{Binding TopicInput}" FontSize="14">
             <TextBox.KeyBindings>
               <KeyBinding Gesture="Enter" Command="{Binding ConfirmTopicCommand}" />
             </TextBox.KeyBindings>
           </TextBox>
 
           <!-- 참고할 자료 출처(선택) — 선택한 소스로 근거를 수집해 작성 -->
-          <TextBlock Text="참고할 자료 (선택)" FontSize="12" FontWeight="SemiBold"
+          <TextBlock Text="{l10n:Loc gui.topic.sourcesLabel}" FontSize="12" FontWeight="SemiBold"
                      Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" />
           <StackPanel Spacing="6">
-            <CheckBox IsChecked="{Binding SrcWeb}" Content="웹 검색" FontSize="13" />
-            <CheckBox IsChecked="{Binding SrcOrg}" Content="조직 문서함 참고" FontSize="13" />
+            <CheckBox IsChecked="{Binding SrcWeb}" Content="{l10n:Loc gui.topic.srcWeb}" FontSize="13" />
+            <CheckBox IsChecked="{Binding SrcOrg}" Content="{l10n:Loc gui.topic.srcOrg}" FontSize="13" />
             <ItemsControl ItemsSource="{Binding TopicFolders}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:FolderChoice">
@@ -536,8 +537,8 @@
           </StackPanel>
 
           <StackPanel Orientation="Horizontal" Spacing="9" HorizontalAlignment="Right">
-            <Button Classes="ghost" Content="취소" Command="{Binding CancelTopicCommand}" />
-            <Button Classes="accent" Content="작성 시작" Command="{Binding ConfirmTopicCommand}" />
+            <Button Classes="ghost" Content="{l10n:Loc gui.common.cancel}" Command="{Binding CancelTopicCommand}" />
+            <Button Classes="accent" Content="{l10n:Loc gui.topic.start}" Command="{Binding ConfirmTopicCommand}" />
           </StackPanel>
         </StackPanel>
       </Border>
