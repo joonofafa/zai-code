@@ -8,6 +8,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MoaiCode.Gui.Sync;
+using MoaiCode.Localization;
 using MoaiCode.Tools.Office;
 
 namespace MoaiCode.Gui.ViewModels;
@@ -58,30 +59,30 @@ public sealed partial class MainViewModel
         var w = Sw("#2B579A");
         var x = Sw("#217346");
 
-        WordTemplates.Add(new("Word", "빈 문서", null, blank, true));
-        WordTemplates.Add(new("Word", "보고서",
+        WordTemplates.Add(new("Word", L10n.Get("gui.tpl.blankDoc"), null, blank, true));
+        WordTemplates.Add(new("Word", L10n.Get("gui.tpl.report"),
             "DocxCreate 로 「(주제)」 보고서를 만들어줘. template \"report\", 개요·배경·현황·분석·결론 및 제언 섹션에 주제에 맞는 실질 내용을 채우고, 핵심은 표로 정리해서.", w, false));
-        WordTemplates.Add(new("Word", "경위서",
+        WordTemplates.Add(new("Word", L10n.Get("gui.tpl.incident"),
             "DocxCreate 로 「(주제)」 경위서를 만들어줘. template \"incident\", 발생 개요·경위·원인·조치 사항·재발 방지 대책 섹션을 채워서.", w, false));
-        WordTemplates.Add(new("Word", "제안서",
+        WordTemplates.Add(new("Word", L10n.Get("gui.tpl.proposal"),
             "DocxCreate 로 「(주제)」 제안서를 만들어줘. template \"proposal\", 배경 및 목적·제안 내용·기대 효과·추진 일정·소요 예산 섹션을 채우고, 일정·예산은 표로.", w, false));
 
-        PptTemplates.Add(new("PowerPoint", "빈 프레젠테이션", null, blank, true));
-        PptTemplates.Add(new("PowerPoint", "디자인 A",
+        PptTemplates.Add(new("PowerPoint", L10n.Get("gui.tpl.blankPpt"), null, blank, true));
+        PptTemplates.Add(new("PowerPoint", L10n.Get("gui.tpl.designA"),
             "PptxCreate 로 「(주제)」 발표자료를 만들어줘. template \"A\"(코퍼레이트), 표지(cover)+핵심 슬라이드(section/content/two_col/table 레이아웃 적절히), 주제에 맞는 제목·간결한 불릿 내용으로 채워서.", Sw("#2F5496"), false));
-        PptTemplates.Add(new("PowerPoint", "디자인 B",
+        PptTemplates.Add(new("PowerPoint", L10n.Get("gui.tpl.designB"),
             "PptxCreate 로 「(주제)」 발표자료를 만들어줘. template \"B\"(키노트), 한 슬라이드 한 메시지·큰 제목, 표지+핵심 슬라이드를 주제 내용으로 채워서.", Sw("#C00000"), false));
-        PptTemplates.Add(new("PowerPoint", "디자인 C",
+        PptTemplates.Add(new("PowerPoint", L10n.Get("gui.tpl.designC"),
             "PptxCreate 로 「(주제)」 발표자료를 만들어줘. template \"C\"(미니멀), 여백 넉넉·간결하게, 표지+핵심 슬라이드를 주제 내용으로 채워서.", Sw("#222222"), false));
-        PptTemplates.Add(new("PowerPoint", "디자인 D",
+        PptTemplates.Add(new("PowerPoint", L10n.Get("gui.tpl.designD"),
             "PptxCreate 로 「(주제)」 발표자료를 만들어줘. template \"D\"(다크), 임팩트 있게, 표지+핵심 슬라이드를 주제 내용으로 채워서.", Sw("#4FC3F7"), false));
 
-        ExcelTemplates.Add(new("Excel", "빈 통합문서", null, blank, true));
-        ExcelTemplates.Add(new("Excel", "지출결의서",
+        ExcelTemplates.Add(new("Excel", L10n.Get("gui.tpl.blankXls"), null, blank, true));
+        ExcelTemplates.Add(new("Excel", L10n.Get("gui.tpl.expense"),
             "XlsxCreate 로 지출결의서 양식을 만들어줘. template \"expense\".", x, false));
-        ExcelTemplates.Add(new("Excel", "거래명세서",
+        ExcelTemplates.Add(new("Excel", L10n.Get("gui.tpl.invoice"),
             "XlsxCreate 로 거래명세서 양식을 만들어줘. template \"invoice\".", x, false));
-        ExcelTemplates.Add(new("Excel", "재고관리표",
+        ExcelTemplates.Add(new("Excel", L10n.Get("gui.tpl.inventory"),
             "XlsxCreate 로 재고관리표 양식을 만들어줘. template \"inventory\".", x, false));
     }
 
@@ -201,7 +202,7 @@ public sealed partial class MainViewModel
     public ObservableCollection<FolderRow> Folders { get; } = new();
     public int WatchedFolderCount => Folders.Count;
 
-    [ObservableProperty] private string _syncStatus = "대기 중";
+    [ObservableProperty] private string _syncStatus = L10n.Get("gui.status.idle");
 
     private Timer? _aliveTimer;
     private bool _aliveChecking; // COM 열거 재진입 방지(모달 Office 로 타임아웃이 쌓이는 것을 막음)
@@ -215,7 +216,7 @@ public sealed partial class MainViewModel
         if (svc is not null)
         {
             svc.Status += OnSyncStatus;
-            SyncStatus = svc.FolderCount == 0 ? "연결된 폴더 없음" : $"연결된 폴더 {svc.FolderCount}개";
+            SyncStatus = svc.FolderCount == 0 ? L10n.Get("gui.status.noFolders") : L10n.Get("gui.status.foldersFmt", svc.FolderCount);
         }
 
         // 연결된 문서가 사용자에 의해 닫혔는지 주기 확인(연결 중일 때만 COM 열거). 창 포커스 복귀 시에도 확인.
@@ -398,7 +399,7 @@ public partial class FolderChoice : ObservableObject
     {
         Path = path;
         var name = System.IO.Path.GetFileName(path.TrimEnd('/', '\\'));
-        Label = "내 로컬 폴더 · " + (string.IsNullOrEmpty(name) ? path : name);
+        Label = L10n.Get("gui.folders.localPrefixFmt", string.IsNullOrEmpty(name) ? path : name);
     }
 
     public string Path { get; }
@@ -415,13 +416,13 @@ public sealed record FolderRow(string Path, string? OrgId, string Visibility)
 
     public string VisibilityLabel => Visibility switch
     {
-        "organization" => "조직 공유",
-        "private" => "나만 보기",
-        "company" => "전사 공유",
-        "org" => "조직 공개",   // 구버전 저장값 호환
-        "team" => "조직 공유",  // 구버전 저장값 호환(→ organization 매핑)
+        "organization" => L10n.Get("gui.vis.organization"),
+        "private" => L10n.Get("gui.vis.private"),
+        "company" => L10n.Get("gui.vis.company"),
+        "org" => L10n.Get("gui.vis.orgLegacy"),   // 구버전 저장값 호환
+        "team" => L10n.Get("gui.vis.organization"),  // 구버전 저장값 호환(→ organization)
         _ => Visibility,
     };
 
-    public string OrgLabel => string.IsNullOrWhiteSpace(OrgId) ? "기본 문서함" : OrgId!;
+    public string OrgLabel => string.IsNullOrWhiteSpace(OrgId) ? L10n.Get("gui.folders.defaultBox") : OrgId!;
 }

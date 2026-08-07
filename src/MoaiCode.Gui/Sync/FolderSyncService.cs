@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using MoaiCode.Config;
 using MoaiCode.Core.Tools;
 using MoaiCode.Gui.Agent;
+using MoaiCode.Localization;
 using MoaiCode.Tools.OpenXml;
 
 namespace MoaiCode.Gui.Sync;
@@ -62,7 +63,7 @@ public sealed class FolderSyncService : IDisposable
     {
         if (!Directory.Exists(folder.Path))
         {
-            Status?.Invoke($"폴더 없음: {folder.Path}");
+            Status?.Invoke(L10n.Get("gui.status.folderMissingFmt", folder.Path));
             return;
         }
 
@@ -180,7 +181,7 @@ public sealed class FolderSyncService : IDisposable
     private async Task IndexFolderAsync(string path)
     {
         GuiBootstrap.EnsureEnvReady();
-        Status?.Invoke($"인덱싱 중: {Path.GetFileName(path)}");
+        Status?.Invoke(L10n.Get("gui.status.indexingFmt", Path.GetFileName(path)));
         MoaiLog.Info("FolderIndex: indexing folder start");
 
         var input = JsonSerializer.SerializeToElement(new { path, recursive = true });
@@ -202,16 +203,16 @@ public sealed class FolderSyncService : IDisposable
         catch (Exception ex)
         {
             MoaiLog.Warn($"FolderIndex: indexing threw: {ex.GetType().Name}");
-            Status?.Invoke($"인덱싱 실패: {Path.GetFileName(path)}");
+            Status?.Invoke(L10n.Get("gui.status.indexFailedFmt", Path.GetFileName(path)));
             return;
         }
 
         MoaiLog.Info($"FolderIndex: indexing folder done ok={ok}");
-        Status?.Invoke(ok ? StatusText() : $"인덱싱 실패: {Path.GetFileName(path)}");
+        Status?.Invoke(ok ? StatusText() : L10n.Get("gui.status.indexFailedFmt", Path.GetFileName(path)));
     }
 
     private string StatusText() =>
-        _folders.Count == 0 ? "연결된 폴더 없음" : $"연결된 폴더 {_folders.Count}개";
+        _folders.Count == 0 ? L10n.Get("gui.status.noFolders") : L10n.Get("gui.status.foldersFmt", _folders.Count);
 
     public void Dispose()
     {
