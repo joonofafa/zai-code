@@ -30,7 +30,7 @@ public sealed partial class MainViewModel : ObservableObject
     public string AppVersion { get; } =
         "v" + (typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.4.0");
 
-    [ObservableProperty] private string _accountLabel = "로그인 필요";
+    [ObservableProperty] private string _accountLabel = L10n.Get("gui.chat.loginRequired");
     [ObservableProperty] private string _accountEmail = string.Empty;
 
     /// <summary>인증 여부. false 면 창 전체가 로그인 화면.</summary>
@@ -115,7 +115,7 @@ public sealed partial class MainViewModel : ObservableObject
     private string _activeDocApp = string.Empty;
 
     /// <summary>연결 해제 확인 문구(입력창 좌측 앱 버튼의 팝업).</summary>
-    public string DetachPrompt => $"({ActiveDocApp} · {ActiveDocName}) 연결을 해제할까요?";
+    public string DetachPrompt => L10n.Get("gui.chat.detachPromptFmt", ActiveDocApp, ActiveDocName);
 
     // 현재 세션 분류(저장 메타). generate 는 문서 생성이 일어나면 승격.
     private string _sessionKind = "chat";
@@ -306,7 +306,7 @@ public sealed partial class MainViewModel : ObservableObject
         ShowSettings = false;
         Items.Clear();
         _transcript.Clear();
-        AccountLabel = "로그인 필요";
+        AccountLabel = L10n.Get("gui.chat.loginRequired");
         Login.ResetToLogin();
         IsAuthed = false;
     }
@@ -384,20 +384,19 @@ public sealed partial class MainViewModel : ObservableObject
         {
             Items.Add(new AssistantItem
             {
-                Text = $"**{doc.Display}** 의 이전 대화를 이어갑니다. 그대로 계속 편집하세요.",
+                Text = L10n.Get("gui.chat.reconnectFmt", doc.Display),
             });
         }
         else if (connected)
         {
-            Items.Add(new AssistantItem { Text = $"**{doc.Display}** 에 연결했어요. 무엇을 할까요?" });
+            Items.Add(new AssistantItem { Text = L10n.Get("gui.chat.connectedFmt", doc.Display) });
             Items.Add(new SuggestionItem { Suggestions = SuggestionsFor(doc.App) });
         }
         else
         {
             Items.Add(new AssistantItem
             {
-                Text = $"**{doc.Display}** 에 연결하지 못했어요. 문서에 복구·보호된 보기 같은 알림 창이 " +
-                       "떠 있으면 닫은 뒤 다시 시도해 주세요.",
+                Text = L10n.Get("gui.chat.connectFailedFmt", doc.Display),
             });
         }
 
@@ -409,23 +408,23 @@ public sealed partial class MainViewModel : ObservableObject
     {
         "PowerPoint" => new[]
         {
-            "현재 슬라이드 내용을 더 풍성하게 만들어줘",
-            "선택한 도형 배경색을 파란색으로 바꿔줘",
-            "표지 디자인을 더 깔끔하게 다듬어줘",
+            L10n.Get("gui.sug.ppt1"),
+            L10n.Get("gui.sug.ppt2"),
+            L10n.Get("gui.sug.ppt3"),
         },
         "Excel" => new[]
         {
-            "선택한 표를 요약해줘",
-            "이 데이터로 차트를 제안해줘",
-            "머리글 행을 굵게 강조해줘",
+            L10n.Get("gui.sug.xls1"),
+            L10n.Get("gui.sug.xls2"),
+            L10n.Get("gui.sug.xls3"),
         },
         "Word" => new[]
         {
-            "이 문단을 더 간결하게 다듬어줘",
-            "제목 스타일을 정리해줘",
-            "맞춤법과 문장을 매끄럽게 고쳐줘",
+            L10n.Get("gui.sug.word1"),
+            L10n.Get("gui.sug.word2"),
+            L10n.Get("gui.sug.word3"),
         },
-        _ => new[] { "이 문서를 요약해줘", "개선할 점을 알려줘" },
+        _ => new[] { L10n.Get("gui.sug.def1"), L10n.Get("gui.sug.def2") },
     };
 
     /// <summary>추천 질문 버튼 클릭 → 해당 질문으로 바로 전송.</summary>
@@ -475,7 +474,7 @@ public sealed partial class MainViewModel : ObservableObject
         {
             Items.Add(new AssistantItem
             {
-                Text = "'열어서 편집'은 Windows + Office 에서 동작합니다. 생성된 파일 위치:\n" + item.Path,
+                Text = L10n.Get("gui.chat.openEditWindowsOnly") + "\n" + item.Path,
             });
             RequestScroll();
             return;
@@ -490,7 +489,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            Items.Add(new AssistantItem { Text = "문서를 여는 데 실패했어요: " + ex.Message });
+            Items.Add(new AssistantItem { Text = L10n.Get("gui.chat.openFailedFmt", ex.Message) });
             RequestScroll();
             return;
         }
@@ -524,7 +523,7 @@ public sealed partial class MainViewModel : ObservableObject
                 BindActiveDoc(match); // 현재 대화를 유지한 채 편집 모드로 전환
                 Items.Add(new AssistantItem
                 {
-                    Text = $"'{match.Name}' 을 열어 편집 모드로 전환했어요. 이제 \"제목 더 크게\"처럼 편집을 요청하세요.",
+                    Text = L10n.Get("gui.chat.openedEditFmt", match.Name),
                 });
                 RequestScroll();
                 return;
@@ -533,7 +532,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         Items.Add(new AssistantItem
         {
-            Text = "문서를 열었지만 편집 연결을 찾지 못했어요. 문서가 열렸는지 확인한 뒤 좌측 '열린 문서'에서 선택해 주세요.",
+            Text = L10n.Get("gui.chat.openNoConnect"),
         });
         RequestScroll();
     }
@@ -681,8 +680,7 @@ public sealed partial class MainViewModel : ObservableObject
             IsDocConnected = false; // 편집 대상 없음 — 칩 해제
             Items.Add(new AssistantItem
             {
-                Text = $"연결된 문서 '{meta.TargetDoc}' 를 원래 위치에서 찾을 수 없어요(이동/삭제된 것 같아요). " +
-                       "대화 기록은 그대로 있으니 계속 볼 수 있고, 문서를 다시 열면 이어서 편집할 수 있어요.",
+                Text = L10n.Get("gui.chat.docMissingFmt", meta.TargetDoc),
             });
         }
 
@@ -748,8 +746,8 @@ public sealed partial class MainViewModel : ObservableObject
         Items.Add(new AssistantItem
         {
             Text = _live
-                ? "로그인이 적용됐어요. 이제 문서를 만들어 드릴 수 있어요."
-                : "로그인 정보를 확인하지 못했어요. 사이드바의 '로그인 / 계정'에서 다시 시도해 주세요.",
+                ? L10n.Get("gui.chat.loginApplied")
+                : L10n.Get("gui.chat.loginFailed"),
         });
     }
 
@@ -766,7 +764,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
         else
         {
-            AccountLabel = "로그인 필요";
+            AccountLabel = L10n.Get("gui.chat.loginRequired");
         }
     }
 
@@ -782,13 +780,13 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         Input = string.Empty;
-        Items.Add(new UserItem { Text = References.Count > 0 ? $"{text}\n\n참조 {References.Count}개" : text });
+        Items.Add(new UserItem { Text = References.Count > 0 ? L10n.Get("gui.chat.refCountFmt", text, References.Count) : text });
         _transcript.Add(new TurnLine("user", text));
         IsBusy = true;
 
         // '작업 중…' 바운스를 항상 맨 아래에 유지한다(도구 사이·최종 답변 전 빈 구간에도 멈춰 보이지 않게).
         // 새 항목(배지·문서·답변)은 이 인디케이터 '위'에 삽입하고, 인디케이터는 finally 에서만 제거한다.
-        var thinking = new ActivityItem { Text = "작업 중…", Done = false };
+        var thinking = new ActivityItem { Text = L10n.Get("gui.chat.thinking"), Done = false };
         Items.Add(thinking);
         RequestScroll();
         var thinkingRemoved = false;
@@ -926,11 +924,8 @@ public sealed partial class MainViewModel : ObservableObject
             Items.Add(new AssistantItem
             {
                 Text = isAuth
-                    ? "로그인이 만료되었거나 API 키가 유효하지 않아요.\n" +
-                      "좌측 하단 설정(톱니)에서 로그아웃한 뒤 다시 로그인해 주세요."
-                    : "처리 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.\n" +
-                      "계속되면 좌측 하단 설정에서 모델을 바꾸거나 관리자에게 문의하세요.\n" +
-                      $"자세한 내용은 오류 로그에 기록됐어요: {logPath}",
+                    ? L10n.Get("gui.chat.errAuth")
+                    : L10n.Get("gui.chat.errGenericFmt", logPath),
             });
         }
         finally
@@ -1006,7 +1001,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         References.Add(new ReferenceItem
         {
-            DisplayName = r.WholeDoc ? r.Title + " (원문)" : r.Title,
+            DisplayName = r.WholeDoc ? L10n.Get("gui.ref.wholeFmt", r.Title) : r.Title,
             Source = "org",
             Text = r.Text,
             Path = r.DocumentId,
@@ -1049,7 +1044,7 @@ public sealed partial class MainViewModel : ObservableObject
         foreach (var r in References)
         {
             var body = r.Text.Length > PerRefCharCap ? r.Text[..PerRefCharCap] + "\n…(이하 생략)" : r.Text;
-            var src = r.Source == "org" ? "조직 문서함" : "로컬 파일";
+            var src = r.Source == "org" ? L10n.Get("gui.ref.srcOrg") : L10n.Get("gui.ref.srcLocal");
             sb.AppendLine($"─── 참조 {i} · {r.DisplayName} ({src}) ───");
             sb.AppendLine(body);
             sb.AppendLine();
