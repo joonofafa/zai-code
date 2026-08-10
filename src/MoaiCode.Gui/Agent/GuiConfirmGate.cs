@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MoaiCode.Core.Messages;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Gui.Agent;
 
@@ -48,31 +49,31 @@ public sealed class GuiConfirmGate : IPermissionGate
                 : null;
 
         // 대상: PowerPoint(slide_index) / Word(para_index) / Excel(cell) / 현재 선택.
-        var target = Num("slide_index") is { } s ? $"슬라이드 {s}"
-            : Num("para_index") is { } p ? $"문단 {p}"
+        var target = Num("slide_index") is { } s ? L10n.Get("gui.confirm.targetSlideFmt", s)
+            : Num("para_index") is { } p ? L10n.Get("gui.confirm.targetParaFmt", p)
             : !string.IsNullOrWhiteSpace(Str("cell")) ? Str("cell")
-            : "현재 선택";
+            : L10n.Get("gui.confirm.targetSelection");
 
         var detail = Str("action") switch
         {
-            "set_text" => "텍스트를 변경",
-            "set_fill" => $"배경/채우기 색을 {ColorLabel(Str("color"))} 로 변경",
-            "set_font" => "글자 서식을 변경",
-            "set_line" => "테두리를 변경",
-            "set_style" => "문단 스타일을 변경",
-            "set_value" => "셀 값을 변경",
-            "set_formula" => "수식을 입력",
-            "insert_paragraph" => "문단을 추가",
-            "delete_paragraph" => "문단을 삭제",
-            "insert_table" => "표를 삽입",
-            "insert_chart" => "차트를 삽입",
-            "add_sheet" => "시트를 추가",
-            _ => "변경",
+            "set_text" => L10n.Get("gui.confirm.detSetText"),
+            "set_fill" => L10n.Get("gui.confirm.detSetFillFmt", ColorLabel(Str("color"))),
+            "set_font" => L10n.Get("gui.confirm.detSetFont"),
+            "set_line" => L10n.Get("gui.confirm.detSetLine"),
+            "set_style" => L10n.Get("gui.confirm.detSetStyle"),
+            "set_value" => L10n.Get("gui.confirm.detSetValue"),
+            "set_formula" => L10n.Get("gui.confirm.detSetFormula"),
+            "insert_paragraph" => L10n.Get("gui.confirm.detInsertPara"),
+            "delete_paragraph" => L10n.Get("gui.confirm.detDeletePara"),
+            "insert_table" => L10n.Get("gui.confirm.detInsertTable"),
+            "insert_chart" => L10n.Get("gui.confirm.detInsertChart"),
+            "add_sheet" => L10n.Get("gui.confirm.detAddSheet"),
+            _ => L10n.Get("gui.confirm.detDefault"),
         };
 
-        return $"열린 문서의 {target} {detail}합니다. 적용할까요?";
+        return L10n.Get("gui.confirm.summaryFmt", target, detail);
     }
 
     private static string ColorLabel(string color) =>
-        string.IsNullOrWhiteSpace(color) ? "지정한 색" : color;
+        string.IsNullOrWhiteSpace(color) ? L10n.Get("gui.confirm.colorDefault") : color;
 }

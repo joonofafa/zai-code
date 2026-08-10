@@ -84,14 +84,14 @@
 
         <!-- 스킬 -->
         <StackPanel Spacing="8">
-          <TextBlock Classes="section" Text="스킬" />
+          <TextBlock Classes="section" Text="{Binding SettingsSkillsText}" />
           <StackPanel Orientation="Horizontal" Spacing="12">
-            <ToggleSwitch IsChecked="{Binding SkillsEnabled}" OnContent="켜짐" OffContent="꺼짐" />
-            <TextBlock Text="사용자·팀 공유 스킬을 에이전트가 사용하도록 허용합니다."
+            <ToggleSwitch IsChecked="{Binding SkillsEnabled}" OnContent="{Binding SettingsSkillsOnText}" OffContent="{Binding SettingsSkillsOffText}" />
+            <TextBlock Text="{Binding SettingsSkillsHintText}"
                        FontSize="12.5" VerticalAlignment="Center"
                        Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" MaxWidth="380" />
           </StackPanel>
-          <TextBlock Text="끄면 이번 세션부터 스킬 기능이 비활성화됩니다."
+          <TextBlock Text="{Binding SettingsSkillsOffHintText}"
                      FontSize="11.5" Foreground="{DynamicResource TextMutedBrush}" />
         </StackPanel>
 

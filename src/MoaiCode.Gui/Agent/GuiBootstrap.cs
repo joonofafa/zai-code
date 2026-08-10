@@ -8,6 +8,7 @@ using MoaiCode.Core.Agent;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Messages;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 using MoaiCode.Mcp.Skills;
 using MoaiCode.Providers;
 using MoaiCode.Tools;
@@ -50,7 +51,7 @@ public static class GuiBootstrap
 
             if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OPENAI_API_KEY")))
             {
-                error = "로그인이 필요합니다. `moai login` 으로 API 키를 저장한 뒤 다시 실행하세요.";
+                error = L10n.Get("gui.boot.loginRequired");
                 return null;
             }
 

@@ -92,6 +92,11 @@ public sealed partial class MainViewModel : ObservableObject
     public string SettingsThemeText => L10n.Get("gui.settings.theme");
     public string SettingsDarkModeText => L10n.Get("gui.settings.darkMode");
     public string SettingsLightModeText => L10n.Get("gui.settings.lightMode");
+    public string SettingsSkillsText => L10n.Get("gui.settings.skills");
+    public string SettingsSkillsOnText => L10n.Get("gui.settings.skillsOn");
+    public string SettingsSkillsOffText => L10n.Get("gui.settings.skillsOff");
+    public string SettingsSkillsHintText => L10n.Get("gui.settings.skillsHint");
+    public string SettingsSkillsOffHintText => L10n.Get("gui.settings.skillsOffHint");
 
     /// <summary>좌패널 상단: 열린 Office 문서(런처 — 클릭 시 활성 대상으로 바인딩).</summary>
     public ObservableCollection<OfficeDoc> OfficeDocs { get; } = new();
@@ -280,6 +285,11 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(SettingsThemeText));
         OnPropertyChanged(nameof(SettingsDarkModeText));
         OnPropertyChanged(nameof(SettingsLightModeText));
+        OnPropertyChanged(nameof(SettingsSkillsText));
+        OnPropertyChanged(nameof(SettingsSkillsOnText));
+        OnPropertyChanged(nameof(SettingsSkillsOffText));
+        OnPropertyChanged(nameof(SettingsSkillsHintText));
+        OnPropertyChanged(nameof(SettingsSkillsOffHintText));
     }
 
     [RelayCommand]
