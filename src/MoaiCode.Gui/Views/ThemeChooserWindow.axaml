@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:l10n="using:MoaiCode.Gui.Localization"
         x:Class="MoaiCode.Gui.Views.ThemeChooserWindow"
         Title="MoAI Desktop"
         Width="640" Height="440" CanResize="False"
@@ -24,7 +25,7 @@
         <TextBlock Text="MoAI Desktop" FontSize="22" FontWeight="SemiBold"
                    Foreground="#F8FAFC" VerticalAlignment="Center" />
       </StackPanel>
-      <TextBlock Text="어떤 화면이 편하세요? 나중에 설정에서 바꿀 수 있어요."
+      <TextBlock Text="{l10n:Loc gui.theme.prompt}"
                  FontSize="13" Foreground="#94A3B8" HorizontalAlignment="Center" />
     </StackPanel>
 
@@ -44,7 +45,7 @@
               </StackPanel>
             </Grid>
           </Border>
-          <TextBlock Text="라이트" FontSize="14" FontWeight="SemiBold" Foreground="#F8FAFC" HorizontalAlignment="Center" />
+          <TextBlock Text="{l10n:Loc gui.theme.light}" FontSize="14" FontWeight="SemiBold" Foreground="#F8FAFC" HorizontalAlignment="Center" />
         </StackPanel>
       </Button>
 
@@ -62,7 +63,7 @@
               </StackPanel>
             </Grid>
           </Border>
-          <TextBlock Text="다크" FontSize="14" FontWeight="SemiBold" Foreground="#F8FAFC" HorizontalAlignment="Center" />
+          <TextBlock Text="{l10n:Loc gui.theme.dark}" FontSize="14" FontWeight="SemiBold" Foreground="#F8FAFC" HorizontalAlignment="Center" />
         </StackPanel>
       </Button>
 

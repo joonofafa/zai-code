@@ -1,9 +1,10 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:MoaiCode.Gui.ViewModels"
+        xmlns:l10n="using:MoaiCode.Gui.Localization"
         x:Class="MoaiCode.Gui.Views.OrgSearchWindow"
         x:DataType="vm:OrgSearchViewModel"
-        Title="조직 문서함 검색" Width="660" Height="580"
+        Title="{l10n:Loc gui.search.orgTitle}" Width="660" Height="580"
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource BgWindowBrush}">
 
@@ -14,12 +15,12 @@
             BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1" Padding="8,6">
       <Grid ColumnDefinitions="*,Auto">
         <TextBox Grid.Column="0" Classes="composer" Margin="10,0,8,0"
-                 Watermark="문서함에서 찾을 내용을 입력하세요" Text="{Binding Query}">
+                 Watermark="{l10n:Loc gui.search.orgWatermark}" Text="{Binding Query}">
           <TextBox.KeyBindings>
             <KeyBinding Gesture="Enter" Command="{Binding SearchCommand}" />
           </TextBox.KeyBindings>
         </TextBox>
-        <Button Grid.Column="1" Classes="accent" Content="검색" Command="{Binding SearchCommand}" />
+        <Button Grid.Column="1" Classes="accent" Content="{l10n:Loc gui.search.search}" Command="{Binding SearchCommand}" />
       </Grid>
     </Border>
 
@@ -59,12 +60,12 @@
 
     <!-- 하단 액션 -->
     <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="0,14,0,0">
-      <CheckBox Grid.Column="0" Content="원문 통째로 가져오기" IsChecked="{Binding WholeDoc}"
+      <CheckBox Grid.Column="0" Content="{l10n:Loc gui.search.wholeDoc}" IsChecked="{Binding WholeDoc}"
                 VerticalAlignment="Center"
-                ToolTip.Tip="체크 시 스니펫이 아니라 선택한 문서의 원문 전체를 첨부합니다" />
+                ToolTip.Tip="{l10n:Loc gui.search.wholeDocTip}" />
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
-        <Button Classes="ghost" Content="닫기" Click="OnCancel" />
-        <Button Classes="accent" Content="첨부" Click="OnAttach" />
+        <Button Classes="ghost" Content="{l10n:Loc gui.common.close}" Click="OnCancel" />
+        <Button Classes="accent" Content="{l10n:Loc gui.search.attach}" Click="OnAttach" />
       </StackPanel>
     </Grid>
   </Grid>

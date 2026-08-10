@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Gui.ViewModels;
 
@@ -41,15 +42,15 @@ public sealed partial class ConfirmItem : ChatItem
     /// <summary>"계속 허용" 선택 시 호출 — 이후 편집을 세션 동안 자동 승인하도록 VM 에 알린다.</summary>
     public System.Action? OnApproveAll { get; init; }
 
-    [RelayCommand] private void Approve() => Decide(true, "적용함");
+    [RelayCommand] private void Approve() => Decide(true, L10n.Get("gui.perm.applied"));
 
-    [RelayCommand] private void Reject() => Decide(false, "취소함");
+    [RelayCommand] private void Reject() => Decide(false, L10n.Get("gui.perm.rejected"));
 
     [RelayCommand]
     private void ApproveAll()
     {
         OnApproveAll?.Invoke();
-        Decide(true, "적용함 · 이후 자동 승인");
+        Decide(true, L10n.Get("gui.perm.appliedAuto"));
     }
 
     private void Decide(bool ok, string label)

@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MoaiCode.Config;
 using MoaiCode.Gui.Agent;
+using MoaiCode.Localization;
 using MoaiCode.Tools.OpenXml;
 
 namespace MoaiCode.Gui.ViewModels;
@@ -23,7 +24,7 @@ public sealed partial class LocalSearchViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(SearchCommand))]
     private bool _busy;
 
-    [ObservableProperty] private string _status = "검색어를 입력하고 Enter.";
+    [ObservableProperty] private string _status = L10n.Get("gui.search.enterHint");
 
     public ObservableCollection<LocalHitVM> Results { get; } = new();
 
@@ -45,12 +46,12 @@ public sealed partial class LocalSearchViewModel : ObservableObject
 
         if (folders.Count == 0)
         {
-            Status = "인덱싱된 로컬 폴더가 없습니다. '로컬 폴더' 탭에서 폴더를 연결하세요.";
+            Status = L10n.Get("gui.search.noLocalFolders");
             return;
         }
 
         Busy = true;
-        Status = "검색 중…";
+        Status = L10n.Get("gui.search.searching");
         Results.Clear();
         GuiBootstrap.EnsureEnvReady();
 
@@ -75,12 +76,12 @@ public sealed partial class LocalSearchViewModel : ObservableObject
             }
 
             Status = Results.Count == 0
-                ? "결과 없음 — 다른 검색어를 시도하거나 폴더가 인덱싱됐는지 확인하세요."
-                : $"{Results.Count}건 · 첨부할 항목을 선택하세요.";
+                ? L10n.Get("gui.search.noResultsLocal")
+                : L10n.Get("gui.search.countFmt", Results.Count);
         }
         catch (Exception ex)
         {
-            Status = "검색 오류: " + ex.Message;
+            Status = L10n.Get("gui.search.errorFmt", ex.Message);
         }
         finally
         {

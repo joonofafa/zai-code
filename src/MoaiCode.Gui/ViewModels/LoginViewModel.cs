@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MoaiCode.Config;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Gui.ViewModels;
 
@@ -76,7 +77,7 @@ public sealed partial class LoginViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(Email) || string.IsNullOrWhiteSpace(Password))
         {
-            Status = "이메일과 비밀번호를 입력하세요.";
+            Status = L10n.Get("gui.login.needCreds");
             return;
         }
 
@@ -98,18 +99,18 @@ public sealed partial class LoginViewModel : ObservableObject
             LoginResult r;
             if (wasMfa)
             {
-                Status = "MFA 확인 중…";
+                Status = L10n.Get("gui.login.mfaChecking");
                 r = await client.LoginMfaAsync(_mfaToken!, MfaCode.Trim(), _cts.Token);
             }
             else
             {
-                Status = "로그인 중…";
+                Status = L10n.Get("gui.login.signingIn");
                 r = await client.LoginAsync(Email.Trim(), Password, _cts.Token);
                 if (r.Status == "mfa_required" && !string.IsNullOrEmpty(r.MfaToken))
                 {
                     _mfaToken = r.MfaToken;
                     MfaRequired = true;
-                    Status = "MFA 코드를 입력하고 다시 로그인하세요.";
+                    Status = L10n.Get("gui.login.mfaRetry");
                     return;
                 }
             }
@@ -121,7 +122,7 @@ public sealed partial class LoginViewModel : ObservableObject
 
             if (r.Status != "ok" || string.IsNullOrEmpty(r.ApiKey))
             {
-                Status = "로그인 실패: " + (r.Error ?? "알 수 없는 오류");
+                Status = L10n.Get("gui.login.failedFmt", r.Error ?? L10n.Get("gui.login.unknownError"));
                 if (!wasMfa)
                 {
                     // 최초 로그인 실패만 초기화. MFA 코드 오류면 코드만 다시 입력하도록 유지.
@@ -151,7 +152,9 @@ public sealed partial class LoginViewModel : ObservableObject
             }
 
             ModelPickStage = true;
-            Status = (string.IsNullOrEmpty(r.Name) ? "" : r.Name + " 님, ") + "사용할 모델을 선택하고 시작하세요.";
+            Status = string.IsNullOrEmpty(r.Name)
+                ? L10n.Get("gui.login.pickModelPrompt")
+                : L10n.Get("gui.login.pickModelPromptNamedFmt", r.Name);
         }
         finally
         {

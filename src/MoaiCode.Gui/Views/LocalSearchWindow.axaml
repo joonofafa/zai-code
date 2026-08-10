@@ -1,9 +1,10 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:MoaiCode.Gui.ViewModels"
+        xmlns:l10n="using:MoaiCode.Gui.Localization"
         x:Class="MoaiCode.Gui.Views.LocalSearchWindow"
         x:DataType="vm:LocalSearchViewModel"
-        Title="내 로컬 폴더 검색" Width="660" Height="580"
+        Title="{l10n:Loc gui.search.localTitle}" Width="660" Height="580"
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource BgWindowBrush}">
 
@@ -14,12 +15,12 @@
             BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1" Padding="8,6">
       <Grid ColumnDefinitions="*,Auto">
         <TextBox Grid.Column="0" Classes="composer" Margin="10,0,8,0"
-                 Watermark="로컬 폴더에서 찾을 내용을 입력하세요" Text="{Binding Query}">
+                 Watermark="{l10n:Loc gui.search.localWatermark}" Text="{Binding Query}">
           <TextBox.KeyBindings>
             <KeyBinding Gesture="Enter" Command="{Binding SearchCommand}" />
           </TextBox.KeyBindings>
         </TextBox>
-        <Button Grid.Column="1" Classes="accent" Content="검색" Command="{Binding SearchCommand}" />
+        <Button Grid.Column="1" Classes="accent" Content="{l10n:Loc gui.search.search}" Command="{Binding SearchCommand}" />
       </Grid>
     </Border>
 
@@ -61,10 +62,10 @@
     <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="0,14,0,0">
       <TextBlock Grid.Column="0" VerticalAlignment="Center" FontSize="11.5"
                  Foreground="{DynamicResource TextMutedBrush}"
-                 Text="선택한 청크가 참조로 첨부됩니다(로컬 전용, 서버 미전송)." />
+                 Text="{l10n:Loc gui.search.localNote}" />
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
-        <Button Classes="ghost" Content="닫기" Click="OnCancel" />
-        <Button Classes="accent" Content="첨부" Click="OnAttach" />
+        <Button Classes="ghost" Content="{l10n:Loc gui.common.close}" Click="OnCancel" />
+        <Button Classes="accent" Content="{l10n:Loc gui.search.attach}" Click="OnAttach" />
       </StackPanel>
     </Grid>
   </Grid>

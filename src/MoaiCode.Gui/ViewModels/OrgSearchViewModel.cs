@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MoaiCode.Gui.Agent;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Gui.ViewModels;
 
@@ -16,7 +17,7 @@ public sealed partial class OrgSearchViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(SearchCommand))]
     private bool _busy;
 
-    [ObservableProperty] private string _status = "검색어를 입력하고 Enter.";
+    [ObservableProperty] private string _status = L10n.Get("gui.search.enterHint");
 
     /// <summary>true 면 스니펫 대신 문서 원문 전체를 첨부.</summary>
     [ObservableProperty] private bool _wholeDoc;
@@ -35,7 +36,7 @@ public sealed partial class OrgSearchViewModel : ObservableObject
         }
 
         Busy = true;
-        Status = "검색 중…";
+        Status = L10n.Get("gui.search.searching");
         Results.Clear();
 
         var (hits, err) = await OrgSearchClient.SearchAsync(q, CancellationToken.None);
@@ -50,7 +51,9 @@ public sealed partial class OrgSearchViewModel : ObservableObject
                 Results.Add(new OrgHitVM(h));
             }
 
-            Status = hits.Count == 0 ? "결과 없음 — 다른 검색어를 시도하세요." : $"{hits.Count}건 · 첨부할 항목을 선택하세요.";
+            Status = hits.Count == 0
+                ? L10n.Get("gui.search.noResultsOrg")
+                : L10n.Get("gui.search.countFmt", hits.Count);
         }
 
         Busy = false;

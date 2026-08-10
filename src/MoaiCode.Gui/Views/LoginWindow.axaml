@@ -1,9 +1,10 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:MoaiCode.Gui.ViewModels"
+        xmlns:l10n="using:MoaiCode.Gui.Localization"
         x:Class="MoaiCode.Gui.Views.LoginWindow"
         x:DataType="vm:LoginViewModel"
-        Title="MoAI Desktop 로그인" Width="420" Height="700"
+        Title="{l10n:Loc gui.login.title}" Width="420" Height="700"
         WindowStartupLocation="CenterScreen" CanResize="False" SizeToContent="Manual"
         FontFamily="avares://Avalonia.Fonts.Inter/Assets#Inter"
         Background="{DynamicResource BgWindowBrush}">
@@ -42,35 +43,35 @@
                HorizontalAlignment="Center" />
         <TextBlock Text="MoAI Desktop" FontWeight="SemiBold" FontSize="19"
                    HorizontalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
-        <TextBlock Text="로그인하고 시작하세요" FontSize="12.5"
+        <TextBlock Text="{l10n:Loc gui.login.subtitle}" FontSize="12.5"
                    HorizontalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" />
       </StackPanel>
 
       <!-- 로그인 단계 -->
       <StackPanel Spacing="14" IsVisible="{Binding !ModelPickStage}">
-        <TextBox Watermark="이메일" Text="{Binding Email}" />
-        <TextBox Watermark="비밀번호" Text="{Binding Password}" PasswordChar="●">
+        <TextBox Watermark="{l10n:Loc gui.login.email}" Text="{Binding Email}" />
+        <TextBox Watermark="{l10n:Loc gui.login.password}" Text="{Binding Password}" PasswordChar="●">
           <TextBox.KeyBindings>
             <KeyBinding Gesture="Enter" Command="{Binding LoginCommand}" />
           </TextBox.KeyBindings>
         </TextBox>
-        <TextBox Watermark="MFA 코드" Text="{Binding MfaCode}" IsVisible="{Binding MfaRequired}">
+        <TextBox Watermark="{l10n:Loc gui.login.mfa}" Text="{Binding MfaCode}" IsVisible="{Binding MfaRequired}">
           <TextBox.KeyBindings>
             <KeyBinding Gesture="Enter" Command="{Binding LoginCommand}" />
           </TextBox.KeyBindings>
         </TextBox>
-        <Button Classes="accent" Content="로그인" HorizontalAlignment="Stretch" Height="46"
+        <Button Classes="accent" Content="{l10n:Loc gui.login.signIn}" HorizontalAlignment="Stretch" Height="46"
                 CornerRadius="12" FontSize="14.5" Command="{Binding LoginCommand}"
                 IsEnabled="{Binding !Busy}" />
       </StackPanel>
 
       <!-- 모델 선택 단계 -->
       <StackPanel Spacing="10" IsVisible="{Binding ModelPickStage}">
-        <TextBlock Text="사용할 모델" FontSize="12.5" FontWeight="SemiBold"
+        <TextBlock Text="{l10n:Loc gui.login.pickModel}" FontSize="12.5" FontWeight="SemiBold"
                    Foreground="{DynamicResource TextSecondaryBrush}" />
         <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}"
                   HorizontalAlignment="Stretch" />
-        <Button Classes="accent" Content="시작" HorizontalAlignment="Stretch" Height="46"
+        <Button Classes="accent" Content="{l10n:Loc gui.login.start}" HorizontalAlignment="Stretch" Height="46"
                 CornerRadius="12" FontSize="14.5" Command="{Binding StartCommand}" />
       </StackPanel>
 
@@ -79,16 +80,16 @@
                  Foreground="{DynamicResource TextSecondaryBrush}" />
 
       <!-- 사내 프록시 설정 (로그인 단계에서만 · 로그인 아래 · 동일 폭 · 접이식) -->
-      <Expander Header="사내 프록시 설정 (필요 시)" IsExpanded="{Binding ProxyExpanded}"
+      <Expander Header="{l10n:Loc gui.login.proxyHeader}" IsExpanded="{Binding ProxyExpanded}"
                 IsVisible="{Binding !ModelPickStage}"
                 HorizontalAlignment="Stretch" CornerRadius="12" Margin="0,2,0,0">
         <StackPanel Spacing="10" Margin="2,10,2,4">
-          <TextBlock Text="사내 프록시 뒤에서 접속하는 경우 입력하세요. 로그인 전에 적용됩니다."
+          <TextBlock Text="{l10n:Loc gui.login.proxyHint}"
                      FontSize="11.5" TextWrapping="Wrap"
                      Foreground="{DynamicResource TextMutedBrush}" />
-          <TextBox Watermark="프록시 URL (예: http://proxy.corp:8080)" Text="{Binding ProxyUrl}" />
-          <TextBox Watermark="프록시 사용자 (선택)" Text="{Binding ProxyUser}" />
-          <TextBox Watermark="프록시 비밀번호 (선택)" Text="{Binding ProxyPassword}" PasswordChar="●" />
+          <TextBox Watermark="{l10n:Loc gui.login.proxyUrl}" Text="{Binding ProxyUrl}" />
+          <TextBox Watermark="{l10n:Loc gui.login.proxyUser}" Text="{Binding ProxyUser}" />
+          <TextBox Watermark="{l10n:Loc gui.login.proxyPassword}" Text="{Binding ProxyPassword}" PasswordChar="●" />
         </StackPanel>
       </Expander>
     </StackPanel>

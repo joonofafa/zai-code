@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using MoaiCode.Localization;
 using MoaiCode.Tools.OpenXml;
 
 namespace MoaiCode.Gui.Agent;
@@ -51,13 +52,13 @@ public static class OrgSearchClient
             if (!resp.IsSuccessStatusCode)
             {
                 var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-                return (Array.Empty<OrgHit>(), $"검색 실패 HTTP {(int)resp.StatusCode}: {body.Trim()}");
+                return (Array.Empty<OrgHit>(), L10n.Get("gui.org.errSearchHttpFmt", (int)resp.StatusCode, body.Trim()));
             }
 
             var data = await resp.Content.ReadFromJsonAsync<SearchResp>(cancellationToken: ct).ConfigureAwait(false);
             var hits = (data?.Results ?? new List<Hit>())
                 .Select(r => new OrgHit(
-                    string.IsNullOrWhiteSpace(r.Title) ? "(제목 없음)" : r.Title!,
+                    string.IsNullOrWhiteSpace(r.Title) ? L10n.Get("gui.org.noTitle") : r.Title!,
                     r.Snippet ?? string.Empty,
                     r.DocumentId.ValueKind == JsonValueKind.Undefined ? string.Empty : r.DocumentId.ToString(),
                     r.Score ?? 0))
@@ -67,7 +68,7 @@ public static class OrgSearchClient
         }
         catch (Exception ex)
         {
-            return (Array.Empty<OrgHit>(), "검색 오류: " + ex.Message);
+            return (Array.Empty<OrgHit>(), L10n.Get("gui.org.errSearchFmt", ex.Message));
         }
     }
 
@@ -98,7 +99,7 @@ public static class OrgSearchClient
             if (!resp.IsSuccessStatusCode)
             {
                 var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-                return (null, $"다운로드 실패 HTTP {(int)resp.StatusCode}: {body.Trim()}");
+                return (null, L10n.Get("gui.org.errDownloadHttpFmt", (int)resp.StatusCode, body.Trim()));
             }
 
             var fileName = resp.Content.Headers.ContentDisposition?.FileNameStar
@@ -106,7 +107,7 @@ public static class OrgSearchClient
                            ?? "doc.bin";
             if (!DocumentTextExtractor.IsSupported(fileName))
             {
-                return (null, $"지원하지 않는 형식: {Path.GetExtension(fileName)}");
+                return (null, L10n.Get("gui.org.errUnsupportedFmt", Path.GetExtension(fileName)));
             }
 
             var bytes = await resp.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
@@ -115,7 +116,7 @@ public static class OrgSearchClient
         }
         catch (Exception ex)
         {
-            return (null, "다운로드 오류: " + ex.Message);
+            return (null, L10n.Get("gui.org.errDownloadFmt", ex.Message));
         }
 
         try
@@ -124,7 +125,7 @@ public static class OrgSearchClient
         }
         catch (Exception ex)
         {
-            return (null, "텍스트 추출 실패: " + ex.Message);
+            return (null, L10n.Get("gui.org.errExtractFmt", ex.Message));
         }
         finally
         {
@@ -144,7 +145,7 @@ public static class OrgSearchClient
         var baseUrl = Environment.GetEnvironmentVariable("OPENAI_BASE_URL");
         var key = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
         return string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(key)
-            ? (null, null, "로그인이 필요합니다. `moai login` 후 이용하세요.")
+            ? (null, null, L10n.Get("gui.org.errLogin"))
             : (baseUrl, key, null);
     }
 
@@ -163,11 +164,11 @@ public static class OrgSearchClient
         {
             var orgs = await client.GetFromJsonAsync<OrgListResp>(b + "/organizations", ct).ConfigureAwait(false);
             var id = (orgs?.Items ?? orgs?.Organizations)?.FirstOrDefault()?.Id;
-            return string.IsNullOrEmpty(id) ? (null, "소속 조직을 찾지 못했습니다.") : (id, null);
+            return string.IsNullOrEmpty(id) ? (null, L10n.Get("gui.org.errNoOrg")) : (id, null);
         }
         catch (Exception ex)
         {
-            return (null, "조직 조회 실패: " + ex.Message);
+            return (null, L10n.Get("gui.org.errOrgLookupFmt", ex.Message));
         }
     }
 
