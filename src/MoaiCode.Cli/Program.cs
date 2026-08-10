@@ -20,27 +20,49 @@ ProxyConfig.Apply(Directory.GetCurrentDirectory());
 
 var root = new RootCommand(L10n.Get("app.description"));
 
-// run: 1회 프롬프트 헤드리스 실행
-var promptArg = new Argument<string>("prompt") { Description = L10n.Get("cli.prompt.description") };
-var modelOpt = new Option<string?>("--model", "-m") { Description = L10n.Get("cli.model.description") };
-var runCmd = new Command("run", L10n.Get("cli.run.description"));
-runCmd.Arguments.Add(promptArg);
-runCmd.Options.Add(modelOpt);
-runCmd.SetAction(async (ParseResult pr, CancellationToken ct) =>
+// 헤드리스 1회 실행 공용 로직 (run 서브커맨드 / 루트의 -p 플래그가 공유).
+static async Task<int> RunHeadlessAsync(string prompt, string? model, string outputFormat, CancellationToken ct)
 {
-    var prompt = pr.GetValue(promptArg) ?? "";
-    var m = pr.GetValue(modelOpt);
-    if (!string.IsNullOrEmpty(m))
+    if (!string.IsNullOrEmpty(model))
     {
-        Environment.SetEnvironmentVariable("MOAI_MODEL", m);
+        Environment.SetEnvironmentVariable("MOAI_MODEL", model);
     }
 
     var rt = await AppBootstrap.BuildAsync(interactive: false, verbose: false, ct);
     await using var _ = rt.Mcp;
     rt.Ctx.State.LastUserRequest = prompt;   // 위험 판정 분류기용 원문 요청
-    return await HeadlessRunner.RunAsync(rt.Ctx.Engine, prompt, ct);
-});
+    return await HeadlessRunner.RunAsync(rt.Ctx.Engine, prompt, ct, outputFormat);
+}
+
+// run: 1회 프롬프트 헤드리스 실행
+var promptArg = new Argument<string>("prompt") { Description = L10n.Get("cli.prompt.description") };
+var modelOpt = new Option<string?>("--model", "-m") { Description = L10n.Get("cli.model.description") };
+var outputFormatOpt = new Option<string>("--output-format")
+{
+    Description = "Output format: text (default) or json",
+    DefaultValueFactory = _ => "text",
+};
+outputFormatOpt.AcceptOnlyFromAmong("text", "json");
+var runCmd = new Command("run", L10n.Get("cli.run.description"));
+runCmd.Arguments.Add(promptArg);
+runCmd.Options.Add(modelOpt);
+runCmd.Options.Add(outputFormatOpt);
+runCmd.SetAction(async (ParseResult pr, CancellationToken ct) =>
+    await RunHeadlessAsync(pr.GetValue(promptArg) ?? "", pr.GetValue(modelOpt), pr.GetValue(outputFormatOpt) ?? "text", ct));
 root.Subcommands.Add(runCmd);
+
+// 루트 레벨 -p/--print: `moai -p "프롬프트"` = 헤드리스 1회 실행(claude -p 패리티).
+var printOpt = new Option<string?>("--print", "-p") { Description = L10n.Get("cli.prompt.description") };
+var rootModelOpt = new Option<string?>("--model", "-m") { Description = L10n.Get("cli.model.description") };
+var rootOutputFormatOpt = new Option<string>("--output-format")
+{
+    Description = "Output format: text (default) or json",
+    DefaultValueFactory = _ => "text",
+};
+rootOutputFormatOpt.AcceptOnlyFromAmong("text", "json");
+root.Options.Add(printOpt);
+root.Options.Add(rootModelOpt);
+root.Options.Add(rootOutputFormatOpt);
 
 // tools: 사용 가능한 툴 목록
 var toolsCmd = new Command("tools", L10n.Get("cli.tools.description"));
@@ -206,9 +228,15 @@ languageCmd.SetAction((ParseResult pr, CancellationToken ct) =>
 });
 root.Subcommands.Add(languageCmd);
 
-// 기본 동작(서브커맨드 없음): 대화형 REPL
+// 기본 동작: -p/--print 가 있으면 헤드리스 1회 실행, 없으면 대화형 REPL.
 root.SetAction(async (ParseResult pr, CancellationToken ct) =>
 {
+    var printPrompt = pr.GetValue(printOpt);
+    if (!string.IsNullOrEmpty(printPrompt))
+    {
+        return await RunHeadlessAsync(printPrompt, pr.GetValue(rootModelOpt), pr.GetValue(rootOutputFormatOpt) ?? "text", ct);
+    }
+
     var interactive = !Console.IsInputRedirected;
 
     // 첫 실행/미인증 시 자동 로그인 (엔터프라이즈: 열면 바로 로그인 화면)
