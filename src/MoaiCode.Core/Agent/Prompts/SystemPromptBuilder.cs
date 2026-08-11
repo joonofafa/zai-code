@@ -181,6 +181,11 @@ public static class SystemPromptBuilder
             lines.Add(" - For tasks with 3+ steps or multiple requirements, plan with TaskCreate, then drive each via TaskUpdate (exactly one in_progress at a time; mark completed immediately when truly done — never batch, never mark unfinished work done). This keeps you anchored to the request. When all tasks are done, the request is done — stop.");
         }
 
+        if (has.Contains("PlanCreate"))
+        {
+            lines.Add(" - For larger multi-stage work (a build/migration with distinct stages, or after investigating in plan mode), use PlanCreate to lay out ordered PHASES up front — each phase a titled group of concrete tasks, ordered by dependency (e.g. setup → core → verification). Then execute phase by phase: finish EVERY task in the current phase (via TaskUpdate) before moving to the next. When a phase completes, its context is automatically compacted and durable facts saved to memory — call TaskList after each phase to re-anchor on the next phase's tasks. Prefer PlanCreate over flat TaskCreate when the work has natural sequential stages.");
+        }
+
         lines.Add(" - You can call multiple tools in a single response. If there are no dependencies between the calls, make all independent calls in parallel. If a call depends on a previous one, call them sequentially.");
         lines.Add(" - If you intend to use a tool to accomplish a task or analyze a file, use the tool IMMEDIATELY. Do not output a message explaining what you are going to do and then stop to wait for the user — always call the tool in the same response.");
         return string.Join("\n", lines);

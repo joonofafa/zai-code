@@ -22,6 +22,102 @@ internal static class TaskJson
     };
 }
 
+/// <summary>페이즈 트리 평문 렌더(툴 출력·TUI 공용). 마크업 없는 순수 텍스트.</summary>
+public static class PlanRender
+{
+    public static string PlainTree(IReadOnlyList<PhaseView> phases)
+    {
+        var sb = new StringBuilder();
+        foreach (var ph in phases)
+        {
+            var mark = ph.Status switch
+            {
+                PhaseStatus.Done => "[x]",
+                PhaseStatus.Active => "[>]",
+                _ => "[ ]",
+            };
+            sb.AppendLine($"{mark} Phase {ph.Number}: {ph.Title}");
+            foreach (var t in ph.Tasks)
+            {
+                var tm = t.Status switch
+                {
+                    TaskStatus.Completed => "  x",
+                    TaskStatus.InProgress => "  >",
+                    _ => "  -",
+                };
+                sb.AppendLine($"{tm} #{t.Id} {t.Subject}");
+            }
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+}
+
+/// <summary>목표를 순차 페이즈(Phase)로 분해해 실행 계획을 세운다. 기존 태스크/플랜을 교체한다.</summary>
+public sealed class PlanCreateTool(TaskStore store) : ITool
+{
+    public string Name => "PlanCreate";
+
+    public string Description => """
+        Lay out a phased execution plan: decompose the goal into ordered phases, each with concrete tasks.
+        Phases run sequentially (Phase 1 → 2 → …); complete every task in a phase before the next begins.
+        Calling this REPLACES any existing plan/tasks.
+
+        When to use:
+        - Multi-step build/migration work that benefits from staged execution (setup → core → verification, etc.).
+        - After investigating in plan mode: emit the plan here, then execute phase by phase.
+
+        Make each task a concrete, verifiable outcome. Keep phases minimal and ordered by dependency.
+        Input: { "phases": [ { "title": "...", "tasks": ["...", "..."] }, ... ] }
+        """;
+    public bool IsReadOnly => true; // 세션 인메모리 상태만 변경 (권한 게이트 우회)
+    public bool IsConcurrencySafe => true;
+
+    public JsonElement InputSchema { get; } = TaskJson.Parse(
+        """
+        {"type":"object","properties":{"phases":{"type":"array","items":{"type":"object",
+        "properties":{"title":{"type":"string"},"tasks":{"type":"array","items":{"type":"string"}}},
+        "required":["title","tasks"]}}},"required":["phases"]}
+        """);
+
+    private sealed record PhaseInput(
+        [property: JsonPropertyName("title")] string? Title,
+        [property: JsonPropertyName("tasks")] List<string>? Tasks);
+
+    private sealed record Input([property: JsonPropertyName("phases")] List<PhaseInput>? Phases);
+
+    public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
+        JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
+    {
+        await Task.CompletedTask;
+        var inp = input.Deserialize<Input>();
+        if (inp?.Phases is null || inp.Phases.Count == 0)
+        {
+            yield return new ToolOutput("PlanCreate: 'phases' (non-empty) is required", IsError: true);
+            yield break;
+        }
+
+        var phases = new List<(string, IReadOnlyList<string>)>();
+        foreach (var p in inp.Phases)
+        {
+            var title = string.IsNullOrWhiteSpace(p.Title) ? $"Phase {phases.Count + 1}" : p.Title!;
+            var tasks = (p.Tasks ?? new List<string>())
+                .Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
+            if (tasks.Count == 0)
+            {
+                yield return new ToolOutput($"PlanCreate: phase '{title}' has no tasks", IsError: true);
+                yield break;
+            }
+
+            phases.Add((title, tasks));
+        }
+
+        store.SetPlan(phases);
+        var tree = PlanRender.PlainTree(store.Phases());
+        yield return new ToolOutput($"plan created ({phases.Count} phases):\n{tree}");
+    }
+}
+
 /// <summary>태스크 생성.</summary>
 public sealed class TaskCreateTool(TaskStore store) : ITool
 {
@@ -85,6 +181,16 @@ public sealed class TaskListTool(TaskStore store) : ITool
         if (all.Count == 0)
         {
             yield return new ToolOutput("(no tasks)");
+            yield break;
+        }
+
+        // 페이즈드 플랜이 있으면 트리로, 아니면 평면 목록으로.
+        var phases = store.Phases();
+        if (phases.Count > 0)
+        {
+            var cur = store.CurrentPhase();
+            var head = cur is null ? "all phases complete" : $"current: Phase {cur}";
+            yield return new ToolOutput($"{head}\n{PlanRender.PlainTree(phases)}");
             yield break;
         }
 

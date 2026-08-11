@@ -284,6 +284,18 @@ internal sealed class McpCommand : ISlashCommand
                 : L10n.Get("slash.mcp.list", string.Join(", ", ctx.McpServers))));
 }
 
+// /plan: 현재 실행 계획(Phase 트리)을 표시.
+internal sealed class PlanCommand : ISlashCommand
+{
+    public string Name => "plan";
+    public string Description => "현재 실행 계획(Phase 진행 트리) 표시";
+    public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
+    {
+        var tree = ctx.PlanTree?.Invoke();
+        return Task.FromResult(new SlashResult(string.IsNullOrWhiteSpace(tree) ? "(활성 플랜 없음)" : tree));
+    }
+}
+
 internal sealed class CostCommand : ISlashCommand
 {
     public string Name => "cost";

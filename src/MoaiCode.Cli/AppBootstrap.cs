@@ -145,6 +145,7 @@ public static class AppBootstrap
         // AgentTool 은 게이트가 만들어진 뒤(아래 5)에 생성한다 — 하위 에이전트가 부모 게이트를 쓰도록(SEC-004).
         var subTools = new List<ITool>(toolList);
         var taskStore = new TaskStore();
+        toolList.Add(new PlanCreateTool(taskStore));
         toolList.Add(new TaskCreateTool(taskStore));
         toolList.Add(new TaskListTool(taskStore));
         toolList.Add(new TaskUpdateTool(taskStore));
@@ -204,7 +205,8 @@ public static class AppBootstrap
             pendingTasks: () => taskStore.All().Any(t => t.Status != MoaiCode.Tools.Tasks.TaskStatus.Completed),
             maxToolResultChars: maxToolResultChars,
             harvestMemories: true,
-            log: MoaiLog.Info);   // 턴/툴/한도 이벤트를 ~/.moai/logs/moai.log 에 기록(진단용).
+            log: MoaiLog.Info,   // 턴/툴/한도 이벤트를 ~/.moai/logs/moai.log 에 기록(진단용).
+            currentPhase: taskStore.CurrentPhase);   // 페이즈 경계에서 하베스트→압축→다음 안내
         var promptCtx = BuildPromptContext(cwd, settings, toolList);
         engine.Seed(new[] { new SystemMessage(SystemPromptBuilder.Build(promptCtx)) });
 
@@ -302,7 +304,8 @@ public static class AppBootstrap
             },
             // /install·/uninstall: Windows 셸 통합(PATH + 탐색기 우클릭 메뉴).
             InstallIntegration: () => WindowsIntegration.Install(L10n.Get("slash.install.menuLabel")),
-            UninstallIntegration: WindowsIntegration.Uninstall);
+            UninstallIntegration: WindowsIntegration.Uninstall,
+            PlanTree: () => MoaiCode.Tools.Tasks.PlanRender.PlainTree(taskStore.Phases()));
 
         return new AppRuntime(
             mcp, ctx, toolList, skills.Select(s => s.Name).ToList(), mcpConfigs, providerDesc, settings);

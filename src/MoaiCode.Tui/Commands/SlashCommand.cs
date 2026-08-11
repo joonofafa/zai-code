@@ -56,7 +56,9 @@ public sealed record SlashContext(
     Func<string>? Logout = null,
     // /install·/uninstall: Windows 셸 통합(PATH + 탐색기 우클릭 메뉴) 설치/제거.
     Func<string>? InstallIntegration = null,
-    Func<string>? UninstallIntegration = null);
+    Func<string>? UninstallIntegration = null,
+    // /plan: 현재 실행 계획(Phase 트리) 평문 렌더를 반환. Cli 가 taskStore 기반으로 주입(Tui→Tools 결합 회피).
+    Func<string>? PlanTree = null);
 
 /// <summary>
 /// 슬래시 명령 실행 결과. Output은 호출측이 렌더, Quit이면 REPL 종료.

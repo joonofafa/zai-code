@@ -794,6 +794,29 @@ public sealed class ReplApp
             return;
         }
 
+        // Plan/Task 트리는 잘리지 않게 전체를 색으로 렌더(진행 상황 가시화).
+        if (x.ToolName is "PlanCreate" or "TaskList")
+        {
+            AnsiConsole.MarkupLine($"{ind}[green]✓ {Markup.Escape(x.ToolName)}[/]");
+            foreach (var raw in (x.Output ?? "").Replace("\r", "").Split('\n'))
+            {
+                var line = raw.TrimEnd();
+                if (line.Length == 0)
+                {
+                    continue;
+                }
+
+                var t = line.TrimStart();
+                var color = t.StartsWith("[x]") || t.StartsWith("x ") ? "green"
+                    : t.StartsWith("[>]") || t.StartsWith("> ") ? "aqua"
+                    : t.StartsWith("[ ]") || t.StartsWith("- ") ? "grey70"
+                    : "grey85";
+                AnsiConsole.MarkupLine($"{ind}{ind}[{color}]{Markup.Escape(line)}[/]");
+            }
+
+            return;
+        }
+
         // 성공 결과는 전체 덤프 대신 요약(라인 수·문자 수 + 첫 줄 미리보기).
         var output = x.Output ?? "";
         var trimmed = output.TrimEnd('\n', '\r');

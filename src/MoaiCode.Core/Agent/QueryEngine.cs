@@ -59,6 +59,12 @@ public sealed class QueryEngine
     // (순환), CLI 가 MoaiLog.Info 를 주입한다. null 이면 no-op.
     private readonly Action<string> _log;
 
+    // 페이즈드 플랜의 현재 진행 페이즈 번호(완료·미사용이면 null). Core 는 Tools.Tasks 를 참조할 수 없어
+    // CLI 가 taskStore.CurrentPhase 를 콜백으로 주입한다. 페이즈가 완료되어 다음으로 넘어가면
+    // (경계) 하베스트 → 압축 → 다음 페이즈 안내를 순서대로 수행한다.
+    private readonly Func<int?>? _currentPhase;
+    private int? _lastSeenPhase;
+
     public QueryEngine(
         IChatModel model,
         IReadOnlyList<ITool> tools,
@@ -71,7 +77,8 @@ public sealed class QueryEngine
         Func<bool>? pendingTasks = null,
         int maxToolResultChars = 16_000,
         bool harvestMemories = false,
-        Action<string>? log = null)
+        Action<string>? log = null,
+        Func<int?>? currentPhase = null)
     {
         _model = model;
         _tools = tools;
@@ -85,6 +92,7 @@ public sealed class QueryEngine
         _maxToolResultChars = maxToolResultChars;
         _harvestMemories = harvestMemories;
         _log = log ?? (_ => { });
+        _currentPhase = currentPhase;
     }
 
     public IReadOnlyList<Message> Messages => _messages;
@@ -167,6 +175,9 @@ public sealed class QueryEngine
 
         // 요청 경계 마커(ASCII만 — 요청 원문은 로그에 넣지 않고 길이만).
         _log($"submit start: requestChars={userInput.Length} maxTurns={_maxTurns}");
+
+        // 페이즈 진행 상태를 이 요청 시작 시점으로 동기화(요청 중 발생하는 페이즈 전환만 경계로 감지).
+        _lastSeenPhase = _currentPhase?.Invoke();
 
         var toolContext = new ToolContext(_workingDirectory, PermissionMode.Auto, _reads);
         var failureCounts = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -501,6 +512,35 @@ public sealed class QueryEngine
             {
                 _messages.Add(new UserMessage(turnObservation!));
             }
+
+            // 페이즈 경계: 현재 페이즈가 완료되어 다음(또는 종료)으로 넘어갔으면
+            // 하베스트 → 세션 압축 → 다음 페이즈 안내 순으로 수행(긴 phased 실행의 컨텍스트 폭증 방지).
+            var curPhase = _currentPhase?.Invoke();
+            if (_lastSeenPhase is not null && curPhase != _lastSeenPhase)
+            {
+                _log($"phase boundary: {_lastSeenPhase} -> {(curPhase?.ToString() ?? "done")}");
+                if (_harvestMemories)
+                {
+                    await HarvestMemoriesAsync(ct).ConfigureAwait(false);
+                }
+
+                await CompactCoreAsync(8, ct).ConfigureAwait(false);
+
+                if (curPhase is not null)
+                {
+                    _messages.Add(new UserMessage(Reminders.PhaseAdvanced));
+                    var ga = GoalReminder();
+                    if (ga.Length > 0)
+                    {
+                        _messages.Add(new UserMessage(ga));
+                    }
+
+                    yield return new StreamNotice(
+                        $"Phase {_lastSeenPhase} complete — memory harvested, context compacted. Starting phase {curPhase}.");
+                }
+            }
+
+            _lastSeenPhase = curPhase;
         }
     }
 

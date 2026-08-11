@@ -40,6 +40,7 @@ public sealed class SlashRegistry
             new InstallCommand(),
             new UninstallCommand(),
             new McpCommand(),
+            new PlanCommand(),
             new CostCommand(),
             new UsageCommand(),
             new PermissionsCommand(),

@@ -114,6 +114,15 @@ public static class Reminders
         "why and what remains — do not end silently with work pending.\n" +
         "</system-reminder>";
 
+    // 페이즈 경계: 한 페이즈의 모든 태스크가 완료되어 다음 페이즈로 넘어갈 때 주입.
+    // 직전 페이즈 요약은 이미 압축·하베스트됐으니, 다음 페이즈에 집중하도록 재고정한다.
+    public const string PhaseAdvanced =
+        "<system-reminder>\n" +
+        "The previous phase is complete and its context was compacted (durable facts saved to memory). " +
+        "Call TaskList to see the current phase, then execute ONLY that phase's tasks — mark each in_progress " +
+        "before starting and completed as you finish. Do not jump ahead to later phases.\n" +
+        "</system-reminder>";
+
     // 툴 실패 루프 가드 (query/toolFailureLoopGuard.ts)
     public static string ToolFailureLoop(string tool, int count) =>
         "<system-reminder>\n" +
