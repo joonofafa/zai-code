@@ -26,6 +26,16 @@ public sealed class ReplApp
     private CancellationTokenSource? _activeTurnCts;
     private bool _producedOutputInTurn;   // 이번 턴에 화면에 뭔가 렌더됐는지(빈 응답 감지)
 
+    // 타입어헤드: 턴 처리 중 친 입력을 모아 턴 종료 후 순차 제출. MOAI_TYPEAHEAD=0/false/off 로 끔(기본 on).
+    private readonly TurnInputQueue _turnInput = new();
+    private readonly bool _typeAhead =
+        Environment.GetEnvironmentVariable("MOAI_TYPEAHEAD") is not ("0" or "false" or "off");
+
+    // 턴 동안 하단 1행을 예약해 상시 입력바를 표시(스크롤 영역 사용). _barWanted=이번 턴이 원함, _barActive=영역 설정됨.
+    private bool _barActive;
+    private bool _barWanted;
+    private readonly object _barLock = new();  // 바/스피너 콘솔 쓰기 직렬화(워처 즉시 갱신용)
+
     private readonly List<string> _history = new();
     private readonly bool _useRawEditor;
     private readonly BottomDock? _dock;   // 하단 고정 입력(opt-in: MOAI_BOTTOM_DOCK=1)
@@ -132,48 +142,67 @@ public sealed class ReplApp
                 continue;
             }
 
-            var trimmed = input.Trim();
-            if (trimmed.Length > 0)
+            quit = await ProcessInputAsync(input, ct).ConfigureAwait(false);
+
+            // 타입어헤드: 턴 처리 중 사용자가 친 입력(큐)을 순차로 이어서 제출.
+            while (!quit && _typeAhead && !ct.IsCancellationRequested)
             {
-                AddHistory(trimmed); // 히스토리(↑)에는 접힌 표식 그대로 — 다시 불러도 확장된다.
+                _turnInput.CommitPartial();
+                if (!_turnInput.TryDequeue(out var queued))
+                {
+                    break;
+                }
+
+                AnsiConsole.MarkupLine($"[grey58]↳ queued[/] [green]❯[/] {Markup.Escape(queued)}");
+                quit = await ProcessInputAsync(queued, ct).ConfigureAwait(false);
             }
-
-            // 붙여넣기 표식을 원문으로 되돌린 뒤 모델/세션에 전달한다.
-            var expanded = PasteStore.Expand(trimmed);
-
-            if (expanded.StartsWith('/'))
-            {
-                quit = await HandleCommandAsync(expanded, ct).ConfigureAwait(false);
-                continue;
-            }
-
-            // '!' 접두: 사용자가 직접 친 셸 명령을 모델/권한 게이트를 거치지 않고 바로 실행하고,
-            // 명령+출력을 대화 컨텍스트에 주입해 다음 턴에 모델이 참조할 수 있게 한다.
-            if (expanded.StartsWith('!'))
-            {
-                await RunShellCommandAsync(expanded[1..].Trim(), ct).ConfigureAwait(false);
-                continue;
-            }
-
-            // '?': 키맵/입력 문법 도움말.
-            if (expanded == "?")
-            {
-                ShowKeymap();
-                continue;
-            }
-
-            if (string.IsNullOrWhiteSpace(expanded))
-            {
-                continue;
-            }
-
-            // 위험 판정 분류기가 "이 명령이 사용자가 시킨 일인가"를 보려면 원문 요청이 필요하다.
-            _ctx.State.LastUserRequest = expanded;
-
-            await _ctx.History.AppendAsync(expanded, ct).ConfigureAwait(false);
-            await AttachFileMentionsAsync(expanded, ct).ConfigureAwait(false);
-            await ConsumeTurnAsync(expanded, ct).ConfigureAwait(false);
         }
+    }
+
+    // 한 입력 라인 처리(슬래시/셸/도움말/에이전트 턴). REPL 종료면 true.
+    private async Task<bool> ProcessInputAsync(string input, CancellationToken ct)
+    {
+        var trimmed = input.Trim();
+        if (trimmed.Length > 0)
+        {
+            AddHistory(trimmed); // 히스토리(↑)에는 접힌 표식 그대로 — 다시 불러도 확장된다.
+        }
+
+        // 붙여넣기 표식을 원문으로 되돌린 뒤 모델/세션에 전달한다.
+        var expanded = PasteStore.Expand(trimmed);
+
+        if (expanded.StartsWith('/'))
+        {
+            return await HandleCommandAsync(expanded, ct).ConfigureAwait(false);
+        }
+
+        // '!' 접두: 사용자가 직접 친 셸 명령을 모델/권한 게이트를 거치지 않고 바로 실행하고,
+        // 명령+출력을 대화 컨텍스트에 주입해 다음 턴에 모델이 참조할 수 있게 한다.
+        if (expanded.StartsWith('!'))
+        {
+            await RunShellCommandAsync(expanded[1..].Trim(), ct).ConfigureAwait(false);
+            return false;
+        }
+
+        // '?': 키맵/입력 문법 도움말.
+        if (expanded == "?")
+        {
+            ShowKeymap();
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(expanded))
+        {
+            return false;
+        }
+
+        // 위험 판정 분류기가 "이 명령이 사용자가 시킨 일인가"를 보려면 원문 요청이 필요하다.
+        _ctx.State.LastUserRequest = expanded;
+
+        await _ctx.History.AppendAsync(expanded, ct).ConfigureAwait(false);
+        await AttachFileMentionsAsync(expanded, ct).ConfigureAwait(false);
+        await ConsumeTurnAsync(expanded, ct).ConfigureAwait(false);
+        return false;
     }
 
     private async Task<bool> HandleCommandAsync(string line, CancellationToken ct)
@@ -403,6 +432,10 @@ public sealed class ReplApp
         // 입력 충돌(과거 desync/hang)을 피한다. 키가 실제로 있을 때만(non-blocking) 읽는다.
         using var escStop = StartEscWatcher(turnCts);
 
+        // 상시 하단 입력바 예약(대화형 + 타입어헤드 + 터미널일 때만).
+        _barWanted = _interactive && _typeAhead && !Console.IsOutputRedirected;
+        ActivateBar();
+
         try
         {
             // 툴 호출 블록을 id로 기억해 두었다가, 실행 결과 렌더 시 Edit/Write의 입력으로 diff를 그린다.
@@ -477,6 +510,8 @@ public sealed class ReplApp
         }
         finally
         {
+            DeactivateBar();
+            _barWanted = false;
             _activeTurnCts = null;
         }
 
@@ -602,15 +637,92 @@ public sealed class ReplApp
             // 권한/선택 프롬프트가 입력을 기다리는 동안에는 스피너를 그리지 않는다 (그 줄을 덮어쓰지 않게).
             if (ConsolePrompt.IsPrompting)
             {
+                if (_barActive)
+                {
+                    DeactivateBar();
+                }
+
                 ClearSpinnerLine();
                 continue;
             }
 
+            if (_barWanted && !_barActive)
+            {
+                ActivateBar();
+            }
+
             DrawSpinner(frame++, label, sw.Elapsed.TotalSeconds);
+            DrawBar();
         }
 
         ClearSpinnerLine();
         return await task.ConfigureAwait(false);
+    }
+
+    // ── 상시 하단 입력바 (타입어헤드 표시) ─────────────────────────────────────────
+    private static int BarHeight() { try { var h = Console.WindowHeight; return h < 1 ? 24 : h; } catch { return 24; } }
+    private static int BarWidth() { try { var w = Console.WindowWidth; return w < 1 ? 80 : w; } catch { return 80; } }
+
+    // 하단 1행을 입력바로 예약: 스크롤 영역을 1..h-1 로 설정(출력은 그 위에서 스크롤), 커서를 영역 하단으로.
+    private void ActivateBar()
+    {
+        if (!_barWanted || _barActive)
+        {
+            return;
+        }
+
+        var h = BarHeight();
+        if (h < 3)
+        {
+            return;
+        }
+
+        Console.Write($"[{h};1H\n[1;{h - 1}r[{h - 1};1H[?25l");
+        _barActive = true;
+        DrawBar();
+    }
+
+    // 예약된 하단 행(영역 밖)에 입력바를 그린다. 커서 저장/복원으로 출력 흐름을 방해하지 않는다.
+    private void DrawBar()
+    {
+        if (!_barActive)
+        {
+            return;
+        }
+
+        var h = BarHeight();
+        var w = BarWidth();
+        var line = _typeAhead ? _turnInput.CurrentLine : string.Empty;
+        string body;
+        if (line.Length == 0)
+        {
+            body = $"[38;5;244m입력하면 다음 요청으로 큐잉됩니다[0m";
+        }
+        else
+        {
+            var max = Math.Max(1, w - 5);
+            if (line.Length > max)
+            {
+                line = "\u2026" + line[^(max - 1)..];
+            }
+
+            body = $"[38;5;252m{line}[0m";
+        }
+
+        lock (_barLock) { Console.Write($"7[{h};1H[48;5;236m[2K [38;5;39m\u276f[39m {body}[7m [0m[K[0m8"); }
+    }
+
+    // 스크롤 영역 해제 + 입력바 행 지움. 턴 종료·권한창 표시 전에 호출.
+    private void DeactivateBar()
+    {
+        if (!_barActive)
+        {
+            return;
+        }
+
+        var h = BarHeight();
+        Console.Write($"[r[{h};1H[2K[?25h");
+        _barActive = false;
     }
 
     private void DrawSpinner(int frame, string label, double seconds)
@@ -618,12 +730,12 @@ public sealed class ReplApp
         var spin = SpinnerFrames[frame % SpinnerFrames.Length];
         // 턴 중엔 하단 고정이 해제된 일반 터미널이라 인라인 스피너로 표시.
         // CR + 줄 전체 지우기 + dim 색으로 스피너/라벨/경과초.
-        Console.Write($"\r[2K[38;5;39m{spin} {label} ({seconds:0}s)[0m");
+        lock (_barLock) { Console.Write($"\r[2K[38;5;39m{spin} {label} ({seconds:0}s)[0m"); }
     }
 
     private void ClearSpinnerLine()
     {
-        Console.Write("\r[2K");
+        lock (_barLock) { Console.Write("\r[2K"); }
     }
 
     private async Task<bool> StreamTextRunAsync(IAsyncEnumerator<StreamEvent> e, CancellationToken ct)
@@ -870,7 +982,7 @@ public sealed class ReplApp
 
     // ESC 워처: 턴 동안 백그라운드로 ESC 를 감지해 turnCts 를 취소. IsPrompting(권한/선택 위젯이
     // stdin 점유) 중에는 절대 키를 읽지 않아 입력 충돌을 피한다. non-blocking(KeyAvailable) 폴링.
-    private static IDisposable StartEscWatcher(CancellationTokenSource turnCts)
+    private IDisposable StartEscWatcher(CancellationTokenSource turnCts)
     {
         if (Console.IsInputRedirected)
         {
@@ -890,7 +1002,16 @@ public sealed class ReplApp
                         if (!ConsolePrompt.IsPrompting && Console.KeyAvailable)
                         {
                             var k = Console.ReadKey(intercept: true);
-                            hit = k.Key == ConsoleKey.Escape && !ConsolePrompt.IsPrompting;
+                            if (k.Key == ConsoleKey.Escape)
+                            {
+                                hit = true;
+                            }
+                            else if (_typeAhead)
+                            {
+                                // 타입어헤드: 다른 키는 버리지 않고 큐에 모은다(턴 종료 후 순차 제출).
+                                _turnInput.Feed(k);
+                                DrawBar();   // 키 입력 즉시 하단 바 갱신
+                            }
                         }
                     }
                     catch

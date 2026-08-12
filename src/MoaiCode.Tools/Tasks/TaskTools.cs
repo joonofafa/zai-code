@@ -45,7 +45,8 @@ public static class PlanRender
                     TaskStatus.InProgress => "  >",
                     _ => "  -",
                 };
-                sb.AppendLine($"{tm} #{t.Id} {t.Subject}");
+                var d = t.Difficulty switch { Difficulty.Low => "L", Difficulty.High => "H", _ => "M" };
+                sb.AppendLine($"{tm} #{t.Id} [{d}] {t.Subject}");
             }
         }
 
@@ -68,7 +69,9 @@ public sealed class PlanCreateTool(TaskStore store) : ITool
         - After investigating in plan mode: emit the plan here, then execute phase by phase.
 
         Make each task a concrete, verifiable outcome. Keep phases minimal and ordered by dependency.
-        Input: { "phases": [ { "title": "...", "tasks": ["...", "..."] }, ... ] }
+        A task is either a plain string, or an object {"subject":"...","difficulty":"low|mid|high"} to route it to a
+        cost/speed-appropriate model by coding complexity (default mid). Prefer tagging difficulty on each task.
+        Input: { "phases": [ { "title": "...", "tasks": [ {"subject":"...","difficulty":"low"}, "..." ] }, ... ] }
         """;
     public bool IsReadOnly => true; // 세션 인메모리 상태만 변경 (권한 게이트 우회)
     public bool IsConcurrencySafe => true;
@@ -76,15 +79,44 @@ public sealed class PlanCreateTool(TaskStore store) : ITool
     public JsonElement InputSchema { get; } = TaskJson.Parse(
         """
         {"type":"object","properties":{"phases":{"type":"array","items":{"type":"object",
-        "properties":{"title":{"type":"string"},"tasks":{"type":"array","items":{"type":"string"}}},
+        "properties":{"title":{"type":"string"},"tasks":{"type":"array","items":{"oneOf":[
+        {"type":"string"},
+        {"type":"object","properties":{"subject":{"type":"string"},"difficulty":{"type":"string","enum":["low","mid","high"]}},"required":["subject"]}]}}},
         "required":["title","tasks"]}}},"required":["phases"]}
         """);
 
     private sealed record PhaseInput(
         [property: JsonPropertyName("title")] string? Title,
-        [property: JsonPropertyName("tasks")] List<string>? Tasks);
+        [property: JsonPropertyName("tasks")] List<JsonElement>? Tasks);
 
     private sealed record Input([property: JsonPropertyName("phases")] List<PhaseInput>? Phases);
+
+    // 태스크 원소: 문자열이거나 {subject, difficulty} 객체. (subject, 난이도)로 정규화.
+    private static (string Subject, Difficulty Diff)? ParseTask(JsonElement el)
+    {
+        if (el.ValueKind == JsonValueKind.String)
+        {
+            var s = el.GetString();
+            return string.IsNullOrWhiteSpace(s) ? null : (s!, Difficulty.Mid);
+        }
+
+        if (el.ValueKind == JsonValueKind.Object
+            && el.TryGetProperty("subject", out var sub) && sub.ValueKind == JsonValueKind.String)
+        {
+            var s = sub.GetString();
+            if (string.IsNullOrWhiteSpace(s))
+            {
+                return null;
+            }
+
+            var diff = el.TryGetProperty("difficulty", out var d) && d.ValueKind == JsonValueKind.String
+                ? TaskStore.ParseDifficulty(d.GetString())
+                : Difficulty.Mid;
+            return (s!, diff);
+        }
+
+        return null;
+    }
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -97,19 +129,19 @@ public sealed class PlanCreateTool(TaskStore store) : ITool
             yield break;
         }
 
-        var phases = new List<(string, IReadOnlyList<string>)>();
+        var phases = new List<PhasePlan>();
         foreach (var p in inp.Phases)
         {
             var title = string.IsNullOrWhiteSpace(p.Title) ? $"Phase {phases.Count + 1}" : p.Title!;
-            var tasks = (p.Tasks ?? new List<string>())
-                .Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
+            var tasks = (p.Tasks ?? new List<JsonElement>())
+                .Select(ParseTask).Where(t => t is not null).Select(t => t!.Value).ToList();
             if (tasks.Count == 0)
             {
                 yield return new ToolOutput($"PlanCreate: phase '{title}' has no tasks", IsError: true);
                 yield break;
             }
 
-            phases.Add((title, tasks));
+            phases.Add(new PhasePlan(title, tasks));
         }
 
         store.SetPlan(phases);
@@ -132,15 +164,22 @@ public sealed class TaskCreateTool(TaskStore store) : ITool
         Skip for trivial single-step work.
 
         Make each task a concrete, verifiable outcome (e.g. "Add /api/v1/search endpoint", not "look at code").
+        Set "difficulty" per task (low | mid | high) by coding complexity — this routes each task to a cost/speed-
+        appropriate model (easy tasks to a fast/cheap model, hard tasks to a stronger one). Default is mid.
         After creating tasks, use TaskUpdate to drive them and TaskList to review what's left.
         """;
     public bool IsReadOnly => true; // 세션 인메모리 상태만 변경 (권한 게이트 우회)
     public bool IsConcurrencySafe => true;
 
     public JsonElement InputSchema { get; } = TaskJson.Parse(
-        """{"type":"object","properties":{"subject":{"type":"string"}},"required":["subject"]}""");
+        """
+        {"type":"object","properties":{"subject":{"type":"string"},
+        "difficulty":{"type":"string","enum":["low","mid","high"]}},"required":["subject"]}
+        """);
 
-    private sealed record Input([property: JsonPropertyName("subject")] string? Subject);
+    private sealed record Input(
+        [property: JsonPropertyName("subject")] string? Subject,
+        [property: JsonPropertyName("difficulty")] string? Difficulty);
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -153,8 +192,9 @@ public sealed class TaskCreateTool(TaskStore store) : ITool
             yield break;
         }
 
-        var item = store.Add(inp.Subject);
-        yield return new ToolOutput($"created task #{item.Id}: {item.Subject}");
+        var diff = TaskStore.ParseDifficulty(inp.Difficulty);
+        var item = store.Add(inp.Subject, diff);
+        yield return new ToolOutput($"created task #{item.Id} [{diff}]: {item.Subject}");
     }
 }
 

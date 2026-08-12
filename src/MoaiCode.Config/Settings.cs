@@ -11,6 +11,11 @@ public sealed record Settings
     public PermissionMode Permission { get; init; } = PermissionMode.Ask;
     public string? Provider { get; init; }
     public string? Model { get; init; }
+
+    // 난이도별 모델 라우팅 티어(하/중/상). 미설정 티어는 기본 모델 유지 → 아무 것도 없으면 라우팅 비활성.
+    public string? ModelLow { get; init; }
+    public string? ModelMid { get; init; }
+    public string? ModelHigh { get; init; }
     public string? BaseUrl { get; init; }
 
     /// <summary>사용자 인터페이스 언어(ko|en). 기존 사용자 경험을 유지하기 위해 기본값은 ko.</summary>
@@ -58,7 +63,7 @@ public sealed record Settings
 
     // 다단계 에이전트 작업(문서 검색→요약→생성 등)을 완주하기 충분한 기본값. 검색이 많은 모델은
     // 12로는 툴턴 예산이 모자라 마지막 쓰기 단계 전에 소진된다. MOAI_MAX_TURNS 로 조정 가능.
-    public int MaxTurns { get; init; } = 25;
+    public int MaxTurns { get; init; } = 40;
     public string? OutputStyle { get; init; }
     public string? LintCommand { get; init; }
     public string? TestCommand { get; init; }

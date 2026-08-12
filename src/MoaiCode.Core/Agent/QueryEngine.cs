@@ -78,7 +78,9 @@ public sealed class QueryEngine
         int maxToolResultChars = 16_000,
         bool harvestMemories = false,
         Action<string>? log = null,
-        Func<int?>? currentPhase = null)
+        Func<int?>? currentPhase = null,
+        Action? syncModel = null,
+        Func<bool>? escalateTask = null)
     {
         _model = model;
         _tools = tools;
@@ -93,7 +95,14 @@ public sealed class QueryEngine
         _harvestMemories = harvestMemories;
         _log = log ?? (_ => { });
         _currentPhase = currentPhase;
+        _syncModel = syncModel;
+        _escalateTask = escalateTask;
     }
+
+    // 난이도별 모델 라우팅: 턴 시작 시 현재 in_progress 태스크의 티어로 모델을 맞춘다(CLI 가 taskStore+IModelControl 로 주입).
+    private readonly Action? _syncModel;
+    // 실패 루프 시 현재 태스크를 상위 티어로 승격(하→중→상). 승격됐으면 true → 멈추지 않고 재시도.
+    private readonly Func<bool>? _escalateTask;
 
     public IReadOnlyList<Message> Messages => _messages;
 
@@ -225,6 +234,9 @@ public sealed class QueryEngine
 
             turn++;
             _log($"turn {turn}/{_maxTurns}" + (extensions > 0 ? $" (ext {extensions})" : ""));
+
+            // 난이도별 모델 라우팅: 이번 턴의 모델을 현재 진행 태스크 티어로 맞춘다(설정 없으면 no-op).
+            _syncModel?.Invoke();
 
             // 선제 컴팩션이 실제로 일어났으면, 요약에 묻힌 원래 의도를 다시 고정한다(표류 방지).
             if (await MaybeCompactAsync(ct).ConfigureAwait(false))
@@ -477,6 +489,17 @@ public sealed class QueryEngine
                             _messages.Add(new UserMessage(obs));
                         }
 
+                        // 실패 루프: 먼저 현재 태스크를 상위 모델 티어로 승격하고 재시도한다(설정 시).
+                        // 승격되면 이 sig 의 실패 카운트를 리셋하고 계속 진행(다음 턴에 강한 모델 적용).
+                        // 이미 최상위(High)거나 라우팅 미설정이면 승격 실패 → 기존처럼 멈춘다.
+                        if (_escalateTask?.Invoke() == true)
+                        {
+                            failureCounts[sig] = 0;
+                            _log($"tool failure loop: {call.Name} failed x{n}, escalating model tier and retrying");
+                            _messages.Add(new UserMessage(Reminders.EscalatedModel));
+                            continue;
+                        }
+
                         _log($"tool failure loop: {call.Name} failed x{n}, stopping");
                         var stop = Reminders.ToolFailureLoop(call.Name, n);
                         _messages.Add(new UserMessage(stop));
@@ -528,6 +551,9 @@ public sealed class QueryEngine
 
                 if (curPhase is not null)
                 {
+                    // 다음 페이즈는 새 턴 예산으로 시작한다(멀티페이즈 빌드가 한 요청의 maxTurns 로 중간에
+                    // 끊기지 않게). 페이즈 수는 플랜으로 고정돼 있어 무한정 늘지 않는다.
+                    turn = 0;
                     _messages.Add(new UserMessage(Reminders.PhaseAdvanced));
                     var ga = GoalReminder();
                     if (ga.Length > 0)
@@ -536,7 +562,7 @@ public sealed class QueryEngine
                     }
 
                     yield return new StreamNotice(
-                        $"Phase {_lastSeenPhase} complete — memory harvested, context compacted. Starting phase {curPhase}.");
+                        $"Phase {_lastSeenPhase} complete — memory harvested, context compacted, turn budget reset. Starting phase {curPhase}.");
                 }
             }
 

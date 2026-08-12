@@ -184,6 +184,7 @@ public static class SystemPromptBuilder
         if (has.Contains("PlanCreate"))
         {
             lines.Add(" - For larger multi-stage work (a build/migration with distinct stages, or after investigating in plan mode), use PlanCreate to lay out ordered PHASES up front — each phase a titled group of concrete tasks, ordered by dependency (e.g. setup → core → verification). Then execute phase by phase: finish EVERY task in the current phase (via TaskUpdate) before moving to the next. When a phase completes, its context is automatically compacted and durable facts saved to memory — call TaskList after each phase to re-anchor on the next phase's tasks. Prefer PlanCreate over flat TaskCreate when the work has natural sequential stages.");
+            lines.Add(" - Tag each task's coding difficulty (low | mid | high) when creating it (TaskCreate/PlanCreate). Difficulty routes the task to a cost/speed-appropriate model: trivial edits/boilerplate = low, ordinary feature work = mid, subtle algorithms/cross-file reasoning/tricky debugging = high. Be honest — mis-tagging a hard task as low may waste a retry when it escalates.");
         }
 
         lines.Add(" - You can call multiple tools in a single response. If there are no dependencies between the calls, make all independent calls in parallel. If a call depends on a previous one, call them sequentially.");

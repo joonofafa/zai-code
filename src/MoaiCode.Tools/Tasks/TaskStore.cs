@@ -5,13 +5,19 @@ public enum TaskStatus { Pending, InProgress, Completed }
 /// <summary>페이즈 진행 상태 — Done(전부 완료) / Active(현재 진행 중인 페이즈) / Pending(아직 대기).</summary>
 public enum PhaseStatus { Pending, Active, Done }
 
-public sealed record TaskItem(string Id, string Subject, TaskStatus Status, int Phase = 0);
+/// <summary>코딩 난이도 — 모델 라우팅 티어(하/중/상). 티어별 모델은 CLI 가 env/설정으로 해소.</summary>
+public enum Difficulty { Low, Mid, High }
+
+public sealed record TaskItem(
+    string Id, string Subject, TaskStatus Status, int Phase = 0, Difficulty Difficulty = Difficulty.Mid);
 
 /// <summary>페이즈 단위 뷰(번호·제목·소속 태스크·상태). Phase==0 태스크(평면)는 페이즈에 포함하지 않는다.</summary>
 public sealed record PhaseView(int Number, string Title, IReadOnlyList<TaskItem> Tasks, PhaseStatus Status);
 
-/// <summary>세션 범위 인메모리 태스크 저장소 (TS tasks 레지스트리 대응, 단순화).
-/// 평면 태스크(Phase=0) + 선형 페이즈(Phase>=1)를 함께 지원한다.</summary>
+/// <summary>PlanCreate 입력용 페이즈 정의(제목 + (태스크, 난이도) 목록).</summary>
+public sealed record PhasePlan(string Title, IReadOnlyList<(string Subject, Difficulty Diff)> Tasks);
+
+/// <summary>세션 범위 인메모리 태스크 저장소. 평면 태스크(Phase=0) + 선형 페이즈(Phase>=1) + 난이도 티어를 지원.</summary>
 public sealed class TaskStore
 {
     private readonly object _lock = new();
@@ -19,21 +25,28 @@ public sealed class TaskStore
     private readonly Dictionary<int, string> _phaseTitles = new();
     private int _seq;
 
-    /// <summary>평면 태스크(페이즈 없음) 추가.</summary>
-    public TaskItem Add(string subject) => AddPhased(0, subject);
+    /// <summary>"low/하/easy" → Low, "high/상/hard/complex" → High, 그 외 → Mid.</summary>
+    public static Difficulty ParseDifficulty(string? s) => s?.Trim().ToLowerInvariant() switch
+    {
+        "low" or "하" or "easy" or "l" => Difficulty.Low,
+        "high" or "상" or "hard" or "complex" or "h" => Difficulty.High,
+        _ => Difficulty.Mid,
+    };
 
-    public TaskItem AddPhased(int phase, string subject)
+    public TaskItem Add(string subject, Difficulty diff = Difficulty.Mid) => AddPhased(0, subject, diff);
+
+    public TaskItem AddPhased(int phase, string subject, Difficulty diff = Difficulty.Mid)
     {
         lock (_lock)
         {
-            var item = new TaskItem((++_seq).ToString(), subject, TaskStatus.Pending, phase);
+            var item = new TaskItem((++_seq).ToString(), subject, TaskStatus.Pending, phase, diff);
             _items.Add(item);
             return item;
         }
     }
 
-    /// <summary>플랜 전체 교체: 기존 태스크/페이즈 제거 후 1..N 페이즈드 태스크로 적재.</summary>
-    public void SetPlan(IReadOnlyList<(string Title, IReadOnlyList<string> Tasks)> phases)
+    /// <summary>플랜 전체 교체: 기존 태스크/페이즈 제거 후 1..N 페이즈드 태스크(난이도 포함)로 적재.</summary>
+    public void SetPlan(IReadOnlyList<PhasePlan> phases)
     {
         lock (_lock)
         {
@@ -44,9 +57,9 @@ public sealed class TaskStore
             {
                 var num = p + 1;
                 _phaseTitles[num] = phases[p].Title;
-                foreach (var s in phases[p].Tasks)
+                foreach (var (subject, diff) in phases[p].Tasks)
                 {
-                    _items.Add(new TaskItem((++_seq).ToString(), s, TaskStatus.Pending, num));
+                    _items.Add(new TaskItem((++_seq).ToString(), subject, TaskStatus.Pending, num, diff));
                 }
             }
         }
@@ -72,6 +85,33 @@ public sealed class TaskStore
 
             _items[idx] = _items[idx] with { Status = status };
             return true;
+        }
+    }
+
+    /// <summary>현재 진행(in_progress) 중인 태스크의 난이도. 없거나 여럿이면 첫 in_progress, 아무것도 없으면 null.</summary>
+    public Difficulty? CurrentTaskDifficulty()
+    {
+        lock (_lock)
+        {
+            var t = _items.FirstOrDefault(x => x.Status == TaskStatus.InProgress);
+            return t is null ? null : t.Difficulty;
+        }
+    }
+
+    /// <summary>현재 진행 중인 태스크의 난이도를 한 티어 올린다(Low→Mid→High). 올렸으면 새 난이도, 이미 High/없으면 null.</summary>
+    public Difficulty? EscalateCurrent()
+    {
+        lock (_lock)
+        {
+            var idx = _items.FindIndex(x => x.Status == TaskStatus.InProgress);
+            if (idx < 0 || _items[idx].Difficulty == Difficulty.High)
+            {
+                return null;
+            }
+
+            var next = _items[idx].Difficulty == Difficulty.Low ? Difficulty.Mid : Difficulty.High;
+            _items[idx] = _items[idx] with { Difficulty = next };
+            return next;
         }
     }
 

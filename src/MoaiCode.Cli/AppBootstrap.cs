@@ -199,6 +199,46 @@ public static class AppBootstrap
         // 단일 툴 결과의 컨텍스트 유입 상한(거대 출력 → 잦은 컴팩션 방지). MOAI_MAX_TOOL_RESULT_CHARS 로 조정, 0/음수면 무제한.
         var maxToolResultChars =
             int.TryParse(Environment.GetEnvironmentVariable("MOAI_MAX_TOOL_RESULT_CHARS"), out var mtc) ? mtc : 16_000;
+        // 난이도별 모델 라우팅: 티어 모델은 env(MOAI_MODEL_LOW/MID/HIGH)로 설정. 미설정 티어는 기본 모델 유지
+        // → 아무 것도 설정 안 하면 라우팅 비활성(단일 모델 그대로). 로그로 전환/승격을 남긴다.
+        static string? TierModel(MoaiCode.Tools.Tasks.Difficulty d) => d switch
+        {
+            MoaiCode.Tools.Tasks.Difficulty.Low => Environment.GetEnvironmentVariable("MOAI_MODEL_LOW"),
+            MoaiCode.Tools.Tasks.Difficulty.High => Environment.GetEnvironmentVariable("MOAI_MODEL_HIGH"),
+            _ => Environment.GetEnvironmentVariable("MOAI_MODEL_MID"),
+        };
+        Action syncModel = () =>
+        {
+            if (model is not IModelControl ctl)
+            {
+                return;
+            }
+
+            var d = taskStore.CurrentTaskDifficulty();
+            if (d is null)
+            {
+                return; // 진행 중 태스크 없음 → 현재 모델 유지
+            }
+
+            var target = TierModel(d.Value);
+            if (!string.IsNullOrWhiteSpace(target) && !string.Equals(ctl.CurrentModel, target, StringComparison.Ordinal))
+            {
+                MoaiLog.Info($"model route: task difficulty={d} -> {target} (was {ctl.CurrentModel})");
+                ctl.CurrentModel = target!;
+            }
+        };
+        Func<bool> escalateTask = () =>
+        {
+            var next = taskStore.EscalateCurrent();
+            if (next is null)
+            {
+                return false;
+            }
+
+            MoaiLog.Info($"escalate: current task difficulty -> {next}");
+            return true;
+        };
+
         var engine = new QueryEngine(
             model, toolList, gate, observer, settings.MaxTurns,
             contextWindowTokens: settings.ContextWindowTokens,
@@ -206,7 +246,9 @@ public static class AppBootstrap
             maxToolResultChars: maxToolResultChars,
             harvestMemories: true,
             log: MoaiLog.Info,   // 턴/툴/한도 이벤트를 ~/.moai/logs/moai.log 에 기록(진단용).
-            currentPhase: taskStore.CurrentPhase);   // 페이즈 경계에서 하베스트→압축→다음 안내
+            currentPhase: taskStore.CurrentPhase,   // 페이즈 경계에서 하베스트→압축→다음 안내
+            syncModel: syncModel,       // 턴 시작 시 진행 태스크 난이도 티어로 모델 전환
+            escalateTask: escalateTask);   // 실패 루프 시 상위 티어로 승격 후 재시도
         var promptCtx = BuildPromptContext(cwd, settings, toolList);
         engine.Seed(new[] { new SystemMessage(SystemPromptBuilder.Build(promptCtx)) });
 
@@ -305,7 +347,19 @@ public static class AppBootstrap
             // /install·/uninstall: Windows 셸 통합(PATH + 탐색기 우클릭 메뉴).
             InstallIntegration: () => WindowsIntegration.Install(L10n.Get("slash.install.menuLabel")),
             UninstallIntegration: WindowsIntegration.Uninstall,
-            PlanTree: () => MoaiCode.Tools.Tasks.PlanRender.PlainTree(taskStore.Phases()));
+            PlanTree: () => MoaiCode.Tools.Tasks.PlanRender.PlainTree(taskStore.Phases()),
+            PersistTierModel: (tier, model) =>
+            {
+                var (env, key) = tier switch
+                {
+                    "low" => ("MOAI_MODEL_LOW", "modelLow"),
+                    "high" => ("MOAI_MODEL_HIGH", "modelHigh"),
+                    _ => ("MOAI_MODEL_MID", "modelMid"),
+                };
+                var v = string.IsNullOrWhiteSpace(model) ? null : model;
+                Environment.SetEnvironmentVariable(env, v);                       // 런타임 즉시 반영(syncModel 이 env 를 읽음)
+                SettingsWriter.Set(new Dictionary<string, string?> { [key] = v }); // 다음 실행에도 유지
+            });
 
         return new AppRuntime(
             mcp, ctx, toolList, skills.Select(s => s.Name).ToList(), mcpConfigs, providerDesc, settings);
@@ -441,6 +495,22 @@ public static class AppBootstrap
             && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OPENAI_MODEL")))
         {
             Environment.SetEnvironmentVariable("MOAI_MODEL", s.Model);
+        }
+
+        // 난이도 티어 모델(설정 → env). env 가 이미 있으면 유지(env 우선).
+        if (!string.IsNullOrEmpty(s.ModelLow) && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MOAI_MODEL_LOW")))
+        {
+            Environment.SetEnvironmentVariable("MOAI_MODEL_LOW", s.ModelLow);
+        }
+
+        if (!string.IsNullOrEmpty(s.ModelMid) && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MOAI_MODEL_MID")))
+        {
+            Environment.SetEnvironmentVariable("MOAI_MODEL_MID", s.ModelMid);
+        }
+
+        if (!string.IsNullOrEmpty(s.ModelHigh) && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MOAI_MODEL_HIGH")))
+        {
+            Environment.SetEnvironmentVariable("MOAI_MODEL_HIGH", s.ModelHigh);
         }
 
         if (!string.IsNullOrEmpty(s.BaseUrl)

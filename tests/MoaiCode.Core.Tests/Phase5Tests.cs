@@ -148,10 +148,10 @@ public class SettingsLoaderTests
     }
 
     [Fact]
-    public void Default_max_turns_is_25()
+    public void Default_max_turns_is_40()
     {
-        // 다단계 작업(검색 많은 모델)이 완주하도록 상향. 12는 마지막 쓰기 단계 전에 소진됐다.
-        Assert.Equal(25, Settings.Default.MaxTurns);
+        // 다단계·멀티페이즈 작업이 완주하도록 상향(12→25→40). 페이즈 경계에선 별도로 턴 예산이 리셋된다.
+        Assert.Equal(40, Settings.Default.MaxTurns);
     }
 
     [Fact]
@@ -160,14 +160,14 @@ public class SettingsLoaderTests
         var prev = Environment.GetEnvironmentVariable("MOAI_MAX_TURNS");
         try
         {
-            Environment.SetEnvironmentVariable("MOAI_MAX_TURNS", "40");
-            Assert.Equal(40, SettingsLoader.ApplyEnv(Settings.Default).MaxTurns);
+            Environment.SetEnvironmentVariable("MOAI_MAX_TURNS", "80");
+            Assert.Equal(80, SettingsLoader.ApplyEnv(Settings.Default).MaxTurns);
 
             Environment.SetEnvironmentVariable("MOAI_MAX_TURNS", "0"); // 무효 → 기본 유지
-            Assert.Equal(25, SettingsLoader.ApplyEnv(Settings.Default).MaxTurns);
+            Assert.Equal(40, SettingsLoader.ApplyEnv(Settings.Default).MaxTurns);
 
             Environment.SetEnvironmentVariable("MOAI_MAX_TURNS", "abc"); // 파싱 실패 → 기본 유지
-            Assert.Equal(25, SettingsLoader.ApplyEnv(Settings.Default).MaxTurns);
+            Assert.Equal(40, SettingsLoader.ApplyEnv(Settings.Default).MaxTurns);
         }
         finally
         {

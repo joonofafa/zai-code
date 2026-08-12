@@ -123,6 +123,13 @@ public static class Reminders
         "before starting and completed as you finish. Do not jump ahead to later phases.\n" +
         "</system-reminder>";
 
+    // 실패 루프 후 상위 모델 티어로 승격했을 때 주입 — 더 강한 모델로 같은 문제를 다시 시도하도록.
+    public const string EscalatedModel =
+        "<system-reminder>\n" +
+        "This task hit repeated failures, so it was escalated to a stronger model. Re-examine the failure with " +
+        "fresh reasoning and try a corrected approach — do not blindly repeat the exact call that failed.\n" +
+        "</system-reminder>";
+
     // 툴 실패 루프 가드 (query/toolFailureLoopGuard.ts)
     public static string ToolFailureLoop(string tool, int count) =>
         "<system-reminder>\n" +

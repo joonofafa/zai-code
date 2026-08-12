@@ -101,8 +101,7 @@ public sealed class ModeAwarePermissionGate : IPermissionGate
 
         if (verdict is null)
         {
-            Console.Error.WriteLine(
-                L10n.Get("permission.classifierFailed"));
+            WriteReasonLine(L10n.Get("permission.classifierFailed"));
             return await ConfirmAsync(tool, call, ct).ConfigureAwait(false);
         }
 
@@ -112,13 +111,21 @@ public sealed class ModeAwarePermissionGate : IPermissionGate
                 return true;
 
             case RiskDecision.Deny:
-                Console.Error.WriteLine(L10n.Get("permission.deniedReason", verdict.Reason));
+                WriteReasonLine(L10n.Get("permission.deniedReason", verdict.Reason));
                 return false;
 
             default:
-                Console.Error.WriteLine(L10n.Get("permission.confirmReason", verdict.Reason));
+                WriteReasonLine(L10n.Get("permission.confirmReason", verdict.Reason));
                 return await ConfirmAsync(tool, call, ct).ConfigureAwait(false);
         }
+    }
+
+    // 분류기 사유 메시지 출력. 대화형 터미널에선 진행 스피너(stdout, CR로 라인 유지)가 돌고 있을 수 있어,
+    // 먼저 현재 줄을 지워(CR+EL) 스피너 잔상과 한 줄에 붙는 것을 막는다. 리다이렉트(헤드리스)면 이스케이프 생략.
+    private static void WriteReasonLine(string msg)
+    {
+        var prefix = Console.IsOutputRedirected ? string.Empty : "\r\x1b[2K";
+        Console.Error.WriteLine(prefix + msg);
     }
 
     // 대화형이면 사람에게 묻고, 비대화형(confirmer 없음)이면 거부.

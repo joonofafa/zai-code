@@ -58,7 +58,9 @@ public sealed record SlashContext(
     Func<string>? InstallIntegration = null,
     Func<string>? UninstallIntegration = null,
     // /plan: 현재 실행 계획(Phase 트리) 평문 렌더를 반환. Cli 가 taskStore 기반으로 주입(Tui→Tools 결합 회피).
-    Func<string>? PlanTree = null);
+    Func<string>? PlanTree = null,
+    // /model low|mid|high: 난이도 티어 모델 설정(런타임 env + settings.json 영속). model=null 이면 해제.
+    Action<string, string?>? PersistTierModel = null);
 
 /// <summary>
 /// 슬래시 명령 실행 결과. Output은 호출측이 렌더, Quit이면 REPL 종료.

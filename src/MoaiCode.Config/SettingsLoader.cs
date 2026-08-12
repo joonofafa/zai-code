@@ -77,6 +77,9 @@ public static class SettingsLoader
             return baseline with
             {
                 Model = GetString(root, "model", "model_id") ?? baseline.Model,
+                ModelLow = GetString(root, "modelLow") ?? baseline.ModelLow,
+                ModelMid = GetString(root, "modelMid") ?? baseline.ModelMid,
+                ModelHigh = GetString(root, "modelHigh") ?? baseline.ModelHigh,
                 Provider = allowSensitive ? GetString(root, "provider") ?? baseline.Provider : baseline.Provider,
                 BaseUrl = allowSensitive ? GetString(root, "baseUrl", "base_url") ?? baseline.BaseUrl : baseline.BaseUrl,
                 Language = L10n.NormalizeLanguage(GetString(root, "language", "locale", "uiLanguage", "ui_language"))
@@ -166,10 +169,16 @@ public static class SettingsLoader
         var checkpoints = ParseBool(Environment.GetEnvironmentVariable("MOAI_CHECKPOINTS"));
         var confine = ParseBool(Environment.GetEnvironmentVariable("MOAI_CONFINE_WORKSPACE"));
         var maxTurns = ParseInt(Environment.GetEnvironmentVariable("MOAI_MAX_TURNS"));
+        var modelLow = Environment.GetEnvironmentVariable("MOAI_MODEL_LOW");
+        var modelMid = Environment.GetEnvironmentVariable("MOAI_MODEL_MID");
+        var modelHigh = Environment.GetEnvironmentVariable("MOAI_MODEL_HIGH");
 
         return baseline with
         {
             Model = model ?? baseline.Model,
+            ModelLow = modelLow ?? baseline.ModelLow,
+            ModelMid = modelMid ?? baseline.ModelMid,
+            ModelHigh = modelHigh ?? baseline.ModelHigh,
             BaseUrl = baseUrl ?? baseline.BaseUrl,
             Language = language ?? baseline.Language,
             ReasoningEffort = effort ?? baseline.ReasoningEffort,

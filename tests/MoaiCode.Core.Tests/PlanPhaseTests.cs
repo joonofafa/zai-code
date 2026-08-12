@@ -16,10 +16,10 @@ public class TaskStorePhaseTests
     public void SetPlan_groups_into_ordered_phases_with_status()
     {
         var s = new TaskStore();
-        s.SetPlan(new (string, IReadOnlyList<string>)[]
+        s.SetPlan(new[]
         {
-            ("Setup", new[] { "a", "b" }),
-            ("Core", new[] { "c" }),
+            new PhasePlan("Setup", new (string, Difficulty)[] { ("a", Difficulty.Mid), ("b", Difficulty.Mid) }),
+            new PhasePlan("Core", new (string, Difficulty)[] { ("c", Difficulty.Mid) }),
         });
 
         var phases = s.Phases();
@@ -37,10 +37,10 @@ public class TaskStorePhaseTests
     public void CurrentPhase_advances_only_when_phase_fully_complete()
     {
         var s = new TaskStore();
-        s.SetPlan(new (string, IReadOnlyList<string>)[]
+        s.SetPlan(new[]
         {
-            ("P1", new[] { "a", "b" }),
-            ("P2", new[] { "c" }),
+            new PhasePlan("P1", new (string, Difficulty)[] { ("a", Difficulty.Mid), ("b", Difficulty.Mid) }),
+            new PhasePlan("P2", new (string, Difficulty)[] { ("c", Difficulty.Mid) }),
         });
         var ids = s.All();
 
@@ -58,6 +58,43 @@ public class TaskStorePhaseTests
         // 전부 완료 → null
         s.Update(ids[2].Id, TaskStatus.Completed);
         Assert.Null(s.CurrentPhase());
+    }
+}
+
+public class DifficultyRoutingTests
+{
+    [Fact]
+    public void ParseDifficulty_maps_aliases()
+    {
+        Assert.Equal(Difficulty.Low, TaskStore.ParseDifficulty("low"));
+        Assert.Equal(Difficulty.Low, TaskStore.ParseDifficulty("하"));
+        Assert.Equal(Difficulty.High, TaskStore.ParseDifficulty("high"));
+        Assert.Equal(Difficulty.High, TaskStore.ParseDifficulty("상"));
+        Assert.Equal(Difficulty.Mid, TaskStore.ParseDifficulty(null));
+        Assert.Equal(Difficulty.Mid, TaskStore.ParseDifficulty("weird"));
+    }
+
+    [Fact]
+    public void CurrentTaskDifficulty_reflects_in_progress_task()
+    {
+        var s = new TaskStore();
+        s.Add("easy", Difficulty.Low);
+        var t2 = s.Add("hard", Difficulty.High);
+        Assert.Null(s.CurrentTaskDifficulty());
+        s.Update(t2.Id, TaskStatus.InProgress);
+        Assert.Equal(Difficulty.High, s.CurrentTaskDifficulty());
+    }
+
+    [Fact]
+    public void EscalateCurrent_bumps_one_tier_then_stops_at_high()
+    {
+        var s = new TaskStore();
+        var t = s.Add("x", Difficulty.Low);
+        Assert.Null(s.EscalateCurrent());   // 진행 중 없음
+        s.Update(t.Id, TaskStatus.InProgress);
+        Assert.Equal(Difficulty.Mid, s.EscalateCurrent());
+        Assert.Equal(Difficulty.High, s.EscalateCurrent());
+        Assert.Null(s.EscalateCurrent());   // 이미 최상위
     }
 }
 
