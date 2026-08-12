@@ -15,6 +15,9 @@ public static class SelectList
     // 위젯은 콘솔 입력을 단독·동기 점유하므로 한 번에 하나의 Prompt만 활성 → 필드로 충분.
     private static int _numberWidth = 1;
 
+    // 이번 Prompt 가 제목 줄을 그렸는지(선택 확정 시 위젯 전체를 정확히 지우기 위해 줄 수 계산에 사용).
+    private static bool _titleShown;
+
     /// <summary>선택한 인덱스. 취소/비대화형이면 -1.</summary>
     public static int Prompt(string title, IReadOnlyList<string> items, int defaultIndex = 0, int numberWidth = 1)
     {
@@ -26,13 +29,18 @@ public static class SelectList
         _numberWidth = Math.Max(1, numberWidth);
         var idx = Math.Clamp(defaultIndex, 0, items.Count - 1);
 
+        // 제목·도움말을 각각 '정확히 1 물리줄'로 clip 한다(좁은 창에서 wrap 되면 선택 확정 시
+        // 위젯을 지울 줄 수가 어긋나 중복 잔상이 남던 원인 — 항목과 동일 기준으로 폭 제한).
+        _titleShown = false;
         if (!string.IsNullOrEmpty(title))
         {
-            Console.WriteLine(title);
+            Console.WriteLine(Clip(OneLine(title), SafeWidth() - 1));
+            _titleShown = true;
         }
 
         var more = items.Count > MaxVisible ? L10n.Get("common.select.more", items.Count) : "";
-        Console.WriteLine($"\x1b[38;5;250m{L10n.Get("common.select.help", more)}\x1b[0m");
+        var help = Clip(OneLine(L10n.Get("common.select.help", more)), SafeWidth() - 1);
+        Console.WriteLine($"\x1b[38;5;250m{help}\x1b[0m");
 
         using (ConsolePrompt.Begin())
         {
@@ -77,10 +85,8 @@ public static class SelectList
                             var n = key.KeyChar - '0';
                             if (n <= items.Count)
                             {
-                                // 숫자 선택 시에도 최종 강조를 반영(stale 방지) 후 확정.
-                                idx = n - 1;
-                                Render(items, idx, first: false);
-                                return Finish(items, idx);
+                                // 선택 즉시 위젯을 지우므로 강조 재그리기는 불필요(잔상 유발 요소 제거).
+                                return Finish(items, n - 1);
                             }
                         }
 
@@ -90,9 +96,19 @@ public static class SelectList
         }
     }
 
-    // 선택 확정: 최종 강조 줄 아래에 무엇을 골랐는지 명확히 표시 (재그리기 글리치와 무관하게 분명).
+    // 선택 확정: 위젯(제목+도움말+항목 목록) 전체를 지우고 한 줄 확정 표시만 남긴다.
+    // 강조 상태를 화면에 유지하지 않으므로 리사이즈/줄바꿈으로 인한 중복 잔상이 원천 차단된다.
     private static int Finish(IReadOnlyList<string> items, int idx)
     {
+        if (!Console.IsOutputRedirected)
+        {
+            // 커서는 마지막 항목 바로 아래 줄에 있다. 위젯 시작(제목 또는 도움말 줄)까지 올라가
+            // 화면 끝까지 지운다. 각 줄이 1 물리줄로 보장되므로 줄 수 계산이 정확하다.
+            var visible = Math.Min(items.Count, MaxVisible);
+            var up = visible + 1 + (_titleShown ? 1 : 0); // 항목 + 도움말 1줄 + 제목(있으면) 1줄
+            Console.Write($"\x1b[{up}A\r\x1b[0J");
+        }
+
         Console.WriteLine($"\x1b[36m{L10n.Get("common.select.selected", (idx + 1).ToString().PadLeft(_numberWidth, '0'), items[idx])}\x1b[0m");
         return idx;
     }

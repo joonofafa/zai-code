@@ -42,6 +42,12 @@ internal sealed class TurnInputQueue
         get { lock (_lock) { return _line.ToString(); } }
     }
 
+    /// <summary>확정 대기 중인(큐잉된) 메시지 개수 — 하단 바 (Q:N) 표시용. 미확정 줄은 제외.</summary>
+    public int Count
+    {
+        get { lock (_lock) { return _messages.Count; } }
+    }
+
     /// <summary>미확정 줄이 남아 있으면 확정 큐로 넘긴다(턴 종료 시 호출).</summary>
     public void CommitPartial()
     {

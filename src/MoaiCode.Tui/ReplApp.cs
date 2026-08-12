@@ -153,7 +153,7 @@ public sealed class ReplApp
                     break;
                 }
 
-                AnsiConsole.MarkupLine($"[grey58]↳ queued[/] [green]❯[/] {Markup.Escape(queued)}");
+                AnsiConsole.MarkupLine($"[grey58]↳ Queued[/] [green]❯[/] {Markup.Escape(queued)}");
                 quit = await ProcessInputAsync(queued, ct).ConfigureAwait(false);
             }
         }
@@ -709,7 +709,8 @@ public sealed class ReplApp
             body = $"[38;5;252m{line}[0m";
         }
 
-        lock (_barLock) { Console.Write($"7[{h};1H[48;5;236m[2K [38;5;39m\u276f[39m {body}[7m [0m[K[0m8"); }
+        var qn = _typeAhead ? _turnInput.Count : 0;
+        lock (_barLock) { Console.Write($"7[{h};1H[48;5;236m[2K [38;5;245m(Q:{qn})[38;5;39m\u276f[39m {body}[7m [0m[K[0m8"); }
     }
 
     // 스크롤 영역 해제 + 입력바 행 지움. 턴 종료·권한창 표시 전에 호출.
