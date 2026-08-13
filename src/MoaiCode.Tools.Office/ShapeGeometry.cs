@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.Versioning;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Office;
 
@@ -17,7 +18,7 @@ internal static class ShapeGeometry
 
     /// <summary>flip 값이 유효하지 않으면 사용자용 메시지, 비었거나 유효하면 null.</summary>
     internal static string? ValidateFlip(string? flip) =>
-        TryNormalizeFlip(flip, out _) ? null : "flip 은 horizontal 또는 vertical 이어야 합니다.";
+        TryNormalizeFlip(flip, out _) ? null : L10n.Get("tools.shapeGeometry.invalidFlip");
 
     /// <summary>기하 인자 중 실제로 넣은 게 하나도 없으면 true(적용할 게 없음).</summary>
     internal static bool IsEmpty(

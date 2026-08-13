@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Runtime.Versioning;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Office;
 
@@ -18,13 +19,13 @@ internal static class OfficePicture
     {
         if (string.IsNullOrWhiteSpace(path))
         {
-            throw new InvalidOperationException("insert_picture 에는 path(이미지 파일 경로)가 필요합니다.");
+            throw new InvalidOperationException(L10n.Get("tools.officePicture.pathRequired"));
         }
 
         var full = Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(workingDir, path));
         if (!File.Exists(full))
         {
-            throw new InvalidOperationException($"이미지 파일이 없습니다: {full}");
+            throw new InvalidOperationException(L10n.Get("tools.officePicture.fileNotFound", full));
         }
 
         return full;

@@ -11,5 +11,6 @@
   <ItemGroup>
     <ProjectReference Include="..\MoaiCode.Core\MoaiCode.Core.csproj" />
     <ProjectReference Include="..\MoaiCode.Config\MoaiCode.Config.csproj" />
+    <ProjectReference Include="..\MoaiCode.Localization\MoaiCode.Localization.csproj" />
   </ItemGroup>
 </Project>

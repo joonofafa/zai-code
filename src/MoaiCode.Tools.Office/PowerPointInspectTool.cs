@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using MoaiCode.Config;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Office;
 
@@ -54,7 +55,7 @@ public sealed class PowerPointInspectTool : ITool
     {
         if (!OperatingSystem.IsWindows())
         {
-            yield return new ToolOutput("PowerPointInspect: Windows 전용 기능입니다.", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.pptInspect.windowsOnly"), IsError: true);
             yield break;
         }
 
@@ -78,14 +79,13 @@ public sealed class PowerPointInspectTool : ITool
 
         if (error is not null)
         {
-            yield return new ToolOutput($"PowerPointInspect: 조회 실패 — {error}", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.pptInspect.queryFailed", error), IsError: true);
             yield break;
         }
 
         if (info is null)
         {
-            yield return new ToolOutput(
-                "PowerPointInspect: 실행 중인 PowerPoint 에 열린 프레젠테이션이 없습니다.");
+            yield return new ToolOutput(L10n.Get("tools.pptInspect.noPresentation"));
             yield break;
         }
 

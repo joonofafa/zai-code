@@ -1,4 +1,5 @@
 using System.Globalization;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Office;
 
@@ -37,6 +38,6 @@ internal static class OfficeColor
         }
 
         throw new System.InvalidOperationException(
-            $"색을 해석할 수 없습니다: '{color}'. '#RRGGBB' 형식이나 기본 색 이름(red, blue, ...)을 쓰세요.");
+            L10n.Get("tools.officeColor.unparsable", color));
     }
 }

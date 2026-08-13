@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using MoaiCode.Config;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Office;
 
@@ -57,7 +58,7 @@ public sealed class PowerPointEditTool : ITool
           - delete_shape: delete the target shape (by slide_index+shape_id/shape_name, or current selection).
           - insert_table: add a table to slide_index (or the current slide) and fill it. Provide "cells" (rows
             of cell strings); size is inferred and the first row is bolded as a header. Optional
-            "left"/"top"/"width"/"height" in points. Prefer this over set_text when the user wants content "표로".
+            "left"/"top"/"width"/"height" in points. Prefer this over set_text when the user wants content as a table.
             Optional "font_size" (cell font), "header_fill" (header row background), "header_color" (header text),
             "border_color" (table border line color).
           - set_cell: edit an existing table cell. Target the table shape by slide_index+shape_id (from
@@ -73,7 +74,7 @@ public sealed class PowerPointEditTool : ITool
             if not running) so you can then build it with add_slide/set_text/etc. Use this when none is open.
           - apply_template: apply a design template's THEME (color scheme, fonts, slide master & layouts) from
             a .pptx or .potx file ("path") to the WHOLE active presentation. This is the deterministic way to
-            "apply the attached deck's theme / 첨부 pptx 테마 적용" — do NOT web-search or hand-recolor shapes;
+            "apply the attached deck's theme" — do NOT web-search or hand-recolor shapes;
             just open/select the target deck and call apply_template with the attached file's path.
         Target the shape by shape_id (from PowerPointInspect) on slide_index; shape_name is a fallback.
         If no shape target is given, the action applies to the CURRENTLY SELECTED shape(s).
@@ -169,7 +170,7 @@ public sealed class PowerPointEditTool : ITool
     {
         if (!OperatingSystem.IsWindows())
         {
-            yield return new ToolOutput("PowerPointEdit: Windows 전용 기능입니다.", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.pptEdit.windowsOnly"), IsError: true);
             yield break;
         }
 
@@ -196,7 +197,7 @@ public sealed class PowerPointEditTool : ITool
 
         if (error is not null)
         {
-            yield return new ToolOutput($"PowerPointEdit: 실패 — {error}", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.pptEdit.failed", error), IsError: true);
             yield break;
         }
 
@@ -209,49 +210,49 @@ public sealed class PowerPointEditTool : ITool
         if (inp is null || string.IsNullOrWhiteSpace(inp.Action)
             || !Actions.Contains(inp.Action, StringComparer.Ordinal))
         {
-            return "action 은 set_text|set_fill|set_font|set_line 중 하나여야 합니다.";
+            return L10n.Get("tools.pptEdit.invalidAction");
         }
 
         // 도형 지정(shape_id/shape_name) 시엔 slide_index 도 필요. 둘 다 없으면 현재 선택을 대상.
         var hasShapeRef = inp.ShapeId is not null || !string.IsNullOrWhiteSpace(inp.ShapeName);
         if (hasShapeRef && inp.SlideIndex is null)
         {
-            return "shape_id/shape_name 을 쓰려면 slide_index 도 필요합니다.";
+            return L10n.Get("tools.pptEdit.shapeRefNeedsSlide");
         }
 
         var scope = inp.Scope ?? "slide";
         if (scope is not ("slide" or "layout" or "master"))
         {
-            return "scope 는 slide|layout|master 중 하나여야 합니다.";
+            return L10n.Get("tools.pptEdit.invalidScope");
         }
 
         // layout/master 도형은 현재 선택으로 못 잡으므로 명시 지정(slide_index+shape)이 필수.
         if (scope is not "slide" && !hasShapeRef)
         {
-            return "scope=layout/master 는 slide_index 와 shape_id/shape_name 지정이 필요합니다.";
+            return L10n.Get("tools.pptEdit.scopeNeedsTarget");
         }
 
         return inp.Action switch
         {
-            "set_text" when inp.Text is null => "set_text 에는 text 가 필요합니다.",
-            "set_fill" when string.IsNullOrWhiteSpace(inp.Color) => "set_fill 에는 color 가 필요합니다.",
+            "set_text" when inp.Text is null => L10n.Get("tools.pptEdit.setTextNeedsText"),
+            "set_fill" when string.IsNullOrWhiteSpace(inp.Color) => L10n.Get("tools.pptEdit.setFillNeedsColor"),
             "set_font" when string.IsNullOrWhiteSpace(inp.Color) && inp.FontSize is null && inp.Bold is null
-                => "set_font 에는 color, font_size, bold 중 하나가 필요합니다.",
+                => L10n.Get("tools.pptEdit.setFontNeedsAny"),
             "set_line" when string.IsNullOrWhiteSpace(inp.Color) && inp.LineWeight is null
-                => "set_line 에는 color 또는 line_weight 가 필요합니다.",
+                => L10n.Get("tools.pptEdit.setLineNeedsAny"),
             "set_geometry" when ShapeGeometry.IsEmpty(inp.Left, inp.Top, inp.Width, inp.Height, inp.Rotation, inp.Flip)
-                => "set_geometry 에는 left, top, width, height, rotation, flip 중 하나가 필요합니다.",
+                => L10n.Get("tools.pptEdit.setGeometryNeedsAny"),
             "set_geometry" => ShapeGeometry.ValidateFlip(inp.Flip),
-            "insert_picture" when string.IsNullOrWhiteSpace(inp.Path) => "insert_picture 에는 path 가 필요합니다.",
-            "replace" when string.IsNullOrEmpty(inp.FindText) => "replace 에는 find_text 가 필요합니다.",
-            "delete_slide" when inp.SlideIndex is null => "delete_slide 에는 slide_index 가 필요합니다.",
+            "insert_picture" when string.IsNullOrWhiteSpace(inp.Path) => L10n.Get("tools.pptEdit.insertPictureNeedsPath"),
+            "replace" when string.IsNullOrEmpty(inp.FindText) => L10n.Get("tools.pptEdit.replaceNeedsFindText"),
+            "delete_slide" when inp.SlideIndex is null => L10n.Get("tools.pptEdit.deleteSlideNeedsIndex"),
             "insert_table" when (inp.Rows is null or < 1 || inp.Cols is null or < 1)
                     && (inp.Cells is null || inp.Cells.Count == 0)
-                => "insert_table 에는 rows·cols(1 이상) 또는 cells(내용)가 필요합니다.",
+                => L10n.Get("tools.pptEdit.insertTableNeedsSize"),
             "set_cell" when inp.Row is null or < 1 || inp.Col is null or < 1 || inp.Text is null
-                => "set_cell 에는 row·col(1 이상)·text 가 필요합니다.",
-            "set_background" when string.IsNullOrWhiteSpace(inp.Color) => "set_background 에는 color 가 필요합니다.",
-            "apply_template" when string.IsNullOrWhiteSpace(inp.Path) => "apply_template 에는 path(템플릿 pptx/potx)가 필요합니다.",
+                => L10n.Get("tools.pptEdit.setCellNeedsRowColText"),
+            "set_background" when string.IsNullOrWhiteSpace(inp.Color) => L10n.Get("tools.pptEdit.setBackgroundNeedsColor"),
+            "apply_template" when string.IsNullOrWhiteSpace(inp.Path) => L10n.Get("tools.pptEdit.applyTemplateNeedsPath"),
             _ => null,
         };
     }
@@ -264,19 +265,19 @@ public sealed class PowerPointEditTool : ITool
             dynamic? papp = ComInterop.GetOrCreate("PowerPoint.Application");
             if (papp is null)
             {
-                throw new InvalidOperationException("PowerPoint 를 시작할 수 없습니다(설치 확인).");
+                throw new InvalidOperationException(L10n.Get("tools.pptEdit.cannotStart"));
             }
 
             papp.Visible = MsoTrue; // PowerPoint 는 창이 보여야 조작 가능
             dynamic newPres = papp.Presentations.Add(MsoTrue);
             newPres.Slides.Add(1, PpLayoutTitle); // 빈 프레젠테이션(0장) 대신 제목 슬라이드 1장으로 시작
-            return "OK: 새 PowerPoint 프레젠테이션을 열었습니다.";
+            return L10n.Get("tools.pptEdit.newPresentationOk");
         }
 
         dynamic? app = ComInterop.TryGetActiveObject("PowerPoint.Application");
         if (app is null)
         {
-            throw new InvalidOperationException("PowerPoint 가 실행 중이 아닙니다.");
+            throw new InvalidOperationException(L10n.Get("tools.pptEdit.notRunning"));
         }
 
         dynamic pres = app.ActivePresentation; // 없으면 COMException
@@ -300,7 +301,7 @@ public sealed class PowerPointEditTool : ITool
         {
             var outPath = OfficePdf.Resolve(inp.Path, TryStr(() => (string)pres.FullName), workingDir);
             pres.ExportAsFixedFormat(outPath, PpFixedFormatTypePDF);
-            return $"OK: PDF 로 내보냈습니다 — {outPath}";
+            return L10n.Get("tools.pptEdit.pdfExported", outPath);
         }
 
         if (inp.Action == "apply_template")
@@ -311,11 +312,11 @@ public sealed class PowerPointEditTool : ITool
                 System.IO.Path.IsPathRooted(inp.Path!) ? inp.Path! : System.IO.Path.Combine(workingDir, inp.Path!));
             if (!System.IO.File.Exists(tpl))
             {
-                throw new InvalidOperationException($"템플릿 파일이 없습니다: {tpl}");
+                throw new InvalidOperationException(L10n.Get("tools.pptEdit.templateFileNotFound", tpl));
             }
 
             pres.ApplyTemplate(tpl);
-            return $"OK: 템플릿 테마를 적용했습니다 — {System.IO.Path.GetFileName(tpl)}";
+            return L10n.Get("tools.pptEdit.templateApplied", System.IO.Path.GetFileName(tpl));
         }
 
         if (inp.Action == "delete_slide")
@@ -323,11 +324,11 @@ public sealed class PowerPointEditTool : ITool
             int count = (int)pres.Slides.Count;
             if (inp.SlideIndex!.Value < 1 || inp.SlideIndex.Value > count)
             {
-                throw new InvalidOperationException($"슬라이드 {inp.SlideIndex} 없음(현재 {count}개).");
+                throw new InvalidOperationException(L10n.Get("tools.pptEdit.slideNotFound", inp.SlideIndex, count));
             }
 
             pres.Slides[inp.SlideIndex.Value].Delete();
-            return $"OK: 슬라이드 {inp.SlideIndex} 를 삭제했습니다.";
+            return L10n.Get("tools.pptEdit.slideDeleted", inp.SlideIndex);
         }
 
         if (inp.Action == "insert_table")
@@ -359,11 +360,11 @@ public sealed class PowerPointEditTool : ITool
                 int scnt = (int)pres.Slides.Count;
                 if (inp.SlideIndex.Value < 1 || inp.SlideIndex.Value > scnt)
                 {
-                    throw new InvalidOperationException($"슬라이드 {inp.SlideIndex} 없음(현재 {scnt}개).");
+                    throw new InvalidOperationException(L10n.Get("tools.pptEdit.slideNotFound", inp.SlideIndex, scnt));
                 }
 
                 PaintSlide(pres.Slides[inp.SlideIndex.Value]);
-                return $"OK: 슬라이드 {inp.SlideIndex} 배경색을 적용했습니다.";
+                return L10n.Get("tools.pptEdit.slideBackgroundApplied", inp.SlideIndex);
             }
 
             // 전체: 마스터 + 모든 슬라이드(디자인 테마 배경).
@@ -378,7 +379,7 @@ public sealed class PowerPointEditTool : ITool
                 PaintSlide(pres.Slides[i]);
             }
 
-            return "OK: 전체 슬라이드 배경색을 적용했습니다.";
+            return L10n.Get("tools.pptEdit.allBackgroundApplied");
         }
 
         if (inp.Action == "insert_divider")
@@ -389,7 +390,7 @@ public sealed class PowerPointEditTool : ITool
                 int slCount = (int)pres.Slides.Count;
                 if (inp.SlideIndex.Value < 1 || inp.SlideIndex.Value > slCount)
                 {
-                    throw new InvalidOperationException($"슬라이드 {inp.SlideIndex} 없음(현재 {slCount}개).");
+                    throw new InvalidOperationException(L10n.Get("tools.pptEdit.slideNotFound", inp.SlideIndex, slCount));
                 }
 
                 dslide = pres.Slides[inp.SlideIndex.Value];
@@ -415,14 +416,13 @@ public sealed class PowerPointEditTool : ITool
                 TrySet(() => line.Line.Weight = (float)inp.LineWeight.Value);
             }
 
-            return "OK: 구분선(가로줄)을 추가했습니다.";
+            return L10n.Get("tools.pptEdit.dividerAdded");
         }
 
         var targets = ResolveTargets(app, pres, inp);
         if (targets.Count == 0)
         {
-            throw new InvalidOperationException(
-                "대상 도형을 찾지 못했습니다. slide_index+shape_id 로 지정하거나, PowerPoint 에서 도형을 선택한 뒤 다시 시도하세요.");
+            throw new InvalidOperationException(L10n.Get("tools.pptEdit.targetShapeNotFound"));
         }
 
         foreach (var shape in targets)
@@ -438,10 +438,10 @@ public sealed class PowerPointEditTool : ITool
         }
 
         var where = inp.SlideIndex is not null
-            ? $"슬라이드 {inp.SlideIndex}" + ((inp.Scope ?? "slide") is var sc && sc != "slide" ? $"({sc})" : string.Empty)
-            : "현재 선택";
-        var verb = inp.Action == "delete_shape" ? "도형 삭제" : $"{inp.Action} 적용";
-        return $"OK: {where} 도형 {targets.Count}개에 {verb}.";
+            ? L10n.Get("tools.pptEdit.whereSlide", inp.SlideIndex) + ((inp.Scope ?? "slide") is var sc && sc != "slide" ? $"({sc})" : string.Empty)
+            : L10n.Get("tools.pptEdit.whereCurrentSelection");
+        var verb = inp.Action == "delete_shape" ? L10n.Get("tools.pptEdit.verbDeleteShape") : L10n.Get("tools.pptEdit.verbApply", inp.Action);
+        return L10n.Get("tools.pptEdit.shapesApplied", where, targets.Count, verb);
     }
 
     // 로컬 이미지 파일을 슬라이드에 삽입한다. slide_index 지정 시 그 슬라이드, 없으면 현재 슬라이드.
@@ -453,7 +453,7 @@ public sealed class PowerPointEditTool : ITool
         int cols = inp.Cols ?? (cells is { Count: > 0 } ? cells.Max(r => r.Count) : 0);
         if (rows < 1 || cols < 1)
         {
-            throw new InvalidOperationException("표 크기를 알 수 없습니다(rows/cols 또는 cells 필요).");
+            throw new InvalidOperationException(L10n.Get("tools.pptEdit.tableSizeUnknown"));
         }
 
         dynamic slide;
@@ -462,7 +462,7 @@ public sealed class PowerPointEditTool : ITool
             int slideCount = (int)pres.Slides.Count;
             if (inp.SlideIndex.Value < 1 || inp.SlideIndex.Value > slideCount)
             {
-                throw new InvalidOperationException($"슬라이드 {inp.SlideIndex} 없음(현재 {slideCount}개).");
+                throw new InvalidOperationException(L10n.Get("tools.pptEdit.slideNotFound", inp.SlideIndex, slideCount));
             }
 
             slide = pres.Slides[inp.SlideIndex.Value];
@@ -548,8 +548,9 @@ public sealed class PowerPointEditTool : ITool
             }
         }
 
-        var where = inp.SlideIndex is not null ? $"슬라이드 {inp.SlideIndex}" : "현재 슬라이드";
-        return $"OK: {where} 에 {rows}x{cols} 표를 삽입했습니다{(cells is not null ? " (내용 채움)" : string.Empty)}.";
+        var where = inp.SlideIndex is not null ? L10n.Get("tools.pptEdit.whereSlide", inp.SlideIndex) : L10n.Get("tools.pptEdit.whereCurrentSlide");
+        var filledSuffix = cells is not null ? L10n.Get("tools.pptEdit.tableFilledSuffix") : string.Empty;
+        return L10n.Get("tools.pptEdit.tableInserted", where, rows, cols, filledSuffix);
     }
 
     // 기존 표 도형의 셀 하나를 수정. 대상 표는 slide_index+shape_id/현재 선택으로 지정.
@@ -568,8 +569,7 @@ public sealed class PowerPointEditTool : ITool
 
         if (tableShape is null)
         {
-            throw new InvalidOperationException(
-                "표 도형을 찾지 못했습니다. slide_index+shape_id 로 표를 지정하거나, PowerPoint 에서 표를 선택하세요.");
+            throw new InvalidOperationException(L10n.Get("tools.pptEdit.tableShapeNotFound"));
         }
 
         dynamic targetCell = tableShape.Table.Cell(inp.Row!.Value, inp.Col!.Value);
@@ -606,7 +606,7 @@ public sealed class PowerPointEditTool : ITool
             }
         }
 
-        return $"OK: 표 셀 ({inp.Row},{inp.Col}) 을 수정했습니다.";
+        return L10n.Get("tools.pptEdit.cellUpdated", inp.Row, inp.Col);
     }
 
     private static string InsertPicture(dynamic app, dynamic pres, Input inp, string workingDir)
@@ -619,7 +619,7 @@ public sealed class PowerPointEditTool : ITool
             int slideCount = (int)pres.Slides.Count;
             if (inp.SlideIndex.Value < 1 || inp.SlideIndex.Value > slideCount)
             {
-                throw new InvalidOperationException($"슬라이드 {inp.SlideIndex} 없음(현재 {slideCount}개).");
+                throw new InvalidOperationException(L10n.Get("tools.pptEdit.slideNotFound", inp.SlideIndex, slideCount));
             }
 
             slide = pres.Slides[inp.SlideIndex.Value];
@@ -637,8 +637,8 @@ public sealed class PowerPointEditTool : ITool
         slide.Shapes.AddPicture(
             file, OfficePicture.LinkToFileFalse, OfficePicture.SaveWithDocTrue, left, top, width, height);
 
-        var where = inp.SlideIndex is not null ? $"슬라이드 {inp.SlideIndex}" : "현재 슬라이드";
-        return $"OK: {where} 에 이미지를 삽입했습니다.";
+        var where = inp.SlideIndex is not null ? L10n.Get("tools.pptEdit.whereSlide", inp.SlideIndex) : L10n.Get("tools.pptEdit.whereCurrentSlide");
+        return L10n.Get("tools.pptEdit.pictureInserted", where);
     }
 
     // 대상 도형 목록을 만든다: 지정(slide_index+shape) 하나, 또는 현재 선택 전체.
@@ -669,10 +669,10 @@ public sealed class PowerPointEditTool : ITool
         }
 
         var extras = new List<string>();
-        if (!string.IsNullOrWhiteSpace(inp.Text)) { extras.Add("제목"); }
-        if (inp.Bullets is { Count: > 0 }) { extras.Add($"불릿 {inp.Bullets.Count}개"); }
-        var filled = extras.Count > 0 ? " — " + string.Join(", ", extras) + " 설정" : string.Empty;
-        return $"OK: 슬라이드 {index} 추가(레이아웃 {inp.Layout ?? "title_content"}){filled}.";
+        if (!string.IsNullOrWhiteSpace(inp.Text)) { extras.Add(L10n.Get("tools.pptEdit.extraTitle")); }
+        if (inp.Bullets is { Count: > 0 }) { extras.Add(L10n.Get("tools.pptEdit.extraBullets", inp.Bullets.Count)); }
+        var filled = extras.Count > 0 ? L10n.Get("tools.pptEdit.slideAddedExtras", string.Join(", ", extras)) : string.Empty;
+        return L10n.Get("tools.pptEdit.slideAdded", index, inp.Layout ?? "title_content", filled);
     }
 
     // 모든 슬라이드의 텍스트 도형을 순회하며 문자열 치환(도형 단위 read-modify-write). 치환된 도형 수 반환.
@@ -703,7 +703,7 @@ public sealed class PowerPointEditTool : ITool
             }
         }
 
-        return $"OK: {shapes}개 도형에서 찾기·바꾸기 완료.";
+        return L10n.Get("tools.pptEdit.replaceDone", shapes);
     }
 
     private static bool TrySetOk(Action set)
@@ -729,7 +729,7 @@ public sealed class PowerPointEditTool : ITool
             int slideCount = (int)pres.Slides.Count;
             if (inp.SlideIndex!.Value < 1 || inp.SlideIndex.Value > slideCount)
             {
-                throw new InvalidOperationException($"슬라이드 {inp.SlideIndex} 없음(현재 {slideCount}개).");
+                throw new InvalidOperationException(L10n.Get("tools.pptEdit.slideNotFound", inp.SlideIndex, slideCount));
             }
 
             dynamic slide = pres.Slides[inp.SlideIndex.Value];
@@ -775,7 +775,7 @@ public sealed class PowerPointEditTool : ITool
                 // HasTextFrame 은 MsoTriState — (bool) 직접 캐스팅 금지.
                 if ((int)shape.HasTextFrame == MsoFalse)
                 {
-                    throw new InvalidOperationException($"도형 '{(string)shape.Name}' 은 텍스트 프레임이 없습니다.");
+                    throw new InvalidOperationException(L10n.Get("tools.pptEdit.noTextFrame", (string)shape.Name));
                 }
 
                 dynamic textRange = shape.TextFrame.TextRange;
@@ -814,7 +814,7 @@ public sealed class PowerPointEditTool : ITool
             case "set_font":
                 if ((int)shape.HasTextFrame == MsoFalse)
                 {
-                    throw new InvalidOperationException($"도형 '{(string)shape.Name}' 은 텍스트 프레임이 없습니다.");
+                    throw new InvalidOperationException(L10n.Get("tools.pptEdit.noTextFrame", (string)shape.Name));
                 }
 
                 dynamic font = shape.TextFrame.TextRange.Font;

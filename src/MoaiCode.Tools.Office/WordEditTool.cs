@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using MoaiCode.Config;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Office;
 
@@ -43,9 +44,9 @@ public sealed class WordEditTool : ITool
           - insert_table: insert a table AND fill it. Provide "cells" (array of rows, each an array of cell
             strings) to create a bordered table with content — size is inferred and the first row is bolded as
             a header. (Or give "rows"/"cols" for an empty table.) Prefer "cells" whenever the user asks to
-            "정리/표로" real content, so it becomes a real Word table, not tab-separated text.
+            organize real content into a table, so it becomes a real Word table, not tab-separated text.
             PLACEMENT: the table goes AFTER "para_index" (1-based, from WordInspect) — inspect first to find the
-            RIGHT paragraph (e.g. the end of the "2. 기본 원칙" section) instead of dropping it at the cursor.
+            RIGHT paragraph (e.g. the end of the "2. Basic Principles" section) instead of dropping it at the cursor.
             FONT: cell font defaults to the document body (Normal) size; pass "font_size" to override. This
             avoids the table inheriting a big heading font.
             HEADER COLOR: pass "header_fill" (header row background) and/or "header_color" (header text color)
@@ -70,7 +71,7 @@ public sealed class WordEditTool : ITool
           - set_shape_line: outline color/weight of a shape (any of "color", "line_weight" in points).
           - insert_divider: insert a real horizontal rule (a paragraph with a bottom border line), NOT literal
             "----" text. At "para_index" (after it) or the document end. Optional "border_color" for line color.
-            Use this whenever the user asks for a 구분선/divider/가로줄.
+            Use this whenever the user asks for a divider / horizontal rule.
         Target the paragraph by 1-based "para_index" (from WordInspect); if omitted, the CURRENT SELECTION.
         IMPORTANT: set_text only edits EXISTING paragraphs (1..N as reported by WordInspect). Never use an
         out-of-range para_index — to ADD new content use insert_paragraph. Always WordInspect first to get N.
@@ -159,7 +160,7 @@ public sealed class WordEditTool : ITool
     {
         if (!OperatingSystem.IsWindows())
         {
-            yield return new ToolOutput("WordEdit: Windows 전용 기능입니다.", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.wordEdit.windowsOnly"), IsError: true);
             yield break;
         }
 
@@ -186,7 +187,7 @@ public sealed class WordEditTool : ITool
 
         if (error is not null)
         {
-            yield return new ToolOutput($"WordEdit: 실패 — {error}", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.wordEdit.failed", error), IsError: true);
             yield break;
         }
 
@@ -198,30 +199,30 @@ public sealed class WordEditTool : ITool
         if (inp is null || string.IsNullOrWhiteSpace(inp.Action)
             || !Actions.Contains(inp.Action, System.StringComparer.Ordinal))
         {
-            return "action 은 set_text|set_font|set_style|insert_paragraph|delete_paragraph|insert_table 중 하나여야 합니다.";
+            return L10n.Get("tools.wordEdit.invalidAction");
         }
 
         return inp.Action switch
         {
-            "set_text" when inp.Text is null => "set_text 에는 text 가 필요합니다.",
+            "set_text" when inp.Text is null => L10n.Get("tools.wordEdit.setTextNeedsText"),
             "set_font" when string.IsNullOrWhiteSpace(inp.Color) && inp.FontSize is null && inp.Bold is null
-                => "set_font 에는 color, font_size, bold 중 하나가 필요합니다.",
-            "set_style" when string.IsNullOrWhiteSpace(inp.Style) => "set_style 에는 style 이 필요합니다.",
-            "insert_paragraph" when inp.Text is null => "insert_paragraph 에는 text 가 필요합니다.",
-            "delete_paragraph" when inp.ParaIndex is null => "delete_paragraph 에는 para_index 가 필요합니다.",
+                => L10n.Get("tools.wordEdit.setFontNeedsAny"),
+            "set_style" when string.IsNullOrWhiteSpace(inp.Style) => L10n.Get("tools.wordEdit.setStyleNeedsStyle"),
+            "insert_paragraph" when inp.Text is null => L10n.Get("tools.wordEdit.insertParagraphNeedsText"),
+            "delete_paragraph" when inp.ParaIndex is null => L10n.Get("tools.wordEdit.deleteParagraphNeedsIndex"),
             "insert_table" when (inp.Rows is null or < 1 || inp.Cols is null or < 1)
                     && (inp.Cells is null || inp.Cells.Count == 0)
-                => "insert_table 에는 rows·cols(1 이상) 또는 cells(내용)가 필요합니다.",
+                => L10n.Get("tools.wordEdit.insertTableNeedsSize"),
             "set_geometry" when ShapeGeometry.IsEmpty(inp.Left, inp.Top, inp.Width, inp.Height, inp.Rotation, inp.Flip)
-                => "set_geometry 에는 left, top, width, height, rotation, flip 중 하나가 필요합니다.",
+                => L10n.Get("tools.wordEdit.setGeometryNeedsAny"),
             "set_geometry" => ShapeGeometry.ValidateFlip(inp.Flip),
-            "insert_picture" when string.IsNullOrWhiteSpace(inp.Path) => "insert_picture 에는 path 가 필요합니다.",
-            "replace" when string.IsNullOrEmpty(inp.FindText) => "replace 에는 find_text 가 필요합니다.",
+            "insert_picture" when string.IsNullOrWhiteSpace(inp.Path) => L10n.Get("tools.wordEdit.insertPictureNeedsPath"),
+            "replace" when string.IsNullOrEmpty(inp.FindText) => L10n.Get("tools.wordEdit.replaceNeedsFindText"),
             "set_cell" when inp.Row is null or < 1 || inp.Col is null or < 1 || inp.Text is null
-                => "set_cell 에는 row·col(1 이상)·text 가 필요합니다.",
-            "set_shape_fill" when string.IsNullOrWhiteSpace(inp.Color) => "set_shape_fill 에는 color 가 필요합니다.",
+                => L10n.Get("tools.wordEdit.setCellNeedsRowColText"),
+            "set_shape_fill" when string.IsNullOrWhiteSpace(inp.Color) => L10n.Get("tools.wordEdit.setShapeFillNeedsColor"),
             "set_shape_line" when string.IsNullOrWhiteSpace(inp.Color) && inp.LineWeight is null
-                => "set_shape_line 에는 color 또는 line_weight 가 필요합니다.",
+                => L10n.Get("tools.wordEdit.setShapeLineNeedsAny"),
             _ => null,
         };
     }
@@ -234,19 +235,19 @@ public sealed class WordEditTool : ITool
             dynamic? wapp = ComInterop.GetOrCreate("Word.Application");
             if (wapp is null)
             {
-                throw new System.InvalidOperationException("Word 를 시작할 수 없습니다(설치 확인).");
+                throw new System.InvalidOperationException(L10n.Get("tools.wordEdit.cannotStart"));
             }
 
             wapp.Visible = true;
             wapp.Documents.Add();
             wapp.Activate();
-            return "OK: 새 Word 문서를 열었습니다.";
+            return L10n.Get("tools.wordEdit.newDocumentOk");
         }
 
         dynamic? app = ComInterop.TryGetActiveObject("Word.Application");
         if (app is null)
         {
-            throw new System.InvalidOperationException("Word 가 실행 중이 아닙니다.");
+            throw new System.InvalidOperationException(L10n.Get("tools.wordEdit.notRunning"));
         }
 
         dynamic doc = app.ActiveDocument; // 없으면 COMException
@@ -265,14 +266,14 @@ public sealed class WordEditTool : ITool
                     doc.Shapes.AddPicture(
                         file, OfficePicture.LinkToFileFalse, OfficePicture.SaveWithDocTrue,
                         (float)(inp.Left ?? 0), (float)(inp.Top ?? 0), w, h);
-                    return "OK: 이미지를 삽입했습니다(떠있는 도형).";
+                    return L10n.Get("tools.wordEdit.pictureInsertedFloating");
                 }
 
                 dynamic inline = app.Selection.InlineShapes.AddPicture(
                     file, OfficePicture.LinkToFileFalse, OfficePicture.SaveWithDocTrue);
                 if (inp.Width is not null) { inline.Width = (float)inp.Width.Value; }
                 if (inp.Height is not null) { inline.Height = (float)inp.Height.Value; }
-                return "OK: 이미지를 삽입했습니다(인라인).";
+                return L10n.Get("tools.wordEdit.pictureInsertedInline");
             }
 
             case "insert_paragraph":
@@ -284,7 +285,7 @@ public sealed class WordEditTool : ITool
                 // Word 는 새 문단이 '앞 문단' 서식을 상속한다. 앞이 제목(48pt)이면 본문도 제목이 되어버린다.
                 // style 을 지정했으면 그 스타일, 없으면 본문(Normal)로 강제해 톤앤매너를 유지한다.
                 last.Style = string.IsNullOrWhiteSpace(inp.Style) ? WdStyleNormal : StyleId(inp.Style!);
-                return "OK: 문단을 추가했습니다.";
+                return L10n.Get("tools.wordEdit.paragraphAdded");
             }
 
             case "add_page":
@@ -300,7 +301,9 @@ public sealed class WordEditTool : ITool
                     last.Style = string.IsNullOrWhiteSpace(inp.Style) ? WdStyleNormal : StyleId(inp.Style!);
                 }
 
-                return "OK: 새 페이지를 추가했습니다" + (string.IsNullOrWhiteSpace(inp.Text) ? "." : "(내용 포함).");
+                return string.IsNullOrWhiteSpace(inp.Text)
+                    ? L10n.Get("tools.wordEdit.pageAdded")
+                    : L10n.Get("tools.wordEdit.pageAddedWithContent");
             }
 
             case "delete_paragraph":
@@ -308,11 +311,11 @@ public sealed class WordEditTool : ITool
                 int count = (int)doc.Paragraphs.Count;
                 if (inp.ParaIndex!.Value < 1 || inp.ParaIndex.Value > count)
                 {
-                    throw new System.InvalidOperationException($"문단 {inp.ParaIndex} 없음(현재 {count}개).");
+                    throw new System.InvalidOperationException(L10n.Get("tools.wordEdit.paragraphNotFound", inp.ParaIndex, count));
                 }
 
                 doc.Paragraphs[inp.ParaIndex.Value].Range.Delete();
-                return $"OK: 문단 {inp.ParaIndex} 를 삭제했습니다.";
+                return L10n.Get("tools.wordEdit.paragraphDeleted", inp.ParaIndex);
             }
 
             case "insert_table":
@@ -322,7 +325,7 @@ public sealed class WordEditTool : ITool
                 int cols = inp.Cols ?? (cells is { Count: > 0 } ? cells.Max(r => r.Count) : 0);
                 if (rows < 1 || cols < 1)
                 {
-                    throw new System.InvalidOperationException("표 크기를 알 수 없습니다(rows/cols 또는 cells 필요).");
+                    throw new System.InvalidOperationException(L10n.Get("tools.wordEdit.tableSizeUnknown"));
                 }
 
                 dynamic tRange = Target(app, doc, inp);
@@ -389,16 +392,17 @@ public sealed class WordEditTool : ITool
                     }
                 }
 
-                return $"OK: {rows}x{cols} 표를 삽입했습니다{(cells is not null ? " (내용 채움)" : string.Empty)}.";
+                var tblFilledSuffix = cells is not null ? L10n.Get("tools.wordEdit.tableFilledSuffix") : string.Empty;
+                return L10n.Get("tools.wordEdit.tableInserted", rows, cols, tblFilledSuffix);
             }
 
             case "set_geometry":
             {
                 dynamic shape = ResolveShape(app, doc, inp);
                 var applied = ShapeGeometry.Apply(shape, inp.Left, inp.Top, inp.Width, inp.Height, inp.Rotation, inp.Flip);
-                var target = inp.ShapeIndex is not null ? $"도형 {inp.ShapeIndex}"
-                    : !string.IsNullOrWhiteSpace(inp.ShapeName) ? $"도형 '{inp.ShapeName}'" : "현재 선택 도형";
-                return $"OK: {target} 에 기하 변경 {applied}건 적용.";
+                var target = inp.ShapeIndex is not null ? L10n.Get("tools.wordEdit.shapeByIndex", inp.ShapeIndex)
+                    : !string.IsNullOrWhiteSpace(inp.ShapeName) ? L10n.Get("tools.wordEdit.shapeByName", inp.ShapeName) : L10n.Get("tools.wordEdit.currentSelectionShape");
+                return L10n.Get("tools.wordEdit.geometryApplied", target, applied);
             }
 
             case "replace":
@@ -410,21 +414,21 @@ public sealed class WordEditTool : ITool
                 //   MatchAllWordForms, Forward, Wrap, Format, ReplaceWith, Replace)
                 find.Execute(inp.FindText, false, false, false, false, false, true,
                     WdFindContinue, false, inp.ReplaceText ?? string.Empty, WdReplaceAll);
-                return "OK: 찾기·바꾸기 완료.";
+                return L10n.Get("tools.wordEdit.replaceDone");
             }
 
             case "export_pdf":
             {
                 var outPath = OfficePdf.Resolve(inp.Path, TryFullName(doc), workingDir);
                 doc.ExportAsFixedFormat(outPath, WdExportFormatPDF);
-                return $"OK: PDF 로 내보냈습니다 — {outPath}";
+                return L10n.Get("tools.wordEdit.pdfExported", outPath);
             }
 
             case "delete_shape":
             {
                 dynamic shape = ResolveShape(app, doc, inp);
                 shape.Delete();
-                return "OK: 도형을 삭제했습니다.";
+                return L10n.Get("tools.wordEdit.shapeDeleted");
             }
 
             case "set_shape_fill":
@@ -432,7 +436,7 @@ public sealed class WordEditTool : ITool
                 dynamic shape = ResolveShape(app, doc, inp);
                 shape.Fill.Solid();
                 shape.Fill.ForeColor.RGB = OfficeColor.ToBgr(inp.Color!);
-                return "OK: 도형 채우기 색을 적용했습니다.";
+                return L10n.Get("tools.wordEdit.shapeFillApplied");
             }
 
             case "set_shape_line":
@@ -448,7 +452,7 @@ public sealed class WordEditTool : ITool
                     shape.Line.Weight = (float)inp.LineWeight.Value;
                 }
 
-                return "OK: 도형 테두리 색/두께를 적용했습니다.";
+                return L10n.Get("tools.wordEdit.shapeLineApplied");
             }
 
             case "insert_divider":
@@ -469,7 +473,7 @@ public sealed class WordEditTool : ITool
                 }
                 catch { /* 테두리 적용 실패 시에도 문단은 추가됨 */ }
 
-                return "OK: 구분선(가로줄)을 추가했습니다.";
+                return L10n.Get("tools.wordEdit.dividerAdded");
             }
 
             case "set_cell":
@@ -478,7 +482,7 @@ public sealed class WordEditTool : ITool
                 int tcount = (int)doc.Tables.Count;
                 if (ti < 1 || ti > tcount)
                 {
-                    throw new System.InvalidOperationException($"표 {ti} 없음(현재 {tcount}개). WordInspect 로 확인하세요.");
+                    throw new System.InvalidOperationException(L10n.Get("tools.wordEdit.tableNotFound", ti, tcount));
                 }
 
                 // Cell.Range.Text 대입은 셀 내용을 교체한다(셀마커는 보존).
@@ -508,7 +512,7 @@ public sealed class WordEditTool : ITool
                     }
                 }
 
-                return $"OK: 표 {ti} 의 ({inp.Row},{inp.Col}) 셀을 수정했습니다.";
+                return L10n.Get("tools.wordEdit.cellUpdated", ti, inp.Row, inp.Col);
             }
         }
 
@@ -557,8 +561,8 @@ public sealed class WordEditTool : ITool
                 break;
         }
 
-        var scope = inp.ParaIndex is not null ? $"문단 {inp.ParaIndex}" : "현재 선택";
-        return $"OK: {scope} 에 {inp.Action} 적용.";
+        var scope = inp.ParaIndex is not null ? L10n.Get("tools.wordEdit.scopeParagraph", inp.ParaIndex) : L10n.Get("tools.wordEdit.currentSelection");
+        return L10n.Get("tools.wordEdit.actionApplied", scope, inp.Action);
     }
 
     // 대상 Range: para_index 지정 시 해당 문단, 없으면 현재 선택.
@@ -570,8 +574,7 @@ public sealed class WordEditTool : ITool
             if (inp.ParaIndex.Value < 1 || inp.ParaIndex.Value > count)
             {
                 throw new System.InvalidOperationException(
-                    $"문단 {inp.ParaIndex} 없음(현재 {count}개). 새 내용은 set_text 가 아니라 insert_paragraph 로 추가하고, " +
-                    "편집 전 WordInspect 로 실제 문단 수를 확인하세요.");
+                    L10n.Get("tools.wordEdit.paragraphNotFoundHint", inp.ParaIndex, count));
             }
 
             return doc.Paragraphs[inp.ParaIndex.Value].Range;
@@ -589,7 +592,7 @@ public sealed class WordEditTool : ITool
             if (inp.ShapeIndex.Value < 1 || inp.ShapeIndex.Value > count)
             {
                 throw new System.InvalidOperationException(
-                    $"도형 {inp.ShapeIndex} 없음(현재 {count}개). WordInspect 의 shapes 에서 인덱스를 확인하세요.");
+                    L10n.Get("tools.wordEdit.shapeNotFoundByIndex", inp.ShapeIndex, count));
             }
 
             return doc.Shapes[inp.ShapeIndex.Value];
@@ -603,7 +606,7 @@ public sealed class WordEditTool : ITool
             }
             catch
             {
-                throw new System.InvalidOperationException($"도형 '{inp.ShapeName}' 을 찾지 못했습니다.");
+                throw new System.InvalidOperationException(L10n.Get("tools.wordEdit.shapeNotFoundByName", inp.ShapeName));
             }
         }
 
@@ -620,8 +623,7 @@ public sealed class WordEditTool : ITool
 
         if (shape is null)
         {
-            throw new System.InvalidOperationException(
-                "대상 도형이 없습니다. shape_index/shape_name 으로 지정하거나, Word 에서 도형을 선택한 뒤 다시 시도하세요.");
+            throw new System.InvalidOperationException(L10n.Get("tools.wordEdit.noTargetShape"));
         }
 
         return shape;

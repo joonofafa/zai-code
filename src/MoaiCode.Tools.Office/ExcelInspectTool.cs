@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using MoaiCode.Config;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Office;
 
@@ -50,7 +51,7 @@ public sealed class ExcelInspectTool : ITool
     {
         if (!OperatingSystem.IsWindows())
         {
-            yield return new ToolOutput("ExcelInspect: Windows 전용 기능입니다.", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.excelInspect.windowsOnly"), IsError: true);
             yield break;
         }
 
@@ -71,13 +72,13 @@ public sealed class ExcelInspectTool : ITool
 
         if (error is not null)
         {
-            yield return new ToolOutput($"ExcelInspect: 조회 실패 — {error}", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.excelInspect.queryFailed", error), IsError: true);
             yield break;
         }
 
         if (info is null)
         {
-            yield return new ToolOutput("ExcelInspect: 실행 중인 Excel 에 열린 통합문서가 없습니다.");
+            yield return new ToolOutput(L10n.Get("tools.excelInspect.noWorkbook"));
             yield break;
         }
 

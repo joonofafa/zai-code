@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using MoaiCode.Config;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Office;
 
@@ -59,7 +60,7 @@ public sealed class ExcelEditTool : ITool
             include the header row — field names come from it), "source_sheet" optional (default active).
             Place fields via "rows"/"columns"/"filters" (arrays of field names) and "values"
             (array of {field, func}; func: sum|count|average|max|min, default sum). Excel computes it.
-            e.g. source "A1:D200", rows ["부서"], columns ["월"], values [{"field":"매출","func":"sum"}].
+            e.g. source "A1:D200", rows ["Department"], columns ["Month"], values [{"field":"Sales","func":"sum"}].
           - replace: find & replace ALL occurrences of "find_text" with "replace_text". Scoped to "cell"
             range if given, else the whole active sheet.
           - merge_cells: merge the "cell" range into one cell (centered). e.g. cell "A1:E1" for a title row.
@@ -107,8 +108,8 @@ public sealed class ExcelEditTool : ITool
             "flip": { "type": "string", "description": "Flip the shape: horizontal | vertical (set_geometry)" },
             "source": { "type": "string", "description": "insert_pivot: source data range, e.g. \"A1:D100\" (include the header row; field names come from it)" },
             "source_sheet": { "type": "string", "description": "insert_pivot: sheet name of the source range (omit = active sheet)" },
-            "rows": { "type": "array", "items": { "type": "string" }, "description": "insert_pivot: field names placed on ROWS (e.g. [\"부서\"])" },
-            "columns": { "type": "array", "items": { "type": "string" }, "description": "insert_pivot: field names placed on COLUMNS (e.g. [\"월\"])" },
+            "rows": { "type": "array", "items": { "type": "string" }, "description": "insert_pivot: field names placed on ROWS (e.g. [\"Department\"])" },
+            "columns": { "type": "array", "items": { "type": "string" }, "description": "insert_pivot: field names placed on COLUMNS (e.g. [\"Month\"])" },
             "filters": { "type": "array", "items": { "type": "string" }, "description": "insert_pivot: field names used as page/report FILTERS" },
             "values": {
               "type": "array",
@@ -116,7 +117,7 @@ public sealed class ExcelEditTool : ITool
               "items": {
                 "type": "object",
                 "properties": {
-                  "field": { "type": "string", "description": "Field name to aggregate (e.g. \"매출\")" },
+                  "field": { "type": "string", "description": "Field name to aggregate (e.g. \"Sales\")" },
                   "func": { "type": "string", "enum": ["sum","count","average","max","min","countnums"], "description": "Aggregation (default sum)" }
                 },
                 "required": ["field"]
@@ -169,7 +170,7 @@ public sealed class ExcelEditTool : ITool
     {
         if (!OperatingSystem.IsWindows())
         {
-            yield return new ToolOutput("ExcelEdit: Windows 전용 기능입니다.", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.excelEdit.windowsOnly"), IsError: true);
             yield break;
         }
 
@@ -196,7 +197,7 @@ public sealed class ExcelEditTool : ITool
 
         if (error is not null)
         {
-            yield return new ToolOutput($"ExcelEdit: 실패 — {error}", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.excelEdit.failed", error), IsError: true);
             yield break;
         }
 
@@ -208,33 +209,33 @@ public sealed class ExcelEditTool : ITool
         if (inp is null || string.IsNullOrWhiteSpace(inp.Action)
             || !Actions.Contains(inp.Action, System.StringComparer.Ordinal))
         {
-            return "action 은 set_value|set_formula|set_font|set_fill|insert_chart|add_sheet 중 하나여야 합니다.";
+            return L10n.Get("tools.excelEdit.invalidAction");
         }
 
         return inp.Action switch
         {
-            "set_value" when inp.Value is null => "set_value 에는 value 가 필요합니다.",
-            "set_formula" when string.IsNullOrWhiteSpace(inp.Formula) => "set_formula 에는 formula 가 필요합니다.",
+            "set_value" when inp.Value is null => L10n.Get("tools.excelEdit.setValueNeedsValue"),
+            "set_formula" when string.IsNullOrWhiteSpace(inp.Formula) => L10n.Get("tools.excelEdit.setFormulaNeedsFormula"),
             "set_font" when string.IsNullOrWhiteSpace(inp.Color) && inp.FontSize is null && inp.Bold is null
-                => "set_font 에는 color, font_size, bold 중 하나가 필요합니다.",
-            "set_fill" when string.IsNullOrWhiteSpace(inp.Color) => "set_fill 에는 color 가 필요합니다.",
+                => L10n.Get("tools.excelEdit.setFontNeedsAny"),
+            "set_fill" when string.IsNullOrWhiteSpace(inp.Color) => L10n.Get("tools.excelEdit.setFillNeedsColor"),
             "set_geometry" when inp.ShapeIndex is null && string.IsNullOrWhiteSpace(inp.ShapeName)
-                => "set_geometry 에는 shape_index 또는 shape_name 이 필요합니다.",
-            "set_shape_fill" when string.IsNullOrWhiteSpace(inp.Color) => "set_shape_fill 에는 color 가 필요합니다.",
+                => L10n.Get("tools.excelEdit.setGeometryNeedsShape"),
+            "set_shape_fill" when string.IsNullOrWhiteSpace(inp.Color) => L10n.Get("tools.excelEdit.setShapeFillNeedsColor"),
             "set_shape_line" when string.IsNullOrWhiteSpace(inp.Color) && inp.LineWeight is null
-                => "set_shape_line 에는 color 또는 line_weight 가 필요합니다.",
+                => L10n.Get("tools.excelEdit.setShapeLineNeedsAny"),
             "set_geometry" when ShapeGeometry.IsEmpty(inp.Left, inp.Top, inp.Width, inp.Height, inp.Rotation, inp.Flip)
-                => "set_geometry 에는 left, top, width, height, rotation, flip 중 하나가 필요합니다.",
+                => L10n.Get("tools.excelEdit.setGeometryNeedsAny"),
             "set_geometry" => ShapeGeometry.ValidateFlip(inp.Flip),
-            "insert_picture" when string.IsNullOrWhiteSpace(inp.Path) => "insert_picture 에는 path 가 필요합니다.",
-            "insert_pivot" when string.IsNullOrWhiteSpace(inp.Source) => "insert_pivot 에는 source(데이터 범위)가 필요합니다.",
-            "insert_pivot" when inp.Values is not { Count: > 0 } => "insert_pivot 에는 values(집계할 값 필드)가 최소 1개 필요합니다.",
-            "replace" when string.IsNullOrEmpty(inp.FindText) => "replace 에는 find_text 가 필요합니다.",
-            "merge_cells" when string.IsNullOrWhiteSpace(inp.Cell) => "merge_cells 에는 cell(병합할 범위, 예 \"A1:E1\")이 필요합니다.",
-            "delete_row" when string.IsNullOrWhiteSpace(inp.Cell) => "delete_row 에는 cell(대상 행, 예 \"3\")이 필요합니다.",
-            "delete_column" when string.IsNullOrWhiteSpace(inp.Cell) => "delete_column 에는 cell(대상 열, 예 \"B\")이 필요합니다.",
+            "insert_picture" when string.IsNullOrWhiteSpace(inp.Path) => L10n.Get("tools.excelEdit.insertPictureNeedsPath"),
+            "insert_pivot" when string.IsNullOrWhiteSpace(inp.Source) => L10n.Get("tools.excelEdit.insertPivotNeedsSource"),
+            "insert_pivot" when inp.Values is not { Count: > 0 } => L10n.Get("tools.excelEdit.insertPivotNeedsValues"),
+            "replace" when string.IsNullOrEmpty(inp.FindText) => L10n.Get("tools.excelEdit.replaceNeedsFindText"),
+            "merge_cells" when string.IsNullOrWhiteSpace(inp.Cell) => L10n.Get("tools.excelEdit.mergeCellsNeedsCell"),
+            "delete_row" when string.IsNullOrWhiteSpace(inp.Cell) => L10n.Get("tools.excelEdit.deleteRowNeedsCell"),
+            "delete_column" when string.IsNullOrWhiteSpace(inp.Cell) => L10n.Get("tools.excelEdit.deleteColumnNeedsCell"),
             "delete_shape" when inp.ShapeIndex is null && string.IsNullOrWhiteSpace(inp.ShapeName)
-                => "delete_shape 에는 shape_index 또는 shape_name 이 필요합니다.",
+                => L10n.Get("tools.excelEdit.deleteShapeNeedsShape"),
             _ => null,
         };
     }
@@ -247,18 +248,18 @@ public sealed class ExcelEditTool : ITool
             dynamic? xapp = ComInterop.GetOrCreate("Excel.Application");
             if (xapp is null)
             {
-                throw new System.InvalidOperationException("Excel 을 시작할 수 없습니다(설치 확인).");
+                throw new System.InvalidOperationException(L10n.Get("tools.excelEdit.cannotStart"));
             }
 
             xapp.Visible = true;
             xapp.Workbooks.Add();
-            return "OK: 새 Excel 통합문서를 열었습니다.";
+            return L10n.Get("tools.excelEdit.newWorkbookOk");
         }
 
         dynamic? app = ComInterop.TryGetActiveObject("Excel.Application");
         if (app is null)
         {
-            throw new System.InvalidOperationException("Excel 이 실행 중이 아닙니다.");
+            throw new System.InvalidOperationException(L10n.Get("tools.excelEdit.notRunning"));
         }
 
         dynamic wb = app.ActiveWorkbook; // 없으면 COMException
@@ -271,7 +272,7 @@ public sealed class ExcelEditTool : ITool
             app.ActiveSheet.Shapes.AddPicture(
                 file, OfficePicture.LinkToFileFalse, OfficePicture.SaveWithDocTrue,
                 (float)(inp.Left ?? 0), (float)(inp.Top ?? 0), w, h);
-            return "OK: 활성 시트에 이미지를 삽입했습니다.";
+            return L10n.Get("tools.excelEdit.pictureInserted");
         }
 
         if (inp.Action == "add_sheet")
@@ -282,7 +283,8 @@ public sealed class ExcelEditTool : ITool
                 ws.Name = inp.SheetName;
             }
 
-            return $"OK: 시트를 추가했습니다{(string.IsNullOrWhiteSpace(inp.SheetName) ? string.Empty : $" ('{inp.SheetName}')")}.";
+            var sheetSuffix = string.IsNullOrWhiteSpace(inp.SheetName) ? string.Empty : $" ('{inp.SheetName}')";
+            return L10n.Get("tools.excelEdit.sheetAdded", sheetSuffix);
         }
 
         if (inp.Action == "insert_chart")
@@ -292,15 +294,15 @@ public sealed class ExcelEditTool : ITool
             dynamic chartObj = sheet.ChartObjects().Add(300, 30, 360, 240);
             chartObj.Chart.SetSourceData(src);
             chartObj.Chart.ChartType = ChartTypeId(inp.ChartType);
-            return "OK: 차트를 삽입했습니다.";
+            return L10n.Get("tools.excelEdit.chartInserted");
         }
 
         if (inp.Action == "set_geometry")
         {
             dynamic shape = ResolveShape(app, inp);
             var applied = ShapeGeometry.Apply(shape, inp.Left, inp.Top, inp.Width, inp.Height, inp.Rotation, inp.Flip);
-            var target = inp.ShapeIndex is not null ? $"도형 {inp.ShapeIndex}" : $"도형 '{inp.ShapeName}'";
-            return $"OK: {target} 에 기하 변경 {applied}건 적용.";
+            var target = inp.ShapeIndex is not null ? L10n.Get("tools.excelEdit.shapeByIndex", inp.ShapeIndex) : L10n.Get("tools.excelEdit.shapeByName", inp.ShapeName);
+            return L10n.Get("tools.excelEdit.geometryApplied", target, applied);
         }
 
         if (inp.Action == "insert_pivot")
@@ -312,7 +314,7 @@ public sealed class ExcelEditTool : ITool
         {
             var outPath = OfficePdf.Resolve(inp.Path, TryFullName(wb), workingDir);
             wb.ExportAsFixedFormat(XlTypePDF, outPath);
-            return $"OK: PDF 로 내보냈습니다 — {outPath}";
+            return L10n.Get("tools.excelEdit.pdfExported", outPath);
         }
 
         if (inp.Action == "replace")
@@ -323,7 +325,7 @@ public sealed class ExcelEditTool : ITool
                 : app.ActiveSheet.Range(inp.Cell);
             // Replace(What, Replacement, LookAt, ...)
             scopeRange.Replace(inp.FindText, inp.ReplaceText ?? string.Empty, XlPart);
-            return "OK: 찾기·바꾸기 완료.";
+            return L10n.Get("tools.excelEdit.replaceDone");
         }
 
         if (inp.Action == "merge_cells")
@@ -332,14 +334,14 @@ public sealed class ExcelEditTool : ITool
             rng.Merge();
             rng.HorizontalAlignment = XlCenter;
             rng.VerticalAlignment = XlCenter;
-            return $"OK: {inp.Cell} 범위를 병합했습니다.";
+            return L10n.Get("tools.excelEdit.merged", inp.Cell);
         }
 
         if (inp.Action == "delete_sheet")
         {
             if ((int)wb.Worksheets.Count <= 1)
             {
-                throw new System.InvalidOperationException("마지막 시트는 삭제할 수 없습니다.");
+                throw new System.InvalidOperationException(L10n.Get("tools.excelEdit.cannotDeleteLastSheet"));
             }
 
             dynamic ws = string.IsNullOrWhiteSpace(inp.SheetName) ? app.ActiveSheet : wb.Worksheets[inp.SheetName];
@@ -348,26 +350,26 @@ public sealed class ExcelEditTool : ITool
             app.DisplayAlerts = false; // 삭제 확인 대화상자 억제
             try { ws.Delete(); }
             finally { app.DisplayAlerts = prevAlerts; }
-            return $"OK: 시트 '{name}' 를 삭제했습니다.";
+            return L10n.Get("tools.excelEdit.sheetDeleted", name);
         }
 
         if (inp.Action == "delete_row")
         {
             app.ActiveSheet.Range(inp.Cell).EntireRow.Delete();
-            return $"OK: {inp.Cell} 행을 삭제했습니다.";
+            return L10n.Get("tools.excelEdit.rowDeleted", inp.Cell);
         }
 
         if (inp.Action == "delete_column")
         {
             app.ActiveSheet.Range(inp.Cell).EntireColumn.Delete();
-            return $"OK: {inp.Cell} 열을 삭제했습니다.";
+            return L10n.Get("tools.excelEdit.columnDeleted", inp.Cell);
         }
 
         if (inp.Action == "delete_shape")
         {
             dynamic shape = ResolveShape(app, inp);
             shape.Delete();
-            return "OK: 도형을 삭제했습니다.";
+            return L10n.Get("tools.excelEdit.shapeDeleted");
         }
 
         if (inp.Action == "set_shape_fill")
@@ -375,7 +377,7 @@ public sealed class ExcelEditTool : ITool
             dynamic shape = ResolveShape(app, inp);
             shape.Fill.Solid();
             shape.Fill.ForeColor.RGB = OfficeColor.ToBgr(inp.Color!);
-            return "OK: 도형 채우기 색을 적용했습니다.";
+            return L10n.Get("tools.excelEdit.shapeFillApplied");
         }
 
         if (inp.Action == "set_shape_line")
@@ -391,7 +393,7 @@ public sealed class ExcelEditTool : ITool
                 shape.Line.Weight = (float)inp.LineWeight.Value;
             }
 
-            return "OK: 도형 테두리 색/두께를 적용했습니다.";
+            return L10n.Get("tools.excelEdit.shapeLineApplied");
         }
 
         if (inp.Action == "insert_divider")
@@ -405,8 +407,8 @@ public sealed class ExcelEditTool : ITool
                 edge.Color = OfficeColor.ToBgr(inp.Color);
             }
 
-            var dscope = string.IsNullOrWhiteSpace(inp.Cell) ? "현재 선택" : inp.Cell;
-            return $"OK: {dscope} 아래에 구분선을 추가했습니다.";
+            var dscope = string.IsNullOrWhiteSpace(inp.Cell) ? L10n.Get("tools.excelEdit.currentSelection") : inp.Cell;
+            return L10n.Get("tools.excelEdit.dividerAdded", dscope);
         }
 
         dynamic range = ResolveRange(app, inp.Cell);
@@ -462,8 +464,8 @@ public sealed class ExcelEditTool : ITool
                 break;
         }
 
-        var scope = string.IsNullOrWhiteSpace(inp.Cell) ? "현재 선택" : inp.Cell;
-        return $"OK: {scope} 에 {inp.Action} 적용.";
+        var scope = string.IsNullOrWhiteSpace(inp.Cell) ? L10n.Get("tools.excelEdit.currentSelection") : inp.Cell;
+        return L10n.Get("tools.excelEdit.actionApplied", scope, inp.Action);
     }
 
     // XlPivotFieldOrientation / XlConsolidationFunction / XlPivotTableSourceType 상수(late-binding int).
@@ -534,11 +536,10 @@ public sealed class ExcelEditTool : ITool
 
         if (vals == 0)
         {
-            throw new System.InvalidOperationException(
-                "값 필드를 하나도 배치하지 못했습니다. source 헤더의 필드명과 values.field 가 일치하는지 확인하세요.");
+            throw new System.InvalidOperationException(L10n.Get("tools.excelEdit.pivotNoValueField"));
         }
 
-        return $"OK: '{destName}' 시트에 피봇테이블 생성(행 {placed}·값 {vals} 필드). 필드명은 source 헤더 기준입니다.";
+        return L10n.Get("tools.excelEdit.pivotCreated", destName, placed, vals);
     }
 
     // 필드 방향 지정. 없는 필드명이면 COM 예외 → false(흡수).
@@ -624,7 +625,7 @@ public sealed class ExcelEditTool : ITool
             if (inp.ShapeIndex.Value < 1 || inp.ShapeIndex.Value > count)
             {
                 throw new System.InvalidOperationException(
-                    $"도형 {inp.ShapeIndex} 없음(활성 시트에 {count}개). ExcelInspect 의 shapes 를 확인하세요.");
+                    L10n.Get("tools.excelEdit.shapeNotFoundByIndex", inp.ShapeIndex, count));
             }
 
             return shapes.Item(inp.ShapeIndex.Value);
@@ -636,7 +637,7 @@ public sealed class ExcelEditTool : ITool
         }
         catch
         {
-            throw new System.InvalidOperationException($"도형 '{inp.ShapeName}' 을 활성 시트에서 찾지 못했습니다.");
+            throw new System.InvalidOperationException(L10n.Get("tools.excelEdit.shapeNotFoundByName", inp.ShapeName));
         }
     }
 

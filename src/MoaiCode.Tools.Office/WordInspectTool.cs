@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using MoaiCode.Config;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Office;
 
@@ -47,7 +48,7 @@ public sealed class WordInspectTool : ITool
     {
         if (!OperatingSystem.IsWindows())
         {
-            yield return new ToolOutput("WordInspect: Windows 전용 기능입니다.", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.wordInspect.windowsOnly"), IsError: true);
             yield break;
         }
 
@@ -71,13 +72,13 @@ public sealed class WordInspectTool : ITool
 
         if (error is not null)
         {
-            yield return new ToolOutput($"WordInspect: 조회 실패 — {error}", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.wordInspect.queryFailed", error), IsError: true);
             yield break;
         }
 
         if (info is null)
         {
-            yield return new ToolOutput("WordInspect: 실행 중인 Word 에 열린 문서가 없습니다.");
+            yield return new ToolOutput(L10n.Get("tools.wordInspect.noDocument"));
             yield break;
         }
 
