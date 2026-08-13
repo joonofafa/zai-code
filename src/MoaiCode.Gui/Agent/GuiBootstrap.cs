@@ -86,6 +86,7 @@ public static class GuiBootstrap
         // 기존 template 시스템 재활용 — PPT 디자인 A~D×레이아웃 / Word 보고서·경위서·제안서 /
         // Excel 지출결의서·거래명세서·재고관리표. 자유 편집은 여전히 열린 문서(COM).
         list.Add(new DocxCreateTool());
+        list.Add(new DocxEditTool());   // 기존 docx 템플릿 채우기(텍스트 치환, 서식 보존).
         list.Add(new XlsxCreateTool());
         list.Add(new PptxCreateTool());
         list.Add(new OfficeDocInspectTool());

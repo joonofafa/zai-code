@@ -147,6 +147,9 @@ public sealed class DocxCreateTool : ITool
         // MoAI 고유 식별자를 심어 나중에 같은 대화로 되찾을 수 있게 한다(생성 문서 한정).
         doc.AddCustomFilePropertiesPart().Properties = OfficeDocId.Build(OfficeDocId.NewId());
 
+        // 문서 기본 서식(DocDefaults): Latin=Arial, 한글(EastAsia)=Malgun Gothic, 11pt. 한글 렌더 일관성.
+        ApplyDefaults(main);
+
         if (!string.IsNullOrWhiteSpace(inp.Title))
         {
             body.AppendChild(Heading(inp.Title!, 0)); // level 0 = 문서 제목(가장 큼)
@@ -198,6 +201,42 @@ public sealed class DocxCreateTool : ITool
                 body.AppendChild(Caption(img.Caption!));
             }
         }
+
+        // 페이지 설정(A4 세로 + 1" 여백) + 하단 중앙 페이지 번호 푸터. SectionProperties 는 body 의 마지막 자식.
+        AppendPageSetup(main, body);
+    }
+
+    // 문서 기본 서식(DocDefaults): Latin=Arial, 한글(EastAsia)=Malgun Gothic, 11pt(22 half-pt).
+    private static void ApplyDefaults(MainDocumentPart main)
+    {
+        var stylePart = main.AddNewPart<StyleDefinitionsPart>();
+        stylePart.Styles = new Styles(
+            new DocDefaults(
+                new RunPropertiesDefault(
+                    new RunPropertiesBaseStyle(
+                        new RunFonts { Ascii = "Arial", HighAnsi = "Arial", EastAsia = "Malgun Gothic", ComplexScript = "Arial" },
+                        new FontSize { Val = "22" },
+                        new FontSizeComplexScript { Val = "22" }))));
+    }
+
+    // 페이지 설정(A4 세로 + 1" 여백) + 하단 중앙 페이지 번호(PAGE 필드) 푸터.
+    private static void AppendPageSetup(MainDocumentPart main, Body body)
+    {
+        var footerPart = main.AddNewPart<FooterPart>();
+        footerPart.Footer = new Footer(
+            new Paragraph(
+                new ParagraphProperties(new Justification { Val = JustificationValues.Center }),
+                new Run(new FieldChar { FieldCharType = FieldCharValues.Begin }),
+                new Run(new FieldCode(" PAGE ") { Space = SpaceProcessingModeValues.Preserve }),
+                new Run(new FieldChar { FieldCharType = FieldCharValues.Separate }),
+                new Run(new Text("1")),
+                new Run(new FieldChar { FieldCharType = FieldCharValues.End })));
+        var relId = main.GetIdOfPart(footerPart);
+
+        body.AppendChild(new SectionProperties(
+            new FooterReference { Type = HeaderFooterValues.Default, Id = relId },
+            new PageSize { Width = 11906U, Height = 16838U },     // A4 세로(DXA)
+            new PageMargin { Top = 1440, Right = 1440U, Bottom = 1440, Left = 1440U, Header = 720U, Footer = 720U, Gutter = 0U }));
     }
 
     private static void AppendBlock(Body body, BlockIn b)
