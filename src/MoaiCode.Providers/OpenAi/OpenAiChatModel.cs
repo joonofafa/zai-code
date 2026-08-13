@@ -499,7 +499,7 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl
             return Math.Clamp(n, 256, 200_000);
         }
 
-        return 8192;
+        return 16384;   // 큰 단일 파일(예: 게임 index.html) Write 가 중간에 잘려 'path' 누락되던 문제 완화
     }
 
     private static string? ResolveReasoningEffort()

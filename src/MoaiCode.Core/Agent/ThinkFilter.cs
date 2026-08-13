@@ -41,6 +41,14 @@ public static class ThinkFilter
             return text;
         }
 
+        // 브레인스토밍 답변 제안 마커([[SUGGEST]] ...)는 화면/전사에 보이지 않게 제거한다(ghost 기본값으로만 사용).
+        var si = text.IndexOf("[[SUGGEST]]", StringComparison.Ordinal);
+        if (si >= 0)
+        {
+            var nl = si > 0 ? text.LastIndexOf('\n', si - 1) : -1;
+            text = nl >= 0 ? text[..nl] : text[..si];
+        }
+
         if (text.IndexOf("THINKING_STATUS", StringComparison.OrdinalIgnoreCase) >= 0)
         {
             text = ThinkingStatusNoise.Replace(text, "");

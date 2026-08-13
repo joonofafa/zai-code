@@ -1,3 +1,4 @@
+using MoaiCode.Core.Agent;
 using MoaiCode.Core.Messages;
 using MoaiCode.Localization;
 using Spectre.Console;
@@ -39,7 +40,8 @@ public static class TranscriptRenderer
                     AnsiConsole.MarkupLine($"[green]› [/]{Markup.Escape(u.Text)}");
                     break;
                 case AssistantMessage a:
-                    var text = string.Concat(a.Content.OfType<TextBlock>().Select(t => t.Text));
+                    // 재생 시에도 추론 태그·[[SUGGEST]] 마커를 제거해 보이지 않게 한다(라이브와 동일).
+                    var text = ThinkFilter.Strip(string.Concat(a.Content.OfType<TextBlock>().Select(t => t.Text)));
                     if (!string.IsNullOrWhiteSpace(text))
                     {
                         AnsiConsole.Write(new Panel(MarkdownRenderer.Render(text))

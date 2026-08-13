@@ -834,12 +834,12 @@ public sealed class ReplApp
                 }
             }
 
-            var cleanText = ThinkFilter.Strip(sb.ToString());
             if (_ctx.State.Brainstorming)
             {
-                (cleanText, var suggest) = ExtractSuggest(cleanText);
+                var (_, suggest) = ExtractSuggest(sb.ToString());   // 원문에서 제안 캡처(마커 제거는 ThinkFilter)
                 if (suggest is not null) _brainstormSuggestion = suggest;
             }
+            var cleanText = ThinkFilter.Strip(sb.ToString());
             if (!string.IsNullOrWhiteSpace(cleanText))
             {
                 _producedOutputInTurn = true;
@@ -904,12 +904,12 @@ public sealed class ReplApp
         ClearSpinnerLine();
 
         // 추론(<think>...</think>)을 제거하고, 실제 내용이 있을 때만 마크다운 패널을 렌더한다.
-        var finalText = ThinkFilter.Strip(sb.ToString());
         if (_ctx.State.Brainstorming)
         {
-            (finalText, var suggest) = ExtractSuggest(finalText);
+            var (_, suggest) = ExtractSuggest(sb.ToString());   // 원문에서 제안 캡처(마커 제거는 ThinkFilter)
             if (suggest is not null) _brainstormSuggestion = suggest;
         }
+        var finalText = ThinkFilter.Strip(sb.ToString());
         if (!string.IsNullOrWhiteSpace(finalText))
         {
             _producedOutputInTurn = true;
