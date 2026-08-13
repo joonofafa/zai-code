@@ -367,6 +367,22 @@ public sealed class QueryEngine
                 blocks.Add(new TextBlock(cleanText));
             }
 
+            // 출력 토큰 한도로 잘림(stop=length): 툴 호출까지 잘렸다면 인자가 불완전하다(예: Write 의 path 누락).
+            // 잘린 툴 호출은 디스패치하지 말고 버린 뒤, 작게 나눠 이어쓰도록 유도한다. 툴콜 유무와 무관하게
+            // 먼저 처리하는 게 핵심 — 예전엔 toolCalls.Count==0 일 때만 체크해, 잘린 Write 가 그대로 디스패치돼
+            // 'path required' 로 실패·반복됐다(큰 단일 파일 생성 시).
+            if (IsOutputTruncated(stopReason) && outputRecoveries < 3)
+            {
+                outputRecoveries++;
+                if (blocks.Count > 0)
+                {
+                    _messages.Add(new AssistantMessage(blocks));   // 텍스트만 보존(잘린 툴콜은 제외)
+                }
+
+                _messages.Add(new UserMessage(Reminders.OutputLimitRecovery));
+                continue;
+            }
+
             blocks.AddRange(toolCalls);
             if (blocks.Count > 0)
             {
@@ -375,14 +391,6 @@ public sealed class QueryEngine
 
             if (toolCalls.Count == 0)
             {
-                // 출력 토큰 한도로 잘렸으면(stop=length) 이어받기 유도 후 재개 (상한 내).
-                if (IsOutputTruncated(stopReason) && outputRecoveries < 3)
-                {
-                    outputRecoveries++;
-                    _messages.Add(new UserMessage(Reminders.OutputLimitRecovery));
-                    continue;
-                }
-
                 // 모델이 tool_calls 로 턴을 끝냈는데 파싱된 툴콜이 0개 → 누락/글리치.
                 // 이어서 진행하도록 재요청 (상한). 이대로 종료하면 작업이 중간에 멈춘다.
                 if (string.Equals(stopReason, "tool_calls", StringComparison.OrdinalIgnoreCase)
@@ -477,7 +485,7 @@ public sealed class QueryEngine
                 // 동일 호출(툴+인자)이 연속 3회 실패하면 루프로 보고 멈춘다 (toolFailureLoopGuard).
                 // 키를 툴 이름이 아니라 인자까지 포함해야, 서로 다른 경로/패턴을 탐색하다 몇 번 실패한 것을
                 // "루프"로 오인해 세션을 끊지 않는다 (진짜 루프 = 같은 호출 반복).
-                var sig = call.Name + " " + call.Input.GetRawText();
+                var sig = call.Name + "\0" + call.Input.GetRawText();
                 if (isError)
                 {
                     var n = failureCounts.TryGetValue(sig, out var c) ? c + 1 : 1;

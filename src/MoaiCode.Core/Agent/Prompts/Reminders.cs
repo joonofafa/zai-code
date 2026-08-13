@@ -32,10 +32,12 @@ public static class Reminders
     // 출력 토큰 한도로 응답이 잘렸을 때 이어받기 (query.ts max_output_tokens 복구)
     public const string OutputLimitRecovery =
         "<system-reminder>\n" +
-        "Your previous response was cut off because it hit the output token limit. " +
-        "Resume directly where you left off — no apology, no recap, no restating earlier content. " +
-        "Continue mid-thought if needed, and break the remaining work into smaller pieces so each " +
-        "response fits within the limit.\n" +
+        "Your previous response was cut off because it hit the output token limit, so the last tool call " +
+        "(if any) was incomplete and was discarded — it did NOT take effect. Do not apologize or recap. " +
+        "If you were writing a large file, do NOT retry the whole file in one Write — it will truncate " +
+        "again. Instead create the file with a Write containing only the FIRST portion, then use Edit " +
+        "(append) to add the remaining sections in chunks that each fit within the limit. For other work, " +
+        "resume where you left off and break the remaining output into smaller pieces.\n" +
         "</system-reminder>";
 
     // 플랜 모드 진입 (읽기 전용, 다른 지침에 우선)
