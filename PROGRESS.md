@@ -92,8 +92,6 @@
 7. Windows Credential Manager, macOS Keychain, libsecret 자격증명 백엔드
 8. 로컬 임베딩 생성 파이프라인과 장기 메모리/검색 품질 고도화
 
-관련 패칭 지침은 [`docs/REVIEW_PATCH_GUIDE_OFFICE_OPENXML.md`](docs/REVIEW_PATCH_GUIDE_OFFICE_OPENXML.md)에 정리되어 있습니다.
-
 ## 다음 검증 체크리스트
 
 ```bash
