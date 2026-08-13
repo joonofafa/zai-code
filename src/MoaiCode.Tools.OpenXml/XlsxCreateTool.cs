@@ -23,7 +23,10 @@ public sealed class XlsxCreateTool : ITool
         "1,234"/"1,234.5" becomes a number with thousands formatting; a string starting with "="
         (e.g. "=SUM(B2:B4)", "=B2/C2") becomes a live formula; anything else stays text. Prefer
         writing percentages, thousands-separated numbers, and formulas this way instead of pre-
-        computing them as plain text. Supports native charts (bar/line/pie) and a bold header row —
+        computing them as plain text. Modern functions (TEXTJOIN, XLOOKUP, XMATCH, IFS, SWITCH,
+        UNIQUE, FILTER, SORT, LET, …) may be written naturally — they are auto-prefixed (_xlfn.)
+        so Excel/LibreOffice recognize them instead of showing #NAME?. Supports native charts
+        (bar/line/pie) and a bold header row —
         so charts do NOT need Python/openpyxl. ALWAYS use this to produce an .xlsx file. Do NOT
         install packages (openpyxl, exceljs, etc.) or write scripts to build spreadsheets.
         Charts reference vertical single-column ranges of the same sheet (e.g. categories "A2:A11",
@@ -641,9 +644,34 @@ public sealed class XlsxCreateTool : ITool
         return DangerCommands.Any(k => low.StartsWith(k, StringComparison.Ordinal));
     }
 
+    // 모던 함수(Excel 2016+/365)는 OOXML 에 반드시 _xlfn.(일부는 _xlfn._xlws.) 접두사로 저장해야
+    // Excel/LibreOffice 가 인식한다. 접두사 없이 저장하면 #NAME? 이 뜬다. 모델이 접두사 없이 써도
+    // 여기서 정규화한다(이미 접두사가 있으면 앞의 '.' 룩비하인드로 재적용되지 않음).
+    private static readonly (Regex Rx, string Repl)[] ModernFuncRules = new[]
+    {
+        "TEXTJOIN", "CONCAT", "IFS", "SWITCH", "MAXIFS", "MINIFS", "XLOOKUP", "XMATCH",
+        "UNIQUE", "SEQUENCE", "RANDARRAY", "LET", "LAMBDA", "TEXTSPLIT", "TEXTBEFORE", "TEXTAFTER",
+        "FILTER", "SORT", "SORTBY",
+    }.Select(f =>
+    {
+        // FILTER/SORT/SORTBY 는 워크시트 하위 네임스페이스(_xlfn._xlws.).
+        var repl = f is "FILTER" or "SORT" or "SORTBY" ? $"_xlfn._xlws.{f}" : $"_xlfn.{f}";
+        return (new Regex($@"(?<![A-Za-z0-9_.]){f}(?=\s*\()", RegexOptions.IgnoreCase | RegexOptions.Compiled), repl);
+    }).ToArray();
+
+    private static string NormalizeFormula(string expr)
+    {
+        foreach (var (rx, repl) in ModernFuncRules)
+        {
+            expr = rx.Replace(expr, repl);
+        }
+
+        return expr;
+    }
+
     private static Cell Formula(string reference, string expr, uint styleIndex)
     {
-        var c = new Cell { CellReference = reference, CellFormula = new CellFormula(expr) };
+        var c = new Cell { CellReference = reference, CellFormula = new CellFormula(NormalizeFormula(expr)) };
         if (styleIndex != 0)
         {
             c.StyleIndex = styleIndex;
