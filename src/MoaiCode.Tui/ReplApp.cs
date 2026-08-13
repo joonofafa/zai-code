@@ -696,7 +696,7 @@ public sealed class ReplApp
         string body;
         if (line.Length == 0)
         {
-            body = $"[38;5;244m입력하면 다음 요청으로 큐잉됩니다[0m";
+            body = $"[38;5;244m{L10n.Get("repl.typeahead.hint")}[0m";
         }
         else
         {

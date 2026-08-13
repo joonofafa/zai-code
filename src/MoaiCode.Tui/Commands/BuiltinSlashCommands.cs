@@ -51,8 +51,8 @@ internal sealed class ModelCommand : ISlashCommand
         if (!Console.IsInputRedirected)
         {
             var split = SelectList.Prompt(
-                "모델별 업무 분할 (난이도별 다른 모델 사용)?",
-                new[] { "예 — 하급 → 중급 → 고급 순으로 선택", "아니오 — 단일 모델" },
+                L10n.Get("slash.model.splitPrompt"),
+                new[] { L10n.Get("slash.model.splitYes"), L10n.Get("slash.model.splitNo") },
                 0);
             if (split < 0)
             {
@@ -104,24 +104,25 @@ internal sealed class ModelCommand : ISlashCommand
             return new SlashResult(L10n.Get("slash.model.fetchFailed"));
         }
 
-        var summary = new System.Text.StringBuilder("난이도별 모델 분할 설정:\n");
-        foreach (var (tier, label) in new[] { ("low", "하급"), ("mid", "중급"), ("high", "고급") })
+        var summary = new System.Text.StringBuilder(L10n.Get("slash.model.tierSummary") + "\n");
+        foreach (var tier in new[] { "low", "mid", "high" })
         {
+            var label = L10n.Get(tier switch { "low" => "slash.model.tierLow", "high" => "slash.model.tierHigh", _ => "slash.model.tierMid" });
             var envKey = tier switch { "low" => "MOAI_MODEL_LOW", "high" => "MOAI_MODEL_HIGH", _ => "MOAI_MODEL_MID" };
-            var opts = new List<string> { "(기본 모델 사용 / 해제)" };
+            var opts = new List<string> { L10n.Get("slash.model.tierClearOption") };
             opts.AddRange(avail);
             var cur = Environment.GetEnvironmentVariable(envKey);
             var def = cur is null ? 0 : Math.Max(0, opts.FindIndex(o => string.Equals(o, cur, StringComparison.OrdinalIgnoreCase)));
-            var pick = SelectList.Prompt($"{label}({tier}) 티어 모델 선택", opts, def < 0 ? 0 : def);
+            var pick = SelectList.Prompt(L10n.Get("slash.model.tierPickTitle", label, tier), opts, def < 0 ? 0 : def);
             if (pick < 0)
             {
-                summary.AppendLine($"  {label}: (변경 안 함)");
+                summary.AppendLine($"  {label}: {L10n.Get("slash.model.tierUnchanged")}");
                 continue;
             }
 
             var tierModel = pick == 0 ? null : opts[pick];
             ctx.PersistTierModel?.Invoke(tier, tierModel);
-            summary.AppendLine($"  {label}: {tierModel ?? "(기본 모델)"}");
+            summary.AppendLine($"  {label}: {tierModel ?? L10n.Get("slash.model.tierDefault")}");
         }
 
         return new SlashResult(summary.ToString().TrimEnd());
