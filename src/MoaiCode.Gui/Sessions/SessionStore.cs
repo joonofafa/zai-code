@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Gui.Sessions;
 
@@ -49,7 +50,7 @@ public static class SessionStore
         try
         {
             Directory.CreateDirectory(Dir);
-            var title = lines.FirstOrDefault(l => l.Role == "user")?.Text?.Trim() ?? "새 대화";
+            var title = lines.FirstOrDefault(l => l.Role == "user")?.Text?.Trim() ?? L10n.Get("gui.session.newChat");
             title = title.Length > 40 ? title[..40] : title;
             var obj = new { id, title, kind, targetDoc, docId, docPath, savedAt = DateTimeOffset.Now.ToString("o"), lines };
             File.WriteAllText(Path.Combine(Dir, id + ".json"),
@@ -78,7 +79,7 @@ public static class SessionStore
                     using var doc = JsonDocument.Parse(File.ReadAllText(f));
                     var r = doc.RootElement;
                     var id = r.GetProperty("id").GetString()!;
-                    var title = r.TryGetProperty("title", out var t) ? t.GetString() ?? "대화" : "대화";
+                    var title = r.TryGetProperty("title", out var t) ? t.GetString() ?? L10n.Get("gui.session.chat") : L10n.Get("gui.session.chat");
                     var kind = r.TryGetProperty("kind", out var k) ? k.GetString() ?? "chat" : "chat";
                     var target = r.TryGetProperty("targetDoc", out var td) ? td.GetString() : null;
                     var docId = r.TryGetProperty("docId", out var di) ? di.GetString() : null;
@@ -148,14 +149,14 @@ public static class SessionStore
         var now = DateTime.Now;
         if (dt.Date == now.Date)
         {
-            return "오늘";
+            return L10n.Get("gui.session.today");
         }
 
         if (dt.Date == now.Date.AddDays(-1))
         {
-            return "어제";
+            return L10n.Get("gui.session.yesterday");
         }
 
-        return dt.ToString("M월 d일");
+        return dt.ToString(L10n.Get("gui.session.dateFormat"));
     }
 }

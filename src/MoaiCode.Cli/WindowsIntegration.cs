@@ -1,3 +1,5 @@
+using MoaiCode.Localization;
+
 namespace MoaiCode.Cli;
 
 /// <summary>
@@ -44,7 +46,7 @@ public static class WindowsIntegration
     {
         if (!OperatingSystem.IsWindows())
         {
-            return "install: Windows 전용 기능입니다.";
+            return L10n.Get("cli.win.installWindowsOnly");
         }
 #if WINDOWS
         try
@@ -52,7 +54,7 @@ public static class WindowsIntegration
             var exe = Environment.ProcessPath;
             if (string.IsNullOrEmpty(exe) || !File.Exists(exe))
             {
-                return "install: 실행 파일 경로를 확인할 수 없습니다.";
+                return L10n.Get("cli.win.installNoExePath");
             }
 
             var lines = new List<string>();
@@ -63,11 +65,11 @@ public static class WindowsIntegration
             {
                 Directory.CreateDirectory(InstallDir);
                 File.Copy(exe, target, overwrite: true);
-                lines.Add($"복사됨: {target}");
+                lines.Add(L10n.Get("cli.win.copied", target));
             }
             else
             {
-                lines.Add($"설치 위치에서 실행 중: {target}");
+                lines.Add(L10n.Get("cli.win.runningFromInstall", target));
             }
 
             // 2) 사용자 PATH 등록 (.NET 이 WM_SETTINGCHANGE 를 브로드캐스트하므로 새 터미널부터 적용).
@@ -78,28 +80,28 @@ public static class WindowsIntegration
             {
                 var updated = path.Length == 0 ? InstallDir : path.TrimEnd(';') + ";" + InstallDir;
                 Environment.SetEnvironmentVariable("Path", updated, EnvironmentVariableTarget.User);
-                lines.Add("PATH 등록됨 — 새로 연 터미널부터 'moai' 실행 가능 (재로그인 불필요, 반영 안 되면 재로그인)");
+                lines.Add(L10n.Get("cli.win.pathAdded"));
             }
             else
             {
-                lines.Add("PATH 이미 등록됨");
+                lines.Add(L10n.Get("cli.win.pathAlready"));
             }
 
             // 3) 탐색기 우클릭 메뉴 — 폴더 자체와 폴더 빈 공간(배경) 양쪽에 등록.
             var command = BuildLaunchCommand(target);
             RegisterVerb(@"Directory\shell", menuLabel, target, command);
             RegisterVerb(@"Directory\Background\shell", menuLabel, target, command);
-            lines.Add($"우클릭 메뉴 등록됨: \"{menuLabel}\"");
-            lines.Add("Windows 11 에서는 우클릭 → '추가 옵션 표시'(Shift+F10) 안에 표시됩니다.");
+            lines.Add(L10n.Get("cli.win.verbAdded", menuLabel));
+            lines.Add(L10n.Get("cli.win.win11Note"));
 
             return string.Join("\n", lines);
         }
         catch (Exception ex)
         {
-            return $"install: 실패 — {ex.Message}";
+            return L10n.Get("cli.win.installFailed", ex.Message);
         }
 #else
-        return "install: Windows 전용 기능입니다.";
+        return L10n.Get("cli.win.installWindowsOnly");
 #endif
     }
 
@@ -108,7 +110,7 @@ public static class WindowsIntegration
     {
         if (!OperatingSystem.IsWindows())
         {
-            return "uninstall: Windows 전용 기능입니다.";
+            return L10n.Get("cli.win.uninstallWindowsOnly");
         }
 #if WINDOWS
         try
@@ -117,7 +119,7 @@ public static class WindowsIntegration
 
             // 1) 우클릭 메뉴 제거.
             var removed = UnregisterVerb(@"Directory\shell") | UnregisterVerb(@"Directory\Background\shell");
-            lines.Add(removed ? "우클릭 메뉴 제거됨" : "우클릭 메뉴 없음(이미 제거됨)");
+            lines.Add(removed ? L10n.Get("cli.win.verbRemoved") : L10n.Get("cli.win.verbNone"));
 
             // 2) PATH 에서 설치 경로 제거.
             var path = Environment.GetEnvironmentVariable("Path", EnvironmentVariableTarget.User) ?? "";
@@ -127,11 +129,11 @@ public static class WindowsIntegration
             if (kept.Count != parts.Count)
             {
                 Environment.SetEnvironmentVariable("Path", string.Join(";", kept), EnvironmentVariableTarget.User);
-                lines.Add("PATH 에서 제거됨");
+                lines.Add(L10n.Get("cli.win.pathRemoved"));
             }
             else
             {
-                lines.Add("PATH 에 없음(이미 제거됨)");
+                lines.Add(L10n.Get("cli.win.pathNotFound"));
             }
 
             // 3) 설치 폴더 삭제 — 단, 지금 그 실행 파일로 돌고 있으면 지울 수 없다(윈도우 파일 잠금).
@@ -141,12 +143,12 @@ public static class WindowsIntegration
             {
                 if (runningFromInstall)
                 {
-                    lines.Add($"실행 중이라 파일은 남겨둡니다 — 종료 후 삭제하세요: {InstallDir}");
+                    lines.Add(L10n.Get("cli.win.runningKept", InstallDir));
                 }
                 else
                 {
                     Directory.Delete(InstallDir, recursive: true);
-                    lines.Add($"설치 폴더 삭제됨: {InstallDir}");
+                    lines.Add(L10n.Get("cli.win.dirDeleted", InstallDir));
                 }
             }
 
@@ -154,10 +156,10 @@ public static class WindowsIntegration
         }
         catch (Exception ex)
         {
-            return $"uninstall: 실패 — {ex.Message}";
+            return L10n.Get("cli.win.uninstallFailed", ex.Message);
         }
 #else
-        return "uninstall: Windows 전용 기능입니다.";
+        return L10n.Get("cli.win.uninstallWindowsOnly");
 #endif
     }
 

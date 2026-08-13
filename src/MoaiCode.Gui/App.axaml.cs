@@ -80,17 +80,17 @@ public partial class App : Application
 
         try
         {
-            var open = new NativeMenuItem("열기");
+            var open = new NativeMenuItem(L10n.Get("gui.tray.open"));
             open.Click += (_, _) => ShowMain();
 
-            var status = new NativeMenuItem("동기화: 대기 중") { IsEnabled = false };
+            var status = new NativeMenuItem(L10n.Get("gui.tray.syncIdle")) { IsEnabled = false };
             if (_sync is not null)
             {
                 // 동기화 상태는 백그라운드 스레드에서 오므로 UI 스레드로 마샬링.
-                _sync.Status += msg => Avalonia.Threading.Dispatcher.UIThread.Post(() => status.Header = $"동기화: {msg}");
+                _sync.Status += msg => Avalonia.Threading.Dispatcher.UIThread.Post(() => status.Header = L10n.Get("gui.tray.syncFmt", msg));
             }
 
-            var quit = new NativeMenuItem("종료");
+            var quit = new NativeMenuItem(L10n.Get("gui.tray.quit"));
             quit.Click += (_, _) =>
             {
                 _exiting = true;

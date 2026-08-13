@@ -344,11 +344,11 @@ internal sealed class McpCommand : ISlashCommand
 internal sealed class PlanCommand : ISlashCommand
 {
     public string Name => "plan";
-    public string Description => "현재 실행 계획(Phase 진행 트리) 표시";
+    public string Description => L10n.Get("slash.plan.treeDescription");
     public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
         var tree = ctx.PlanTree?.Invoke();
-        return Task.FromResult(new SlashResult(string.IsNullOrWhiteSpace(tree) ? "(활성 플랜 없음)" : tree));
+        return Task.FromResult(new SlashResult(string.IsNullOrWhiteSpace(tree) ? L10n.Get("slash.plan.none") : tree));
     }
 }
 

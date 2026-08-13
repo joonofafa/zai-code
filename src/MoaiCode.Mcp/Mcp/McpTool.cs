@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Mcp;
 
@@ -45,7 +46,7 @@ public sealed class McpTool : ITool
 
         if (error is not null)
         {
-            yield return new ToolOutput($"MCP 호출 실패: {error.Message}", IsError: true);
+            yield return new ToolOutput(L10n.Get("mcp.callFailed", error.Message), IsError: true);
             yield break;
         }
 

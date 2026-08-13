@@ -7,6 +7,7 @@ using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using MoaiCode.Gui.Agent;
 using MoaiCode.Gui.ViewModels;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Gui.Views;
 
@@ -57,7 +58,7 @@ public partial class OrgSearchWindow : Window
         var result = new List<PickedRef>();
         foreach (var h in byDoc)
         {
-            vm.Status = $"원문 가져오는 중: {h.Title}…";
+            vm.Status = L10n.Get("gui.orgsearch.fetchingFmt", h.Title);
             var (text, err) = await OrgSearchClient.DownloadDocTextAsync(h.DocumentId, CancellationToken.None);
             if (err is null && !string.IsNullOrWhiteSpace(text))
             {
@@ -65,14 +66,14 @@ public partial class OrgSearchWindow : Window
             }
             else
             {
-                vm.Status = $"실패: {h.Title} — {err}";
+                vm.Status = L10n.Get("gui.orgsearch.failedFmt", h.Title, err);
             }
         }
 
         vm.Busy = false;
         if (result.Count == 0)
         {
-            vm.Status = "원문을 가져오지 못했습니다. (스니펫으로 첨부하려면 체크 해제)";
+            vm.Status = L10n.Get("gui.orgsearch.fetchFailed");
             return; // 다이얼로그 유지
         }
 

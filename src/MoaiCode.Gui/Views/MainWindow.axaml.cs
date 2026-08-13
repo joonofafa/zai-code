@@ -6,6 +6,7 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Platform.Storage;
 using MoaiCode.Gui.Controls;
 using MoaiCode.Gui.ViewModels;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Gui.Views;
 
@@ -98,11 +99,11 @@ public partial class MainWindow : Window
 
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "참조 문서 선택",
+            Title = L10n.Get("gui.dialog.pickReference"),
             AllowMultiple = true,
             FileTypeFilter = new[]
             {
-                new FilePickerFileType("문서")
+                new FilePickerFileType(L10n.Get("gui.dialog.documents"))
                 {
                     Patterns = new[] { "*.docx", "*.xlsx", "*.pptx", "*.pdf", "*.txt", "*.md", "*.csv" },
                 },
@@ -151,7 +152,7 @@ public partial class MainWindow : Window
 
         var picked = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "폴더 선택",
+            Title = L10n.Get("gui.dialog.pickFolder"),
             AllowMultiple = false,
         });
 
