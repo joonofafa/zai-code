@@ -352,6 +352,66 @@ internal sealed class PlanCommand : ISlashCommand
     }
 }
 
+// /brainstorming [화두]: 화두를 Q&A로 구체화한 뒤 에이전트가 플랜을 생성한다. 최대 20턴.
+// 티어 설정(MOAI_MODEL_HIGH) 시 세션 동안 High 모델을 사용(플랜 품질). 다시 입력하면 토글 오프.
+internal sealed class BrainstormCommand : ISlashCommand
+{
+    internal const int MaxTurns = 20;
+
+    public string Name => "brainstorming";
+    public string Description => L10n.Get("slash.brainstorm.description");
+
+    public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
+    {
+        var st = ctx.State;
+
+        // 이미 활성이면 토글 오프(모델 복원).
+        if (st.Brainstorming)
+        {
+            End(ctx);
+            return Task.FromResult(new SlashResult(L10n.Get("slash.brainstorm.ended")));
+        }
+
+        st.Brainstorming = true;
+        st.BrainstormTurnsLeft = MaxTurns;
+        st.BrainstormBasePlan = ctx.PlanTree?.Invoke() ?? string.Empty;
+
+        // 티어 High 모델로 스왑(설정 시). 종료 시 복원할 이전 모델 저장.
+        st.BrainstormPrevModel = null;
+        var high = Environment.GetEnvironmentVariable("MOAI_MODEL_HIGH");
+        if (ctx.Models is not null && !string.IsNullOrWhiteSpace(high)
+            && !string.Equals(ctx.Models.CurrentModel, high, StringComparison.OrdinalIgnoreCase))
+        {
+            st.BrainstormPrevModel = ctx.Models.CurrentModel;
+            ctx.Models.CurrentModel = high;
+        }
+
+        // 인터뷰어 역할 리마인더 주입(세션 동안 유지).
+        ctx.Engine.AddSystemReminder(MoaiCode.Core.Agent.Prompts.Reminders.Brainstorm);
+
+        var topic = string.Join(' ', args).Trim();
+        var banner = L10n.Get("slash.brainstorm.started", MaxTurns);
+        return Task.FromResult(topic.Length > 0
+            ? new SlashResult(banner, SubmitPrompt: topic)
+            : new SlashResult(banner + "\n" + L10n.Get("slash.brainstorm.askTopic")));
+    }
+
+    // 브레인스토밍 종료: 상태 해제 + 모델 복원. ReplApp(플랜 감지/한도 도달)과 공용.
+    internal static void End(SlashContext ctx)
+    {
+        var st = ctx.State;
+        st.Brainstorming = false;
+        st.BrainstormTurnsLeft = 0;
+        st.BrainstormBasePlan = null;
+        if (st.BrainstormPrevModel is not null && ctx.Models is not null)
+        {
+            ctx.Models.CurrentModel = st.BrainstormPrevModel;
+        }
+
+        st.BrainstormPrevModel = null;
+    }
+}
+
 internal sealed class CostCommand : ISlashCommand
 {
     public string Name => "cost";

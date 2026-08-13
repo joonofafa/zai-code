@@ -59,6 +59,23 @@ public static class Reminders
         "## Exited Plan Mode\nYou have exited plan mode. You can now make edits, run tools, and take " +
         "actions (subject to permission prompts).";
 
+    // 브레인스토밍 모드 (화두 → Q&A 구체화 → 플랜)
+    public const string Brainstorm =
+        "Brainstorming mode is active. The user has only a rough idea, not a spec — help them think it " +
+        "through. Do NOT write code, edit files, or run non-read-only tools yet. Instead, interview the " +
+        "user: ask a few focused, concrete clarifying questions at a time (goals, target users, scope " +
+        "boundaries, constraints, data/inputs, edge cases, tech choices, success criteria). React to each " +
+        "answer before moving on; keep it conversational and concise. Do NOT dump a full plan early. When " +
+        "the requirements are concrete enough, synthesize ONE actionable, phased implementation plan by " +
+        "calling the PlanCreate tool (phases with tasks; tag task difficulty), then briefly summarize it and " +
+        "stop — do not begin implementing.";
+
+    // 브레인스토밍 턴 한도 도달 → 즉시 플랜 마무리
+    public const string BrainstormFinalize =
+        "The brainstorming turn limit has been reached. Stop asking questions. Based on everything discussed " +
+        "so far, synthesize the concrete phased implementation plan NOW by calling the PlanCreate tool, then " +
+        "briefly summarize it. Do not ask anything further and do not start implementing.";
+
     // tool_calls 로 끝났는데 파싱된 툴콜이 0개일 때 (누락/글리치 → 실제 호출 재요청)
     public const string MissingToolCall =
         "<system-reminder>\n" +

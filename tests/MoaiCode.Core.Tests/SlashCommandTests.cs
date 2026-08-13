@@ -70,6 +70,22 @@ public class SlashCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task Brainstorming_toggles_and_seeds_topic()
+    {
+        Assert.False(_ctx.State.Brainstorming);
+
+        var start = await Run("brainstorming", "build", "a", "todo", "app");
+        Assert.True(_ctx.State.Brainstorming);
+        Assert.Equal(20, _ctx.State.BrainstormTurnsLeft);
+        Assert.Equal("build a todo app", start.SubmitPrompt);   // 화두를 첫 턴으로 제출
+
+        // 다시 입력하면 토글 오프.
+        var stop = await Run("brainstorming");
+        Assert.False(_ctx.State.Brainstorming);
+        Assert.Null(stop.SubmitPrompt);
+    }
+
+    [Fact]
     public void Exit_and_quit_alias_resolve()
     {
         Assert.True(_reg.TryGet("exit", out _));

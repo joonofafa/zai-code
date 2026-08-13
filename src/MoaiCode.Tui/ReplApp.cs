@@ -422,6 +422,16 @@ public sealed class ReplApp
 
     private async Task ConsumeTurnAsync(string userInput, CancellationToken ct)
     {
+        // 브레인스토밍: 이 턴을 카운트하고, 한도에 도달하면 이번 턴에 플랜을 강제 마무리한다.
+        if (_ctx.State.Brainstorming)
+        {
+            _ctx.State.BrainstormTurnsLeft--;
+            if (_ctx.State.BrainstormTurnsLeft <= 0)
+            {
+                _ctx.Engine.AddSystemReminder(Reminders.BrainstormFinalize);
+            }
+        }
+
         // 이 턴 전용 취소 토큰. Ctrl+C(시그널) 또는 ESC 로 cancel → 엔진/툴이 멈추고 프롬프트로 복귀(프로세스 유지).
         using var turnCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var tct = turnCts.Token;
@@ -522,6 +532,20 @@ public sealed class ReplApp
         catch
         {
             // 저장 실패가 REPL을 막지 않게 한다.
+        }
+
+        // 브레인스토밍 종료 판정: 에이전트가 새 플랜을 생성(플랜 트리 변경)했거나 턴 한도 도달 시
+        // 모드를 해제하고 모델을 복원한 뒤 플랜 확인/실행을 안내한다.
+        if (_ctx.State.Brainstorming)
+        {
+            var plan = _ctx.PlanTree?.Invoke() ?? string.Empty;
+            var planCreated = !string.IsNullOrWhiteSpace(plan) && plan != _ctx.State.BrainstormBasePlan;
+            if (planCreated || _ctx.State.BrainstormTurnsLeft <= 0)
+            {
+                BrainstormCommand.End(_ctx);
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(L10n.Get("slash.brainstorm.planReady"))}[/]");
+            }
         }
     }
 

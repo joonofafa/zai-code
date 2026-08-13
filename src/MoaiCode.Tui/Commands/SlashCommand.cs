@@ -14,6 +14,18 @@ public sealed class AgentRuntimeState
 
     /// <summary>이번 턴의 사용자 원문 요청. 위험 판정 분류기가 "이 명령이 요청된 일인가"를 볼 때 쓴다.</summary>
     public string? LastUserRequest { get; set; }
+
+    /// <summary>브레인스토밍 모드: 화두를 Q&A로 구체화 → 에이전트가 플랜을 생성. /brainstorming 로 토글.</summary>
+    public bool Brainstorming { get; set; }
+
+    /// <summary>브레인스토밍 남은 Q&A 턴. 0 이하가 되면 다음 턴에 플랜을 강제 마무리한다.</summary>
+    public int BrainstormTurnsLeft { get; set; }
+
+    /// <summary>브레인스토밍 진입 전 모델(종료 시 복원). High 티어로 스왑했을 때만 non-null.</summary>
+    public string? BrainstormPrevModel { get; set; }
+
+    /// <summary>브레인스토밍 시작 시점의 플랜 트리 스냅샷(새 플랜 생성 감지용).</summary>
+    public string? BrainstormBasePlan { get; set; }
 }
 
 /// <summary>로그인 계정/호스트/시각/조직명 정보 (/usage 표시용).</summary>
