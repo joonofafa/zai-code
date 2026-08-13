@@ -58,32 +58,33 @@ public sealed partial class MainViewModel
         var blank = Sw("#8A93A3");
         var w = Sw("#2B579A");
         var x = Sw("#217346");
+        var topic = L10n.Get("gui.topic.sentinel");
 
         WordTemplates.Add(new("Word", L10n.Get("gui.tpl.blankDoc"), null, blank, true));
         WordTemplates.Add(new("Word", L10n.Get("gui.tpl.report"),
-            "DocxCreate 로 「(주제)」 보고서를 만들어줘. template \"report\", 개요·배경·현황·분석·결론 및 제언 섹션에 주제에 맞는 실질 내용을 채우고, 핵심은 표로 정리해서.", w, false));
+            L10n.Get("gui.prompt.docReport", topic), w, false));
         WordTemplates.Add(new("Word", L10n.Get("gui.tpl.incident"),
-            "DocxCreate 로 「(주제)」 경위서를 만들어줘. template \"incident\", 발생 개요·경위·원인·조치 사항·재발 방지 대책 섹션을 채워서.", w, false));
+            L10n.Get("gui.prompt.docIncident", topic), w, false));
         WordTemplates.Add(new("Word", L10n.Get("gui.tpl.proposal"),
-            "DocxCreate 로 「(주제)」 제안서를 만들어줘. template \"proposal\", 배경 및 목적·제안 내용·기대 효과·추진 일정·소요 예산 섹션을 채우고, 일정·예산은 표로.", w, false));
+            L10n.Get("gui.prompt.docProposal", topic), w, false));
 
         PptTemplates.Add(new("PowerPoint", L10n.Get("gui.tpl.blankPpt"), null, blank, true));
         PptTemplates.Add(new("PowerPoint", L10n.Get("gui.tpl.designA"),
-            "PptxCreate 로 「(주제)」 발표자료를 만들어줘. template \"A\"(코퍼레이트), 표지(cover)+핵심 슬라이드(section/content/two_col/table 레이아웃 적절히), 주제에 맞는 제목·간결한 불릿 내용으로 채워서.", Sw("#2F5496"), false));
+            L10n.Get("gui.prompt.pptA", topic), Sw("#2F5496"), false));
         PptTemplates.Add(new("PowerPoint", L10n.Get("gui.tpl.designB"),
-            "PptxCreate 로 「(주제)」 발표자료를 만들어줘. template \"B\"(키노트), 한 슬라이드 한 메시지·큰 제목, 표지+핵심 슬라이드를 주제 내용으로 채워서.", Sw("#C00000"), false));
+            L10n.Get("gui.prompt.pptB", topic), Sw("#C00000"), false));
         PptTemplates.Add(new("PowerPoint", L10n.Get("gui.tpl.designC"),
-            "PptxCreate 로 「(주제)」 발표자료를 만들어줘. template \"C\"(미니멀), 여백 넉넉·간결하게, 표지+핵심 슬라이드를 주제 내용으로 채워서.", Sw("#222222"), false));
+            L10n.Get("gui.prompt.pptC", topic), Sw("#222222"), false));
         PptTemplates.Add(new("PowerPoint", L10n.Get("gui.tpl.designD"),
-            "PptxCreate 로 「(주제)」 발표자료를 만들어줘. template \"D\"(다크), 임팩트 있게, 표지+핵심 슬라이드를 주제 내용으로 채워서.", Sw("#4FC3F7"), false));
+            L10n.Get("gui.prompt.pptD", topic), Sw("#4FC3F7"), false));
 
         ExcelTemplates.Add(new("Excel", L10n.Get("gui.tpl.blankXls"), null, blank, true));
         ExcelTemplates.Add(new("Excel", L10n.Get("gui.tpl.expense"),
-            "XlsxCreate 로 지출결의서 양식을 만들어줘. template \"expense\".", x, false));
+            L10n.Get("gui.prompt.xlsExpense"), x, false));
         ExcelTemplates.Add(new("Excel", L10n.Get("gui.tpl.invoice"),
-            "XlsxCreate 로 거래명세서 양식을 만들어줘. template \"invoice\".", x, false));
+            L10n.Get("gui.prompt.xlsInvoice"), x, false));
         ExcelTemplates.Add(new("Excel", L10n.Get("gui.tpl.inventory"),
-            "XlsxCreate 로 재고관리표 양식을 만들어줘. template \"inventory\".", x, false));
+            L10n.Get("gui.prompt.xlsInventory"), x, false));
     }
 
     // ── 주제 입력 팝업(「(주제)」 가 있는 템플릿) — 자료 출처 토글 포함 ──
@@ -118,7 +119,7 @@ public sealed partial class MainViewModel
         }
 
         // 「(주제)」 가 있으면 주제 입력 팝업을 먼저(사용자가 놓치지 않도록). 자료 출처 토글도 초기화.
-        if (t.Prompt.Contains("「(주제)」", StringComparison.Ordinal))
+        if (t.Prompt.Contains(L10n.Get("gui.topic.sentinel"), StringComparison.Ordinal))
         {
             _pendingTemplateForTopic = t;
             TopicTemplateLabel = t.Label;
@@ -148,30 +149,31 @@ public sealed partial class MainViewModel
         }
 
         var topic = string.IsNullOrWhiteSpace(TopicInput) ? null : TopicInput.Trim();
+        var sentinel = L10n.Get("gui.topic.sentinel");
         var prompt = topic is null
-            ? t.Prompt!.Replace("「(주제)」", string.Empty).Trim()
-            : t.Prompt!.Replace("「(주제)」", $"「{topic}」");
+            ? t.Prompt!.Replace(sentinel, string.Empty).Trim()
+            : t.Prompt!.Replace(sentinel, $"「{topic}」");
 
         // 선택된 자료 출처를 프롬프트에 결정적으로 결합(모델이 반드시 해당 소스로 근거 수집).
         var sources = new List<string>();
         if (SrcWeb)
         {
-            sources.Add("웹에서 관련 자료를 검색(WebSearch)해 근거·수치로 반영");
+            sources.Add(L10n.Get("gui.prompt.srcWeb"));
         }
 
         if (SrcOrg)
         {
-            sources.Add("조직 문서함(OrgDocsSearch)에서 관련 자료를 검색해 근거로 반영");
+            sources.Add(L10n.Get("gui.prompt.srcOrg"));
         }
 
         foreach (var fc in TopicFolders.Where(f => f.Selected))
         {
-            sources.Add($"로컬 폴더 \"{fc.Path}\" 를 LocalDocsSearch(path=\"{fc.Path}\")로 검색해 근거로 반영");
+            sources.Add(L10n.Get("gui.prompt.srcLocalFmt", fc.Path));
         }
 
         if (sources.Count > 0)
         {
-            prompt += "\n\n[자료 출처] 아래 소스에서 근거를 수집해 작성하고 어떤 자료를 참고했는지 밝혀줘:\n- "
+            prompt += "\n\n" + L10n.Get("gui.prompt.srcHeader") + "\n- "
                       + string.Join("\n- ", sources);
         }
 

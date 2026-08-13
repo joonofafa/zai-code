@@ -1032,9 +1032,7 @@ public sealed partial class MainViewModel : ObservableObject
         // 활성 대상 문서(편집 모드)면 대상을 컨텍스트로 명시한다.
         // 기본 대상은 사용자가 PowerPoint 등에서 선택한 영역/도형이다.
         var docContext = IsDocConnected
-            ? $"[작업 대상] 현재 열려 있는 {ActiveDocApp} 문서 '{ActiveDocName}' 를 COM 으로 편집합니다. " +
-              "특별한 지시가 없으면 사용자가 선택한 영역/도형을 대상으로 하세요" +
-              "(slide_index·shape_id 를 지정하지 말고 현재 선택을 사용). 문서 전체가 필요하면 명시적으로 처리하세요.\n\n"
+            ? L10n.Get("gui.prompt.editTargetFmt", ActiveDocApp, ActiveDocName)
             : string.Empty;
 
         if (References.Count == 0)
@@ -1048,20 +1046,20 @@ public sealed partial class MainViewModel : ObservableObject
             sb.Append(docContext);
         }
 
-        sb.AppendLine("아래 참조 문서를 근거로 작업하세요. 관련 있는 내용만 활용하고, 문서에 없는 사실을 지어내지 마세요.");
+        sb.AppendLine(L10n.Get("gui.prompt.refIntro"));
         sb.AppendLine();
         var i = 1;
         foreach (var r in References)
         {
-            var body = r.Text.Length > PerRefCharCap ? r.Text[..PerRefCharCap] + "\n…(이하 생략)" : r.Text;
+            var body = r.Text.Length > PerRefCharCap ? r.Text[..PerRefCharCap] + "\n" + L10n.Get("gui.prompt.refTruncated") : r.Text;
             var src = r.Source == "org" ? L10n.Get("gui.ref.srcOrg") : L10n.Get("gui.ref.srcLocal");
-            sb.AppendLine($"─── 참조 {i} · {r.DisplayName} ({src}) ───");
+            sb.AppendLine(L10n.Get("gui.prompt.refHeaderFmt", i, r.DisplayName, src));
             sb.AppendLine(body);
             sb.AppendLine();
             i++;
         }
 
-        sb.AppendLine("─── 요청 ───");
+        sb.AppendLine(L10n.Get("gui.prompt.reqHeader"));
         sb.Append(userText);
         return sb.ToString();
     }

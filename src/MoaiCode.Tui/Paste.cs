@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tui;
 
@@ -108,7 +109,9 @@ public static class BracketedPaste
 public static class PasteStore
 {
     private static readonly Dictionary<int, string> Items = new();
-    private static readonly Regex Token = new(@"\[붙여넣기 #(\d+) · (\d+)줄\]", RegexOptions.Compiled);
+    // 토큰은 표시용으로 로컬라이즈되므로(ko: "…줄]", en: "… lines]") 정규식은 두 언어를 모두 매칭한다.
+    // 세션 중 언어가 바뀌어도(또는 히스토리에 다른 언어 토큰이 있어도) 안전하게 확장된다.
+    private static readonly Regex Token = new(@"\[(?:붙여넣기|Paste) #(\d+) · (\d+)(?:줄| lines)\]", RegexOptions.Compiled);
     private static int _next = 1;
 
     /// <summary>붙여넣은 원문을 보관하고 표식 문자열을 돌려준다.</summary>
@@ -117,12 +120,12 @@ public static class PasteStore
         var id = _next++;
         Items[id] = text;
         var lines = text.Count(c => c == '\n') + 1;
-        return $"[붙여넣기 #{id} · {lines}줄]";
+        return L10n.Get("paste.token", id, lines);
     }
 
     /// <summary>표식을 원문으로 되돌린다. 보관되지 않은 표식(다른 세션 등)은 그대로 둔다.</summary>
     public static string Expand(string input) =>
-        input.Contains("[붙여넣기 #", StringComparison.Ordinal)
+        (input.Contains("[붙여넣기 #", StringComparison.Ordinal) || input.Contains("[Paste #", StringComparison.Ordinal))
             ? Token.Replace(input, m =>
                 int.TryParse(m.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var id)
                 && Items.TryGetValue(id, out var t)

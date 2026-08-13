@@ -76,7 +76,7 @@ public partial class MainWindow : Window
         }
 
         tb.Focus();
-        const string ph = "「(주제)」";
+        var ph = L10n.Get("gui.topic.sentinel");
         var i = tb.Text?.IndexOf(ph, StringComparison.Ordinal) ?? -1;
         if (i >= 0)
         {

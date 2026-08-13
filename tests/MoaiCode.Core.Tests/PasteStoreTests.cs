@@ -1,4 +1,5 @@
 using System.Text;
+using MoaiCode.Localization;
 using MoaiCode.Tui;
 using Xunit;
 
@@ -40,8 +41,8 @@ public sealed class PasteStoreTests
     {
         var (buf, pos) = Insert("이 로그 분석해줘 ", 10, "line1\nline2\nline3");
 
-        Assert.StartsWith("이 로그 분석해줘 [붙여넣기 #", buf, StringComparison.Ordinal);
-        Assert.Contains("· 3줄]", buf, StringComparison.Ordinal);
+        Assert.StartsWith("이 로그 분석해줘 ", buf, StringComparison.Ordinal);   // 입력 원문 보존
+        Assert.EndsWith(TokenTailForLines(3), buf, StringComparison.Ordinal);   // 3줄 표식(현재 언어)
         Assert.DoesNotContain("\n", buf, StringComparison.Ordinal); // 입력창은 항상 한 줄
         Assert.Equal(buf.Length, pos);
     }
@@ -51,7 +52,14 @@ public sealed class PasteStoreTests
     {
         var (buf, _) = Insert("", 0, "a\r\nb\r\nc\r\n");
 
-        Assert.Contains("· 3줄]", buf, StringComparison.Ordinal);
+        Assert.EndsWith(TokenTailForLines(3), buf, StringComparison.Ordinal);   // CRLF 정규화 → 3줄
+    }
+
+    // 붙여넣기 표식의 줄-수 꼬리(id 제외)를 현재 언어 기준으로 만든다 (언어 독립적 단언용).
+    private static string TokenTailForLines(int lines)
+    {
+        var t = L10n.Get("paste.token", "￿", lines); // 센티넬 id 로 자리표시
+        return t[(t.IndexOf('￿') + 1)..];
     }
 
     [Fact]
