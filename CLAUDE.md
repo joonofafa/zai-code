@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Claude Code(OpenClaude 계열 에이전트)를 C#/.NET 10 으로 포팅한 코딩·문서 에이전트. CLI(`moai`) + TUI + Avalonia 데스크톱 GUI(MoAI Desktop) 세 프론트엔드가 동일한 코어(`QueryEngine`)를 공유한다. OpenAI 호환 SSE 스트리밍 모델을 사용한다.
 
+## 코딩 원칙: 재활용 우선 (DRY)
+
+**이미 있는 코드를 먼저 찾아 재활용한다.** 새 로직을 쓰기 전에 같은 일을 하는 코드가 이미 있는지 확인하고, 있으면 그걸 쓴다. 복붙하거나 병렬 구현을 추가하려는 순간 멈추고 **공용 헬퍼로 추출**한다(예: 모델 선택 `ModelPicker`, 스킬 선택 `SkillPicker` — `/model`·`/skills`·로그인 플로우가 공유). 병렬 사본은 표류·부패한다. 프론트엔드가 셋(CLI/TUI/GUI)이라 특히 **UI 위젯·선택 플로우·설정 저장은 한 곳에 두고 콜백으로 주입**할 것.
+
 ## 빌드 / 테스트 / 실행
 
 **중요: `dotnet` 이 PATH 에 없다.** 사용자 설치 경로를 쓴다:
