@@ -1,6 +1,7 @@
 using MoaiCode.Core.Agent;
 using MoaiCode.Core.Messages;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 using MoaiCode.Persistence;
 using MoaiCode.Providers;
 using MoaiCode.Tui.Commands;
@@ -118,13 +119,13 @@ public class SlashCommandTests : IDisposable
         Assert.True(beforeCount >= 3);
 
         var save = await Run("save", "mysession");
-        Assert.Contains("저장됨", save.Output);
+        Assert.Contains("mysession", save.Output);   // language-independent: session name echoed back
 
         await Run("clear"); // 메시지를 seed(system 1개)로 초기화
         Assert.Single(_engine.Messages);
 
         var resume = await Run("resume", "mysession");
-        Assert.Contains("복원됨", resume.Output);
+        Assert.Contains("mysession", resume.Output);  // language-independent: restored session id
         Assert.Equal(beforeCount, _engine.Messages.Count);
     }
 
@@ -132,7 +133,7 @@ public class SlashCommandTests : IDisposable
     public async Task Unknown_session_resume_reports_missing()
     {
         var r = await Run("resume", "nope");
-        Assert.Contains("없음", r.Output);
+        Assert.Contains("nope", r.Output);   // language-independent: unknown id echoed back
     }
 
     [Fact]
@@ -185,7 +186,7 @@ public class SlashCommandTests : IDisposable
     public async Task Effort_invalid_argument_shows_usage()
     {
         var r = await Run("effort", "max");
-        Assert.Contains("사용법", r.Output);
+        Assert.Contains(L10n.Get("slash.effort.usage"), r.Output);
     }
 
     [Fact]
@@ -217,7 +218,7 @@ public class SlashCommandTests : IDisposable
             Assert.True(_reg.TryGet("effort", out var cmd));
             var r = await cmd.ExecuteAsync(ctx, new[] { "high" }, default);
 
-            Assert.Equal("effort 변경됨: high", r.Output);
+            Assert.Equal(L10n.Get("slash.effort.changed", "high"), r.Output);
             Assert.Equal("high", Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT"));
 
             var saved = File.ReadAllText(Path.Combine(tempHome, ".moai", "settings.json"));

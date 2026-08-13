@@ -29,7 +29,7 @@ public class SettingsLoaderTests
     [InlineData("en", "en")]
     [InlineData("en-US", "en")]
     [InlineData("ko_KR", "ko")]
-    [InlineData("ja", "ko")]
+    [InlineData("ja", "en")]
     public void ApplyJson_reads_and_normalizes_language(string input, string expected)
     {
         var s = SettingsLoader.ApplyJson(Settings.Default, $$"""{ "language": "{{input}}" }""");

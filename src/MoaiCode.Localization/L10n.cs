@@ -11,7 +11,8 @@ namespace MoaiCode.Localization;
 /// </summary>
 public static class L10n
 {
-    public const string DefaultLanguage = "ko";
+    // 기본(base) 언어는 영어. 한국어 사용자는 language 설정 / MOAI_LANGUAGE=ko 로 명시한다.
+    public const string DefaultLanguage = "en";
     public const string FallbackLanguage = "en";
 
     private static readonly IReadOnlyList<LanguageOption> LanguageList =

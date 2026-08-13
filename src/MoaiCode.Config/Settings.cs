@@ -18,8 +18,8 @@ public sealed record Settings
     public string? ModelHigh { get; init; }
     public string? BaseUrl { get; init; }
 
-    /// <summary>사용자 인터페이스 언어(ko|en). 기존 사용자 경험을 유지하기 위해 기본값은 ko.</summary>
-    public string Language { get; init; } = "ko";
+    /// <summary>사용자 인터페이스 언어(ko|en). 기본(base)은 영어. 한국어 사용자는 명시적으로 ko 로 설정한다(한국어권 배포본은 이 값을 포함).</summary>
+    public string Language { get; init; } = "en";
 
     /// <summary>추론 강도 passthrough (예: low|medium|high). OpenAI 호환 chat/completions의 reasoning_effort로 전달.</summary>
     public string? ReasoningEffort { get; init; }
