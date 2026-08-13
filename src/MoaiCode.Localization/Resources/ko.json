@@ -28,6 +28,8 @@
   "gui.perm.approveAllTip": "이후 이 문서 편집은 확인 없이 자동 적용",
   "gui.perm.approve": "적용",
   "gui.doc.chipTip": "연결된 문서 · 클릭하여 해제",
+  "gui.doc.openEdit": "열어서 편집",
+  "gui.doc.openFolder": "폴더 열기",
   "gui.composer.attachTip": "로컬 참조 문서 첨부",
   "gui.composer.searchTip": "자료 검색·첨부 (조직 문서함 / 내 로컬 폴더)",
   "gui.composer.searchOrg": "조직 문서함에서 검색",

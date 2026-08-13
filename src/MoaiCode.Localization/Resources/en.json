@@ -28,6 +28,8 @@
   "gui.perm.approveAllTip": "Apply future edits to this document without asking",
   "gui.perm.approve": "Apply",
   "gui.doc.chipTip": "Connected document · click to disconnect",
+  "gui.doc.openEdit": "Open & edit",
+  "gui.doc.openFolder": "Open folder",
   "gui.composer.attachTip": "Attach a local reference document",
   "gui.composer.searchTip": "Search & attach (organization knowledge base / my local folders)",
   "gui.composer.searchOrg": "Search the organization knowledge base",
