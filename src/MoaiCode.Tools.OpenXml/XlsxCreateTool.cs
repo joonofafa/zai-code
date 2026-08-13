@@ -53,6 +53,7 @@ public sealed class XlsxCreateTool : ITool
                   "name": { "type": "string" },
                   "rows": { "type": "array", "items": { "type": "array", "items": { "type": "string" } } },
                   "boldHeader": { "type": "boolean", "description": "Bold the first row (header). Default false." },
+                  "table": { "type": "boolean", "description": "Wrap the data as an Excel Table (ListObject) with filterable/sortable header dropdowns and banded rows. First row is the header. Best for row-oriented data (records, matrices, checklists). Default false." },
                   "formats": {
                     "type": "array",
                     "items": { "type": "string" },
@@ -110,6 +111,7 @@ public sealed class XlsxCreateTool : ITool
         [property: JsonPropertyName("boldHeader")] bool? BoldHeader,
         [property: JsonPropertyName("formats")] List<string>? Formats,
         [property: JsonPropertyName("charts")] List<ChartIn>? Charts,
+        [property: JsonPropertyName("table")] bool? AsTable = null,
         [property: JsonPropertyName("bordered")] bool? Bordered = null);
 
     private sealed record Input(
@@ -235,6 +237,7 @@ public sealed class XlsxCreateTool : ITool
         var sheetsEl = wbPart.Workbook.AppendChild(new Sheets());
 
         uint sheetId = 1;
+        uint tableId = 1;
         foreach (var sheet in sheets)
         {
             var wsPart = wbPart.AddNewPart<WorksheetPart>();
@@ -301,6 +304,12 @@ public sealed class XlsxCreateTool : ITool
                 XlsxChartBuilder.AddCharts(wsPart, sheetName, rows, specs);
             }
 
+            // Excel Table(ListObject) + AutoFilter — tableParts 는 drawing 뒤(스키마 마지막 쪽)에 온다.
+            if (sheet.AsTable == true)
+            {
+                AddTable(wsPart, ws, sheet.Rows ?? new List<List<string>>(), tableId++);
+            }
+
             sheetsEl.AppendChild(new Sheet
             {
                 Id = wbPart.GetIdOfPart(wsPart),
@@ -309,6 +318,62 @@ public sealed class XlsxCreateTool : ITool
             });
             sheetId++;
         }
+    }
+
+    // 데이터 범위를 Excel Table(ListObject)로 감싼다: 필터/정렬 드롭다운(AutoFilter) + 줄무늬 스타일.
+    // 첫 행 = 헤더. 열 이름은 헤더 텍스트에서 취하되 비었거나 중복이면 정규화(Excel 요구: 고유·비어있지 않음).
+    private static void AddTable(WorksheetPart wsPart, Worksheet ws, List<List<string>> rows, uint tableId)
+    {
+        var nrows = rows.Count;
+        var ncols = nrows > 0 ? rows.Max(r => r.Count) : 0;
+        if (nrows < 2 || ncols < 1)
+        {
+            return; // 헤더 + 데이터 1행 이상일 때만 테이블로 만든다.
+        }
+
+        var range = $"{Reference(0, 1)}:{Reference(ncols - 1, (uint)nrows)}";
+        var headers = rows[0];
+        var cols = new TableColumns { Count = (uint)ncols };
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < ncols; i++)
+        {
+            var name = (i < headers.Count ? headers[i] ?? string.Empty : string.Empty).Trim();
+            if (name.Length == 0)
+            {
+                name = $"Column{i + 1}";
+            }
+
+            var baseName = name;
+            var suffix = 2;
+            while (!seen.Add(name))
+            {
+                name = $"{baseName}{suffix++}";
+            }
+
+            cols.AppendChild(new TableColumn { Id = (uint)(i + 1), Name = name });
+        }
+
+        var table = new Table
+        {
+            Id = tableId,
+            Name = $"Table{tableId}",
+            DisplayName = $"Table{tableId}",
+            Reference = range,
+        };
+        table.AppendChild(new AutoFilter { Reference = range });
+        table.AppendChild(cols);
+        table.AppendChild(new TableStyleInfo
+        {
+            Name = "TableStyleMedium2",
+            ShowFirstColumn = false,
+            ShowLastColumn = false,
+            ShowRowStripes = true,
+            ShowColumnStripes = false,
+        });
+
+        var tPart = wsPart.AddNewPart<TableDefinitionPart>();
+        tPart.Table = table;
+        ws.AppendChild(new TableParts(new TablePart { Id = wsPart.GetIdOfPart(tPart) }) { Count = 1U });
     }
 
     private static List<XlsxChartBuilder.ChartSpec> MapCharts(List<ChartIn>? charts)
