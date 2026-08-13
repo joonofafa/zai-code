@@ -135,14 +135,13 @@ public static class LoginFlow
             var catalog = SkillCatalog.DiscoverAll(cwd);
             if (catalog.Count > 0 && !Console.IsInputRedirected)
             {
-                var disabled = MoaiCode.Mcp.Skills.SkillState.LoadDisabled();
-                var labels = catalog.Select(x => $"{x.Skill.Name}  ({x.Source})").ToList();
-                var initial = catalog.Select(x => !disabled.Contains(x.Skill.Name)).ToList();
-                var picked = MultiSelectList.Prompt(L10n.Get("cli.login.skillsTitle"), labels, initial);
-                if (picked is not null)
+                var disabledNow = MoaiCode.Mcp.Skills.SkillState.LoadDisabled();
+                var choices = catalog
+                    .Select(x => (x.Skill.Name, x.Source, Enabled: !disabledNow.Contains(x.Skill.Name)))
+                    .ToList();
+                var newDisabled = SkillPicker.Run(L10n.Get("cli.login.skillsTitle"), choices);
+                if (newDisabled is not null)
                 {
-                    var on = picked.ToHashSet();
-                    var newDisabled = catalog.Where((x, i) => !on.Contains(i)).Select(x => x.Skill.Name).ToList();
                     MoaiCode.Mcp.Skills.SkillState.SaveDisabled(newDisabled);
                 }
                 else

@@ -196,16 +196,12 @@ internal sealed class SkillsCommand : ISlashCommand
                 return new SlashResult(L10n.Get("slash.skills.none"));
             }
 
-            var labels = choices.Select(c => $"{c.Name}  ({c.Source})").ToList();
-            var initial = choices.Select(c => c.Enabled).ToList();
-            var picked = MultiSelectList.Prompt(L10n.Get("slash.skills.pickerTitle"), labels, initial);
-            if (picked is null)
+            var disabled = SkillPicker.Run(L10n.Get("slash.skills.pickerTitle"), choices);
+            if (disabled is null)
             {
                 return new SlashResult(L10n.Get("slash.skills.cancelled"));
             }
 
-            var on = picked.ToHashSet();
-            var disabled = choices.Where((c, i) => !on.Contains(i)).Select(c => c.Name).ToList();
             return new SlashResult(ctx.SetDisabledSkills(disabled));
         }
 
