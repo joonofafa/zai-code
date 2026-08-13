@@ -282,10 +282,11 @@ public sealed class PptxCreateTool : ITool
 
         string full;
         string? error = null;
+        var issues = new List<PptxLayoutCheck.Issue>();
         try
         {
             full = OpenXmlPaths.ResolveForWrite(context.WorkingDirectory, inp.Path, ".pptx");
-            Write(full, inp.Template, inp.Slides, context.WorkingDirectory);
+            issues = Write(full, inp.Template, inp.Slides, context.WorkingDirectory);
         }
         catch (Exception ex)
         {
@@ -293,13 +294,26 @@ public sealed class PptxCreateTool : ITool
             full = string.Empty;
         }
 
-        yield return error is not null
-            ? new ToolOutput(L10n.Get("tools.pptxCreate.failed", error), IsError: true)
-            : new ToolOutput(L10n.Get("tools.pptxCreate.ok", full, inp.Slides.Count));
+        if (error is not null)
+        {
+            yield return new ToolOutput(L10n.Get("tools.pptxCreate.failed", error), IsError: true);
+            yield break;
+        }
+
+        var msg = L10n.Get("tools.pptxCreate.ok", full, inp.Slides.Count);
+        if (issues.Count > 0)
+        {
+            // 기하 QA 경고(겹침/화면밖) — 비-에러. 모델이 내용을 줄이거나 레이아웃을 바꾸도록 힌트.
+            msg += "\n" + L10n.Get("tools.pptxCreate.layoutWarnFmt", issues.Count) + " "
+                 + string.Join("; ", issues.Take(6).Select(i => $"[s{i.Slide}:{i.Kind}] {i.Detail}"));
+        }
+
+        yield return new ToolOutput(msg);
     }
 
-    private static void Write(string path, string? template, List<SlideIn> slides, string workingDir)
+    private static List<PptxLayoutCheck.Issue> Write(string path, string? template, List<SlideIn> slides, string workingDir)
     {
+        var issues = new List<PptxLayoutCheck.Issue>();
         using var doc = PresentationDocument.Create(path, PresentationDocumentType.Presentation);
         var presPart = doc.AddPresentationPart();
         presPart.Presentation = new P.Presentation();
@@ -381,6 +395,9 @@ public sealed class PptxCreateTool : ITool
                 tree.AppendChild(ImageEmbed.PptxPicture(slidePart, imgFull, x, y, cx, cy, 900U + slideId));
             }
 
+            // 기하 QA — 텍스트 겹침/화면밖 검출(장식/배경 제외). 비-치명, 경고만 수집.
+            issues.AddRange(PptxLayoutCheck.Inspect(slidePart.Slide, slideNo, SlideW, SlideH));
+
             slideIdList.AppendChild(new SlideId
             {
                 Id = slideId++,
@@ -397,6 +414,8 @@ public sealed class PptxCreateTool : ITool
             slideIdList,
             new SlideSize { Cx = (int)SlideW, Cy = (int)SlideH },
             new NotesSize { Cx = 6858000, Cy = 9144000 });
+
+        return issues;
     }
 
     // 슬라이드 기하(EMU). 12192000×6858000 = 16:9(와이드). 세로(H)는 4:3과 동일하므로
