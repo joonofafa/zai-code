@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Persistence;
 
@@ -137,8 +138,7 @@ public sealed class CheckpointStore
             // 워크스페이스가 너무 커서 git 이 상한을 넘겼다 → 이 세션에서 체크포인트를 끈다.
             _timedOut = true;
             Console.Error.WriteLine(
-                $"moai: 체크포인트가 {_gitTimeout.TotalSeconds:0}초를 초과해 이 세션에서 비활성화합니다 " +
-                "(워크스페이스가 매우 큼). 끄려면 MOAI_CHECKPOINTS=0.");
+                L10n.Get("persistence.checkpointDisabledFmt", _gitTimeout.TotalSeconds));
             return string.Empty;
         }
     }
@@ -276,7 +276,7 @@ public sealed class CheckpointStore
         {
             TryKill(p);
             throw new TimeoutException(
-                $"git checkpoint 작업이 {_gitTimeout.TotalSeconds:0}초를 초과했습니다: git {string.Join(' ', argv)}");
+                L10n.Get("persistence.gitTimeoutFmt", _gitTimeout.TotalSeconds, string.Join(' ', argv)));
         }
 
         var stdout = await stdoutTask.ConfigureAwait(false);

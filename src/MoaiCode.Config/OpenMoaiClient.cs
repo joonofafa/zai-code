@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Config;
 
@@ -150,7 +151,7 @@ public sealed class OpenMoaiClient
         }
         catch (Exception ex)
         {
-            return new LoginResult("error", null, null, null, Array.Empty<string>(), null, $"연결 실패: {ex.Message}", null);
+            return new LoginResult("error", null, null, null, Array.Empty<string>(), null, L10n.Get("config.connectFailed", ex.Message), null);
         }
     }
 
@@ -195,7 +196,7 @@ public sealed class OpenMoaiClient
         catch
         {
             var preview = text.Length > 200 ? text[..200] : text;
-            return new LoginResult("error", null, null, null, Array.Empty<string>(), null, $"응답 파싱 실패: {preview}", null);
+            return new LoginResult("error", null, null, null, Array.Empty<string>(), null, L10n.Get("config.parseFailed", preview), null);
         }
     }
 }

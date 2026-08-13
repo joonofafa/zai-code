@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Text.RegularExpressions;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Bash;
 
@@ -13,34 +14,34 @@ public static class BashSecurity
     public sealed record Verdict(bool Allowed, string? Reason);
 
     /// <summary>되돌릴 수 없는 고위험 패턴 — 권한 모드와 무관하게 차단.</summary>
-    private static readonly (Regex Pattern, string Reason)[] Destructive =
+    private static readonly (Regex Pattern, string ReasonKey)[] Destructive =
     {
         // --- Unix/macOS (bash/zsh) ---
-        (Rx(@"\brm\s+(-\w*[rf]\w*\s+)+(/|~|/\*|\$HOME)(\s|$)"), "재귀/강제 삭제가 루트·홈 디렉토리를 대상으로 함"),
+        (Rx(@"\brm\s+(-\w*[rf]\w*\s+)+(/|~|/\*|\$HOME)(\s|$)"), "tools.bashSecurity.rmRootHome"),
         (Rx(@"\brm\s+(-\w*[rf]\w*\s+)+/(boot|bin|sbin|lib|lib64|usr|etc|sys|proc|dev|var|opt|root|run|System|Library)(/|\s|$)"),
-            "시스템 디렉토리 재귀/강제 삭제"),
-        (Rx(@"\brm\s+(-\w*[rf]\w*\s+)+/\*"), "루트 와일드카드 삭제(/*)"),
-        (Rx(@"\brm\s+-[rf]*\s+--no-preserve-root"), "rm --no-preserve-root"),
-        (Rx(@":\s*\(\s*\)\s*\{\s*:\s*\|\s*:"), "fork bomb"),
-        (Rx(@"\bdd\b.*\bof=/dev/(sd|nvme|disk|hd|rdisk)"), "dd가 블록 디바이스에 직접 쓰기"),
-        (Rx(@"\bmkfs(\.\w+)?\b"), "파일시스템 포맷(mkfs)"),
-        (Rx(@"\b(diskutil)\s+(eraseDisk|eraseVolume|reformat|zeroDisk)\b"), "macOS diskutil 디스크 초기화"),
-        (Rx(@">\s*/dev/(sd|nvme|disk|hd|rdisk)"), "블록 디바이스로 리다이렉트"),
-        (Rx(@"\bchmod\s+-R\s+0*777\s+/(\s|$)"), "루트에 chmod -R 777"),
-        (Rx(@"\b(shutdown|reboot|halt|poweroff)\b"), "시스템 전원/재부팅 명령"),
-        (Rx(@"\b(curl|wget)\b[^|]*\|\s*(sudo\s+)?(sh|bash|zsh|pwsh|powershell)\b"), "원격 스크립트 직접 실행(curl|sh)"),
-        (Rx(@"\bgit\b.*\bpush\b.*--force\b.*\b(main|master)\b"), "보호 브랜치 강제 푸시"),
+            "tools.bashSecurity.rmSystemDir"),
+        (Rx(@"\brm\s+(-\w*[rf]\w*\s+)+/\*"), "tools.bashSecurity.rmRootWildcard"),
+        (Rx(@"\brm\s+-[rf]*\s+--no-preserve-root"), "tools.bashSecurity.rmNoPreserveRoot"),
+        (Rx(@":\s*\(\s*\)\s*\{\s*:\s*\|\s*:"), "tools.bashSecurity.forkBomb"),
+        (Rx(@"\bdd\b.*\bof=/dev/(sd|nvme|disk|hd|rdisk)"), "tools.bashSecurity.ddBlockDevice"),
+        (Rx(@"\bmkfs(\.\w+)?\b"), "tools.bashSecurity.mkfs"),
+        (Rx(@"\b(diskutil)\s+(eraseDisk|eraseVolume|reformat|zeroDisk)\b"), "tools.bashSecurity.diskutilErase"),
+        (Rx(@">\s*/dev/(sd|nvme|disk|hd|rdisk)"), "tools.bashSecurity.redirectBlockDevice"),
+        (Rx(@"\bchmod\s+-R\s+0*777\s+/(\s|$)"), "tools.bashSecurity.chmodRoot777"),
+        (Rx(@"\b(shutdown|reboot|halt|poweroff)\b"), "tools.bashSecurity.powerCommand"),
+        (Rx(@"\b(curl|wget)\b[^|]*\|\s*(sudo\s+)?(sh|bash|zsh|pwsh|powershell)\b"), "tools.bashSecurity.remoteScriptExec"),
+        (Rx(@"\bgit\b.*\bpush\b.*--force\b.*\b(main|master)\b"), "tools.bashSecurity.forcePushProtected"),
 
         // --- Windows (cmd/powershell) ---
-        (Rx(@"\bformat\s+[a-z]:"), "드라이브 포맷(format)"),
-        (Rx(@"\bdiskpart\b"), "diskpart(디스크 파티션 조작)"),
-        (Rx(@"\bcipher\s+/w"), "cipher /w(디스크 와이프)"),
-        (Rx(@"\bbcdedit\b.*\b(delete|deletevalue|/delete)\b"), "부트로더 설정 삭제(bcdedit)"),
+        (Rx(@"\bformat\s+[a-z]:"), "tools.bashSecurity.formatDrive"),
+        (Rx(@"\bdiskpart\b"), "tools.bashSecurity.diskpart"),
+        (Rx(@"\bcipher\s+/w"), "tools.bashSecurity.cipherWipe"),
+        (Rx(@"\bbcdedit\b.*\b(delete|deletevalue|/delete)\b"), "tools.bashSecurity.bcdeditDelete"),
         (Rx(@"\b(rd|rmdir)\s+(/[sq]\s+)+([a-z]:\\?(\s|$)|.*\\(Windows|System32|Boot|Program Files))"),
-            "Windows 드라이브/시스템 디렉토리 재귀 삭제(rd /s)"),
-        (Rx(@"\bdel\s+(/[a-z]\s+)*.*\\(Windows|System32|Boot)\b"), "Windows 시스템 파일 삭제(del)"),
+            "tools.bashSecurity.winRdSystem"),
+        (Rx(@"\bdel\s+(/[a-z]\s+)*.*\\(Windows|System32|Boot)\b"), "tools.bashSecurity.winDelSystem"),
         (Rx(@"Remove-Item\b.*-Recurse\b.*-Force\b.*([a-z]:\\?\s|\\(Windows|System32|Program Files))"),
-            "PowerShell 강제 재귀 삭제(드라이브 루트/시스템)"),
+            "tools.bashSecurity.psForceRecursive"),
     };
 
     /// <summary>읽기 전용으로 간주되는 안전한 명령 prefix (권한 자동 허용 후보).</summary>
@@ -70,48 +71,48 @@ public static class BashSecurity
     /// 파괴적이지만 정당할 수 있는 명령 — 차단하지 않고 '확인'을 받는다.
     /// (rm -rf ~/proj, git push --force feature 처럼 하드 차단하면 도구를 못 쓰게 되는 것들.)
     /// </summary>
-    private static readonly (Regex Pattern, string Reason)[] DestructiveConfirm =
+    private static readonly (Regex Pattern, string ReasonKey)[] DestructiveConfirm =
     {
-        (Rx(@"\bfind\b[^|;&]*\s-delete\b"), "find -delete (일괄 삭제)"),
-        (Rx(@"\bfind\b[^|;&]*-exec\s+rm\b"), "find -exec rm (일괄 삭제)"),
-        (Rx(@"\bgit\b[^|;&]*\bpush\b[^|;&]*\s(--force|-f)\b"), "git 강제 푸시(히스토리 덮어쓰기)"),
-        (Rx(@"\bgit\b[^|;&]*\breset\b[^|;&]*\s--hard\b"), "git reset --hard (작업 내용 폐기)"),
-        (Rx(@"\bgit\s+clean\b[^|;&]*-\w*[fd]"), "git clean -fd (추적 안 되는 파일 삭제)"),
-        (Rx(@"\baws\s+s3\s+(rb|rm)\b[^|;&]*--(force|recursive)\b"), "S3 버킷/객체 일괄 삭제"),
-        (Rx(@"\b(aws|gcloud|az)\b[^|;&]*\bdelete\b"), "클라우드 리소스 삭제"),
-        (Rx(@"\bterraform\s+destroy\b"), "terraform destroy (인프라 파괴)"),
-        (Rx(@"\bdocker\s+(system\s+prune|volume\s+rm|rmi)\b"), "docker 이미지/볼륨 제거"),
-        (Rx(@"\bsystemctl\s+(stop|disable|mask)\b"), "서비스 중지/비활성화"),
-        (Rx(@"\b(dropdb|DROP\s+(DATABASE|TABLE|SCHEMA))\b"), "데이터베이스 삭제"),
-        (Rx(@"\bchmod\s+-R\b"), "재귀 권한 변경(chmod -R)"),
-        (Rx(@"\bchown\s+-R\b"), "재귀 소유자 변경(chown -R)"),
-        (Rx(@"\btruncate\b[^|;&]*-s\s*0\b"), "파일 내용 비우기(truncate -s 0)"),
+        (Rx(@"\bfind\b[^|;&]*\s-delete\b"), "tools.bashSecurity.findDelete"),
+        (Rx(@"\bfind\b[^|;&]*-exec\s+rm\b"), "tools.bashSecurity.findExecRm"),
+        (Rx(@"\bgit\b[^|;&]*\bpush\b[^|;&]*\s(--force|-f)\b"), "tools.bashSecurity.gitForcePush"),
+        (Rx(@"\bgit\b[^|;&]*\breset\b[^|;&]*\s--hard\b"), "tools.bashSecurity.gitResetHard"),
+        (Rx(@"\bgit\s+clean\b[^|;&]*-\w*[fd]"), "tools.bashSecurity.gitClean"),
+        (Rx(@"\baws\s+s3\s+(rb|rm)\b[^|;&]*--(force|recursive)\b"), "tools.bashSecurity.s3Delete"),
+        (Rx(@"\b(aws|gcloud|az)\b[^|;&]*\bdelete\b"), "tools.bashSecurity.cloudDelete"),
+        (Rx(@"\bterraform\s+destroy\b"), "tools.bashSecurity.terraformDestroy"),
+        (Rx(@"\bdocker\s+(system\s+prune|volume\s+rm|rmi)\b"), "tools.bashSecurity.dockerRemove"),
+        (Rx(@"\bsystemctl\s+(stop|disable|mask)\b"), "tools.bashSecurity.serviceStop"),
+        (Rx(@"\b(dropdb|DROP\s+(DATABASE|TABLE|SCHEMA))\b"), "tools.bashSecurity.dbDrop"),
+        (Rx(@"\bchmod\s+-R\b"), "tools.bashSecurity.chmodRecursive"),
+        (Rx(@"\bchown\s+-R\b"), "tools.bashSecurity.chownRecursive"),
+        (Rx(@"\btruncate\b[^|;&]*-s\s*0\b"), "tools.bashSecurity.truncateEmpty"),
         // `zellij delete-all-sessions`, `docker container prune-all` 등 일괄 파괴 서브커맨드.
-        (Rx(@"\b(delete|destroy|purge|prune|wipe|remove)[-_]?all\b"), "일괄 삭제 서브커맨드"),
+        (Rx(@"\b(delete|destroy|purge|prune|wipe|remove)[-_]?all\b"), "tools.bashSecurity.bulkDeleteSubcommand"),
 
         // Windows/PowerShell 재귀·강제 삭제 (시스템 경로가 아니어도 '파괴적'이면 확인 — rm -r 와 대칭).
-        (Rx(@"\b(del|erase)\b[^|;&]*\s/[a-z]*[sq]"), "Windows del/erase (/s|/q 재귀·강제 삭제)"),
-        (Rx(@"\b(rd|rmdir)\b[^|;&]*\s/s\b"), "Windows rd /s (디렉토리 재귀 삭제)"),
-        (Rx(@"\bRemove-Item\b[^|;&]*\s-(Recurse|Force)\b"), "PowerShell Remove-Item -Recurse/-Force"),
-        (Rx(@"\b(rm|ri|del|rmdir)\b[^|;&]*\s-Recurse\b"), "PowerShell 재귀 삭제(-Recurse)"),
+        (Rx(@"\b(del|erase)\b[^|;&]*\s/[a-z]*[sq]"), "tools.bashSecurity.winDelErase"),
+        (Rx(@"\b(rd|rmdir)\b[^|;&]*\s/s\b"), "tools.bashSecurity.winRdRecursive"),
+        (Rx(@"\bRemove-Item\b[^|;&]*\s-(Recurse|Force)\b"), "tools.bashSecurity.psRemoveItem"),
+        (Rx(@"\b(rm|ri|del|rmdir)\b[^|;&]*\s-Recurse\b"), "tools.bashSecurity.psRecursiveDelete"),
 
         // 워크스페이스 밖 상태를 바꾸는 글로벌/시스템 설치 — 로컬 프로젝트 설치(npm install 등)는 제외.
-        (Rx(@"\bnpm\s+(install|i|add|update|up)\b[^|;&]*\s(-g|--global)\b"), "npm 글로벌 설치(-g)"),
-        (Rx(@"\bpnpm\s+(add|install|update|up)\b[^|;&]*\s(-g|--global)\b"), "pnpm 글로벌 설치(-g)"),
-        (Rx(@"\byarn\s+global\s+(add|upgrade)\b"), "yarn 글로벌 설치"),
-        (Rx(@"\bdotnet\s+tool\s+(install|update)\b[^|;&]*\s(-g|--global)\b"), "dotnet 글로벌 툴 설치"),
-        (Rx(@"\bpipx\s+install\b"), "pipx 글로벌 설치"),
-        (Rx(@"\bpip3?\s+install\b[^|;&]*\s--user\b"), "pip --user 설치(사용자 전역)"),
-        (Rx(@"\b(cargo|gem)\s+install\b"), "cargo/gem 글로벌 설치"),
-        (Rx(@"\bgo\s+install\b"), "go install(글로벌 바이너리)"),
+        (Rx(@"\bnpm\s+(install|i|add|update|up)\b[^|;&]*\s(-g|--global)\b"), "tools.bashSecurity.npmGlobal"),
+        (Rx(@"\bpnpm\s+(add|install|update|up)\b[^|;&]*\s(-g|--global)\b"), "tools.bashSecurity.pnpmGlobal"),
+        (Rx(@"\byarn\s+global\s+(add|upgrade)\b"), "tools.bashSecurity.yarnGlobal"),
+        (Rx(@"\bdotnet\s+tool\s+(install|update)\b[^|;&]*\s(-g|--global)\b"), "tools.bashSecurity.dotnetGlobalTool"),
+        (Rx(@"\bpipx\s+install\b"), "tools.bashSecurity.pipxGlobal"),
+        (Rx(@"\bpip3?\s+install\b[^|;&]*\s--user\b"), "tools.bashSecurity.pipUser"),
+        (Rx(@"\b(cargo|gem)\s+install\b"), "tools.bashSecurity.cargoGemGlobal"),
+        (Rx(@"\bgo\s+install\b"), "tools.bashSecurity.goInstall"),
         // 시스템 패키지 관리자(대개 sudo 필요, 시스템 전역 변경).
-        (Rx(@"\bapt(-get)?\s+(install|remove|purge|upgrade|full-upgrade)\b"), "apt 시스템 패키지 변경"),
-        (Rx(@"\b(dnf|yum|zypper)\s+(install|remove|erase|update|upgrade)\b"), "시스템 패키지 관리자 변경"),
-        (Rx(@"\bpacman\s+-S\b"), "pacman 시스템 패키지 설치"),
-        (Rx(@"\bapk\s+(add|del)\b"), "apk 시스템 패키지 변경"),
-        (Rx(@"\bbrew\s+(install|uninstall|upgrade)\b"), "brew 패키지 변경"),
-        (Rx(@"\bsnap\s+(install|remove)\b"), "snap 패키지 변경"),
-        (Rx(@"\b(choco|winget|scoop)\s+(install|uninstall|upgrade)\b"), "Windows 패키지 관리자 변경"),
+        (Rx(@"\bapt(-get)?\s+(install|remove|purge|upgrade|full-upgrade)\b"), "tools.bashSecurity.aptChange"),
+        (Rx(@"\b(dnf|yum|zypper)\s+(install|remove|erase|update|upgrade)\b"), "tools.bashSecurity.sysPkgChange"),
+        (Rx(@"\bpacman\s+-S\b"), "tools.bashSecurity.pacmanInstall"),
+        (Rx(@"\bapk\s+(add|del)\b"), "tools.bashSecurity.apkChange"),
+        (Rx(@"\bbrew\s+(install|uninstall|upgrade)\b"), "tools.bashSecurity.brewChange"),
+        (Rx(@"\bsnap\s+(install|remove)\b"), "tools.bashSecurity.snapChange"),
+        (Rx(@"\b(choco|winget|scoop)\s+(install|uninstall|upgrade)\b"), "tools.bashSecurity.winPkgChange"),
     };
 
     /// <summary>
@@ -142,18 +143,18 @@ public static class BashSecurity
 
         if (RemoteExec.Any(p => p.IsMatch(cmd)))
         {
-            return "원격 실행/전송 — 로컬 경계를 벗어남";
+            return L10n.Get("tools.bashSecurity.remoteExec");
         }
 
-        foreach (var (pattern, reason) in DestructiveConfirm)
+        foreach (var (pattern, reasonKey) in DestructiveConfirm)
         {
             if (pattern.IsMatch(cmd))
             {
-                return reason;
+                return L10n.Get(reasonKey);
             }
         }
 
-        return Rm.IsRecursiveDelete(cmd) ? "재귀/강제 삭제(rm -r)" : null;
+        return Rm.IsRecursiveDelete(cmd) ? L10n.Get("tools.bashSecurity.recursiveDelete") : null;
     }
 
     private static Regex Rx(string p) =>
@@ -164,30 +165,30 @@ public static class BashSecurity
         var cmd = command.Trim();
         if (cmd.Length == 0)
         {
-            return new Verdict(false, "빈 명령");
+            return new Verdict(false, L10n.Get("tools.bashSecurity.emptyCommand"));
         }
 
         // rm 은 플래그 표기 변형이 너무 많아 정규식으로는 계속 샌다 → 토큰 파싱으로 판정.
         if (Rm.DisablesPreserveRoot(cmd))
         {
-            return new Verdict(false, "차단된 고위험 명령: rm --no-preserve-root");
+            return new Verdict(false, L10n.Get("tools.bashSecurity.blockedFmt", L10n.Get("tools.bashSecurity.rmNoPreserveRoot")));
         }
 
         if (Rm.IsCriticalDelete(cmd))
         {
-            return new Verdict(false, "차단된 고위험 명령: 루트·홈·시스템 디렉토리 재귀 삭제");
+            return new Verdict(false, L10n.Get("tools.bashSecurity.blockedFmt", L10n.Get("tools.bashSecurity.criticalDelete")));
         }
 
         if (FindDeleteFromRoot.IsMatch(cmd))
         {
-            return new Verdict(false, "차단된 고위험 명령: 루트에서 find -delete");
+            return new Verdict(false, L10n.Get("tools.bashSecurity.blockedFmt", L10n.Get("tools.bashSecurity.findDeleteFromRoot")));
         }
 
-        foreach (var (pattern, reason) in Destructive)
+        foreach (var (pattern, reasonKey) in Destructive)
         {
             if (pattern.IsMatch(cmd))
             {
-                return new Verdict(false, $"차단된 고위험 명령: {reason}");
+                return new Verdict(false, L10n.Get("tools.bashSecurity.blockedFmt", L10n.Get(reasonKey)));
             }
         }
 

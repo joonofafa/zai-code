@@ -3,9 +3,9 @@ using System.Text;
 namespace MoaiCode.Core.Agent.Prompts;
 
 /// <summary>
-/// 모듈식 시스템 프롬프트 빌더 (OpenClaude src/constants/prompts.ts 이식).
-/// 정적 행동 규칙 섹션 + 동적 환경/컨텍스트 섹션을 조립.
-/// ant-only / feature-gated 변형은 제외하고 외부 빌드 경로를 충실히 포팅.
+/// Modular system-prompt builder (ported from OpenClaude src/constants/prompts.ts).
+/// Assembles static behavior-rule sections + dynamic environment/context sections.
+/// Excludes ant-only / feature-gated variants and faithfully ports the external build path.
 /// </summary>
 public static class SystemPromptBuilder
 {
@@ -73,10 +73,10 @@ public static class SystemPromptBuilder
         " - Keep large output OUT of the conversation. For long or high-volume work — batch runs, evaluations/simulations, dataset or corpus generation, broad scans — run it in the BACKGROUND writing results to a FILE, then read only the summary/final stats (tail, counts, aggregates). Never stream thousands of lines of raw output through the chat: it floods the context window and forces lossy compaction, after which you lose the original goal and start drifting. Large per-file reads/greps: target a range or pattern instead of dumping everything.",
         " - Stay on the user's request and inside the current workspace/repo. Don't wander into unrelated files, or expand to other machines/remote hosts/repos/services on your own initiative — if you believe that's needed, stop and ask first.",
         " - Don't assume WHERE things run. A name in a task — a domain, hostname, service, database, or phrases like 'the server'/'production' — does not by itself mean a remote or separate machine; the CURRENT environment may already be the target, and many 'server'/deployment tasks (web server, TLS, service or DB config, etc.) are local. Before assuming a remote target or asking for SSH/credentials/access, determine the actual setup from evidence: run commands (`hostname`, check running services/ports, inspect config) and honor what the user tells you. If the user says (or it's evident) the work is on the current machine/environment, treat it as local and do NOT ask for remote access — and once they've said it's local, never re-assume remote.",
-        " - Never end a turn by only announcing an action (\"I'll…\", \"~하겠습니다\"). If you intend to act, do it with a tool call in the SAME response. End only when the work is done or you have a concrete result/question.",
+        " - Never end a turn by only announcing an action (\"I'll…\"). If you intend to act, do it with a tool call in the SAME response. End only when the work is done or you have a concrete result/question.",
     });
 
-    // 전역 기본 행동 지침 (사용자 요청으로 시스템 프롬프트에 상시 포함). LLM 코딩 실수 감소용.
+    // Global default behavior guidelines (always included in the system prompt by user request). Reduces common LLM coding mistakes.
     private static string CodingGuidelines() =>
         """
         # Coding guidelines
@@ -155,7 +155,7 @@ public static class SystemPromptBuilder
 
         if (has.Contains("OrgDatas") && has.Contains("OrgDatasList"))
         {
-            dedicated.Add("To answer questions about the org's tabular/record data (sales, metrics, records in the organization data warehouse — 데이터 문서함), FIRST call OrgDatasList to get table names/columns/samples, THEN write a read-only SELECT and run it with OrgDatas. Do not guess column names — read the schema first. For a chart/spreadsheet from the result, follow up with XlsxCreate.");
+            dedicated.Add("To answer questions about the org's tabular/record data (sales, metrics, records in the organization data warehouse), FIRST call OrgDatasList to get table names/columns/samples, THEN write a read-only SELECT and run it with OrgDatas. Do not guess column names — read the schema first. For a chart/spreadsheet from the result, follow up with XlsxCreate.");
         }
 
         var lines = new List<string> { "# Using your tools" };
@@ -202,8 +202,8 @@ public static class SystemPromptBuilder
         " - Reserve longer text for decisions needing input, status at milestones, and blockers. One sentence beats three. This doesn't apply to code or tool calls.",
     });
 
-    // 문서 생성/편집 툴이 등록된 세션(예: MoAI Desktop)에서만 포함. 코딩 전용 CLI 세션엔 안 나온다.
-    // 위쪽 코딩/간결성 지침이 문서 본문 품질과 상충하지 않도록 문서 작성 기준을 명시한다.
+    // Included only in sessions where document create/edit tools are registered (e.g. MoAI Desktop). Not shown in coding-only CLI sessions.
+    // Spells out document-writing standards so the coding/brevity guidance above does not conflict with document body quality.
     private static string? WorkingWithDocuments(IReadOnlyList<string> toolNames)
     {
         var has = new HashSet<string>(toolNames, StringComparer.Ordinal);
@@ -215,7 +215,7 @@ public static class SystemPromptBuilder
             return null;
         }
 
-        // MoAI Desktop: template(디자인/양식)로 새 문서를 '생성' + 열린 문서는 COM 편집.
+        // MoAI Desktop: 'create' a new document from a template (design/form) + COM-edit the open document.
         var hasCreate = has.Contains("DocxCreate") || has.Contains("XlsxCreate") || has.Contains("PptxCreate");
         var hasCom = has.Contains("WordEdit") || has.Contains("ExcelEdit") || has.Contains("PowerPointEdit");
 
@@ -229,7 +229,7 @@ public static class SystemPromptBuilder
 
         if (hasCreate)
         {
-            doc.Add(" - To produce a NEW document, create the FILE with DocxCreate / XlsxCreate / PptxCreate using a \"template\" — Word: report(보고서)/incident(경위서)/proposal(제안서); Excel: expense(지출결의서)/invoice(거래명세서)/inventory(재고관리표); PowerPoint: design \"A\"/\"B\"/\"C\"/\"D\" with a per-slide layout (cover/section/content/two_col/table/quote). Fill every section/slide with real, substantive content for the user's topic. Prefer this template path for a fresh document — it yields proper design and structure that hand-built slides/cells cannot match. Just create the file; the user opens it afterward.");
+            doc.Add(" - To produce a NEW document, create the FILE with DocxCreate / XlsxCreate / PptxCreate using a \"template\" — Word: report/incident/proposal; Excel: expense/invoice/inventory; PowerPoint: design \"A\"/\"B\"/\"C\"/\"D\" with a per-slide layout (cover/section/content/two_col/table/quote). Fill every section/slide with real, substantive content for the user's topic. Prefer this template path for a fresh document — it yields proper design and structure that hand-built slides/cells cannot match. Just create the file; the user opens it afterward.");
         }
 
         if (hasCom)

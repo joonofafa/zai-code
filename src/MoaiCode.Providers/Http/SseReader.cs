@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 namespace MoaiCode.Providers.Http;
 
 using MoaiCode.Providers;
+using MoaiCode.Localization;
 
 /// <summary>
 /// Server-Sent Events 디코더 (TS의 TextDecoderStream + SSE 파서 대응).
@@ -26,7 +27,7 @@ public static class SseReader
             {
                 // 스트림이 [DONE] 전에 끊김(ResponseEnded 등) → transient 로 변환해 재시도 계층이 처리.
                 throw new ProviderException(
-                    $"응답 스트림이 완료 전에 끊겼습니다: {ex.Message}", ErrorCategory.NetworkTransient, ex);
+                    L10n.Get("providers.streamEndedEarly", ex.Message), ErrorCategory.NetworkTransient, ex);
             }
 
             if (line is null)

@@ -1,4 +1,5 @@
 using MoaiCode.Core.Agent;
+using MoaiCode.Localization;
 using MoaiCode.Providers.OpenAi;
 
 namespace MoaiCode.Providers;
@@ -21,7 +22,7 @@ public static class ProviderFactory
         var key = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
         if (string.IsNullOrWhiteSpace(key))
         {
-            description = "EchoChatModel (offline · OPENAI_API_KEY 미설정)";
+            description = L10n.Get("providers.echoOffline");
             return new EchoChatModel();
         }
 

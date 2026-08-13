@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using CliWrap;
 using CliWrap.Buffered;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Bash;
 
@@ -79,7 +80,7 @@ public sealed class BashTool : ITool
         var verdict = BashSecurity.Check(command);
         if (!verdict.Allowed)
         {
-            yield return new ToolOutput($"거부됨 — {verdict.Reason}", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.bash.denied", verdict.Reason), IsError: true);
             yield break;
         }
 
@@ -87,7 +88,7 @@ public sealed class BashTool : ITool
         //    Phase 5에서 ask 모드의 대화형 승인 UI 연결.
         if (context.Permission == PermissionMode.Deny && !BashSecurity.IsReadOnlyCommand(command))
         {
-            yield return new ToolOutput("거부됨 — 권한 모드가 deny이며 읽기 전용 명령이 아님", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.bash.deniedDenyMode"), IsError: true);
             yield break;
         }
 
@@ -123,7 +124,7 @@ public sealed class BashTool : ITool
 
         if (timedOut)
         {
-            yield return new ToolOutput($"타임아웃 ({timeout}ms 초과)", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.bash.timeout", timeout), IsError: true);
             yield break;
         }
 
