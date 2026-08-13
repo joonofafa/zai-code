@@ -20,23 +20,28 @@ public sealed class PptxCreateTool : ITool
     public string Name => "PptxCreate";
 
     public string Description => """
-        Creates a new PowerPoint presentation (.pptx) using the built-in Open XML writer — no
-        dependencies, no PowerPoint install. DESIGN IS TEMPLATE-DRIVEN: pick a "template" (A/B) and a
+        Creates a new PowerPoint presentation (.pptx, 16:9) using the built-in Open XML writer — no
+        dependencies, no PowerPoint install. DESIGN IS TEMPLATE-DRIVEN: pick a "template" (A/B/C/D) and a
         per-slide "layout"; the template fixes colors, fonts, typography hierarchy (title/subtitle/body),
-        spacing and alignment, so you ONLY supply content. Do NOT try to hand-tune a "pretty" design —
-        choose the right layout and write concise content instead.
-        Per slide provide: title, subtitle, and content for the chosen layout —
+        card framing, spacing and alignment, so you ONLY supply content. Do NOT hand-tune a "pretty"
+        design — choose the right layout and write concise content instead.
+        VARY THE LAYOUTS — a deck of only "content" bullet slides looks poor. Prefer visual layouts:
           - cover: title + subtitle (centered) — the opening slide
           - section: a divider between parts (title + subtitle)
-          - content: title + subtitle + bullets (default). Keep bullets to <=5 lines, each ONE short line.
+          - content: title + subtitle + bullets. Keep bullets to <=4, each ONE short line.
           - two_col: comparison — provide "columns" (max 2; each heading + bullets)
+          - stat: 2-4 big-number KPI callouts — provide "metrics" (each value + label). Use for figures.
+          - cards: 2-4 key points as tiles instead of a bullet wall — provide "cards" (each heading + body).
+          - process: 2-5 sequential steps as a numbered flow — provide "steps" (each label + optional caption).
           - text_image: explanation with a figure — bullets on the left + "image" on the right
           - table: data — provide "table" (headers + rows)
           - quote: one strong statement — put it in "title"
+        Rule of thumb: numbers→stat, 3-4 ideas→cards, a sequence→process, a comparison→two_col,
+        dense prose→content. Insert a "section" divider between major parts.
         "shapes" places free-form boxes/arrows (rect/roundRect/ellipse/arrow/chevron/diamond) at inch
-        coordinates (slide is 13.33 x 7.5 (16:9)) for diagrams. ALWAYS use this to produce a .pptx file. Do NOT
-        install packages (pptxgenjs, python-pptx, etc.) or write scripts. For editing an OPEN presentation
-        on Windows, use PowerPointEdit.
+        coordinates (slide is 13.33 x 7.5 (16:9)) for custom diagrams. ALWAYS use this tool to produce a
+        .pptx. Do NOT install packages (pptxgenjs, python-pptx, etc.) or write scripts. For editing an OPEN
+        presentation on Windows, use PowerPointEdit.
         """;
 
     public bool IsReadOnly => false;
@@ -56,7 +61,7 @@ public sealed class PptxCreateTool : ITool
                 "properties": {
                   "title": { "type": "string" },
                   "subtitle": { "type": "string", "description": "Secondary line under the title (subhead)" },
-                  "layout": { "type": "string", "enum": ["cover","section","content","two_col","text_image","table","quote"], "description": "Object placement for this slide. Pick by content: cover=title slide (title+subtitle centered); section=divider between parts; content=title+subtitle+bullets (default); two_col=comparison (provide columns); text_image=explanation with a figure (bullets left + image right, provide image); table=data (provide table); quote=one strong statement (put it in title)." },
+                  "layout": { "type": "string", "enum": ["cover","section","content","two_col","stat","cards","process","text_image","table","quote"], "description": "Object placement for this slide. Pick by content: cover=title slide; section=divider; content=title+subtitle+bullets; two_col=comparison (provide columns); stat=2-4 big-number KPIs (provide metrics); cards=2-4 tiles/key points (provide cards); process=2-5 numbered steps (provide steps); text_image=figure (bullets left + image right); table=data (provide table); quote=one strong statement (in title). Vary layouts across the deck." },
                   "accent": { "type": "string", "description": "Override accent color hex (e.g. #2F5496). Usually omit — the template sets it." },
                   "bullets": { "type": "array", "items": { "type": "string" }, "description": "Single-column bullet lines" },
                   "columns": {
@@ -76,6 +81,39 @@ public sealed class PptxCreateTool : ITool
                     "properties": {
                       "headers": { "type": "array", "items": { "type": "string" } },
                       "rows": { "type": "array", "items": { "type": "array", "items": { "type": "string" } } }
+                    }
+                  },
+                  "metrics": {
+                    "type": "array",
+                    "description": "Big-number KPI callouts for layout 'stat' (2-4). Each: a short value (e.g. '73%', '5x', '2025') + a label under it.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "value": { "type": "string", "description": "The big number/figure" },
+                        "label": { "type": "string", "description": "Short caption under the value" }
+                      }
+                    }
+                  },
+                  "cards": {
+                    "type": "array",
+                    "description": "Tile cards for layout 'cards' (2-4). Use instead of a bullet wall for key points. Each: a heading + one short body sentence.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "heading": { "type": "string" },
+                        "body": { "type": "string" }
+                      }
+                    }
+                  },
+                  "steps": {
+                    "type": "array",
+                    "description": "Sequential steps for layout 'process' (2-5), rendered as a numbered horizontal flow. Each: a short label + optional caption.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "label": { "type": "string" },
+                        "caption": { "type": "string" }
+                      }
                     }
                   },
                   "shapes": {
@@ -143,6 +181,18 @@ public sealed class PptxCreateTool : ITool
         [property: JsonPropertyName("y")] double? Y,
         [property: JsonPropertyName("widthInches")] double? WidthInches);
 
+    private sealed record MetricIn(
+        [property: JsonPropertyName("value")] string? Value,
+        [property: JsonPropertyName("label")] string? Label);
+
+    private sealed record CardIn(
+        [property: JsonPropertyName("heading")] string? Heading,
+        [property: JsonPropertyName("body")] string? Body);
+
+    private sealed record StepIn(
+        [property: JsonPropertyName("label")] string? Label,
+        [property: JsonPropertyName("caption")] string? Caption);
+
     private sealed record SlideIn(
         [property: JsonPropertyName("title")] string? Title,
         [property: JsonPropertyName("subtitle")] string? Subtitle,
@@ -151,6 +201,9 @@ public sealed class PptxCreateTool : ITool
         [property: JsonPropertyName("bullets")] List<string>? Bullets,
         [property: JsonPropertyName("columns")] List<ColumnIn>? Columns,
         [property: JsonPropertyName("table")] TableIn? Table,
+        [property: JsonPropertyName("metrics")] List<MetricIn>? Metrics,
+        [property: JsonPropertyName("cards")] List<CardIn>? Cards,
+        [property: JsonPropertyName("steps")] List<StepIn>? Steps,
         [property: JsonPropertyName("shapes")] List<ShapeIn>? Shapes,
         [property: JsonPropertyName("image")] ImageIn? Image);
 
@@ -442,6 +495,9 @@ public sealed class PptxCreateTool : ITool
         var hasCols = s.Columns is { Count: > 0 };
         var hasBullets = s.Bullets is { Count: > 0 };
         var hasTable = s.Table is not null && ((s.Table.Headers?.Count ?? 0) > 0 || (s.Table.Rows?.Count ?? 0) > 0);
+        var hasMetrics = s.Metrics is { Count: > 0 };
+        var hasCards = s.Cards is { Count: > 0 };
+        var hasSteps = s.Steps is { Count: > 0 };
 
         // 본문 폭: text_image 는 좌측 절반(우측은 이미지 자리).
         long bodyW = layout == "text_image" ? (SlideW / 2) - MarginX : ContentW;
@@ -503,6 +559,18 @@ public sealed class PptxCreateTool : ITool
                 tree.AppendChild(AccentBar(id++, MarginX + pad, bodyTop + pad, 300000, 46000, p.AccentHex));
                 tree.AppendChild(MakeShape(id++, "Body", MarginX + pad, bodyTop + pad + 130000, ContentW - 2 * pad, bodyH - 2 * pad - 130000, paras));
             }
+        }
+        else if (hasMetrics)
+        {
+            BuildStatRow(tree, ref id, bodyTop, bodyH, s.Metrics!, p);
+        }
+        else if (hasCards)
+        {
+            BuildCardGrid(tree, ref id, bodyTop, bodyH, s.Cards!, p);
+        }
+        else if (hasSteps)
+        {
+            BuildProcess(tree, ref id, bodyTop, bodyH, s.Steps!, p);
         }
 
         if (hasTable)
@@ -702,6 +770,113 @@ public sealed class PptxCreateTool : ITool
             new[] { AlignedText($"{index} / {total}", 11, false, p.FooterHex, p.BodyFont, D.TextAlignmentTypeValues.Right) }));
     }
 
+    // 채운 원 + 중앙 번호(프로세스 단계 배지 등).
+    private static P.Shape Circle(uint id, long x, long y, long d, string fill, string text, int fontPt, string fontColor)
+    {
+        return new P.Shape(
+            new P.NonVisualShapeProperties(
+                new P.NonVisualDrawingProperties { Id = id, Name = "Badge" },
+                new P.NonVisualShapeDrawingProperties(),
+                new P.ApplicationNonVisualDrawingProperties()),
+            new P.ShapeProperties(
+                new D.Transform2D(new D.Offset { X = x, Y = y }, new D.Extents { Cx = d, Cy = d }),
+                new D.PresetGeometry(new D.AdjustValueList()) { Preset = D.ShapeTypeValues.Ellipse },
+                new D.SolidFill(new D.RgbColorModelHex { Val = fill })),
+            new P.TextBody(
+                new D.BodyProperties { Anchor = D.TextAnchoringTypeValues.Center },
+                new D.ListStyle(),
+                CenteredText(text, fontPt, true, fontColor)));
+    }
+
+    // ── stat: 2~4개의 큰 수치 콜아웃(KPI). 배경 카드 + 큰 값(accent) + 라벨. 세로 중앙 정렬. ──
+    private static void BuildStatRow(ShapeTree tree, ref uint id, long bodyTop, long bodyH, List<MetricIn> metrics, ThemePreset p)
+    {
+        var items = metrics.Take(4).ToList();
+        var n = items.Count;
+        const long gap = 360000;
+        var cardW = (ContentW - gap * (n - 1)) / n;
+        const long cardH = 2100000;
+        var cy = Math.Max(bodyTop, bodyTop + (bodyH - cardH) / 2);
+        for (var i = 0; i < n; i++)
+        {
+            var x = MarginX + i * (cardW + gap);
+            tree.AppendChild(Panel(id++, x, cy, cardW, cardH, p.PanelHex));
+            tree.AppendChild(MakeShape(id++, "Stat", x, cy + 320000, cardW, 900000,
+                new[] { CenteredText(items[i].Value ?? string.Empty, 44, true, p.AccentHex, p.TitleFont) }));
+            tree.AppendChild(MakeShape(id++, "StatLabel", x + 180000, cy + 1300000, cardW - 360000, 640000,
+                new[] { CenteredText(items[i].Label ?? string.Empty, p.SubtitlePt, false, p.SubtitleHex, p.BodyFont) }));
+        }
+    }
+
+    // ── cards: 2~4개의 타일(요점 카드). 4개는 2×2 그리드. 각 카드 = 패널 + accent 칩 + 헤딩 + 본문. ──
+    private static void BuildCardGrid(ShapeTree tree, ref uint id, long bodyTop, long bodyH, List<CardIn> cards, ThemePreset p)
+    {
+        var items = cards.Take(4).ToList();
+        var n = items.Count;
+        var cols = n <= 3 ? n : 2;
+        var rows = (n + cols - 1) / cols;
+        const long gap = 300000;
+        const long pad = 240000;
+        var cardW = (ContentW - gap * (cols - 1)) / cols;
+        var cardH = (bodyH - gap * (rows - 1)) / rows;
+        for (var i = 0; i < n; i++)
+        {
+            int r = i / cols, c = i % cols;
+            var x = MarginX + c * (cardW + gap);
+            var y = bodyTop + r * (cardH + gap);
+            tree.AppendChild(Panel(id++, x, y, cardW, cardH, p.PanelHex));
+            tree.AppendChild(AccentBar(id++, x + pad, y + pad, 300000, 46000, p.AccentHex));
+            var paras = new List<D.Paragraph>();
+            if (!string.IsNullOrWhiteSpace(items[i].Heading))
+            {
+                paras.Add(TextParagraph(items[i].Heading!, p.SubtitlePt * 100, bold: true, bullet: false, color: p.AccentHex, fontName: p.BodyFont));
+            }
+
+            if (!string.IsNullOrWhiteSpace(items[i].Body))
+            {
+                paras.Add(TextParagraph(items[i].Body!, p.BodyPt * 100, bold: false, bullet: false, color: p.BodyHex, fontName: p.BodyFont, spaceBeforePct: 45000));
+            }
+
+            if (paras.Count == 0)
+            {
+                paras.Add(TextParagraph(string.Empty, p.BodyPt * 100, false, false, null));
+            }
+
+            tree.AppendChild(MakeShape(id++, "Card", x + pad, y + pad + 120000, cardW - 2 * pad, cardH - 2 * pad - 120000, paras));
+        }
+    }
+
+    // ── process: 2~5개 단계의 가로 흐름. 각 단계 = 패널 + 번호 배지(원) + 라벨 + 캡션, 사이에 › 화살표. ──
+    private static void BuildProcess(ShapeTree tree, ref uint id, long bodyTop, long bodyH, List<StepIn> steps, ThemePreset p)
+    {
+        var items = steps.Take(5).ToList();
+        var n = items.Count;
+        const long gap = 220000;
+        const long stepH = 2300000;
+        const long badge = 620000;
+        var stepW = (ContentW - gap * (n - 1)) / n;
+        var cy = Math.Max(bodyTop, bodyTop + (bodyH - stepH) / 2);
+        for (var i = 0; i < n; i++)
+        {
+            var x = MarginX + i * (stepW + gap);
+            tree.AppendChild(Panel(id++, x, cy, stepW, stepH, p.PanelHex));
+            tree.AppendChild(Circle(id++, x + (stepW - badge) / 2, cy + 230000, badge, p.AccentHex, (i + 1).ToString(), 22, "FFFFFF"));
+            tree.AppendChild(MakeShape(id++, "StepLabel", x + 120000, cy + 230000 + badge + 70000, stepW - 240000, 520000,
+                new[] { CenteredText(items[i].Label ?? string.Empty, p.SubtitlePt, true, p.TitleHex, p.BodyFont) }));
+            if (!string.IsNullOrWhiteSpace(items[i].Caption))
+            {
+                tree.AppendChild(MakeShape(id++, "StepCap", x + 120000, cy + 230000 + badge + 640000, stepW - 240000, 760000,
+                    new[] { CenteredText(items[i].Caption!, Math.Max(10, p.BodyPt - 1), false, p.BodyHex, p.BodyFont) }));
+            }
+
+            if (i < n - 1)
+            {
+                tree.AppendChild(MakeShape(id++, "Arrow", x + stepW - 40000, cy + (stepH / 2) - 220000, gap + 80000, 440000,
+                    new[] { CenteredText("›", 28, true, p.AccentHex, p.BodyFont) }));
+            }
+        }
+    }
+
     private static D.Paragraph TextParagraph(string text, int fontSize, bool bold, bool bullet, string? color, string? fontName = null, int spaceBeforePct = 0)
     {
         var runProps = new D.RunProperties { Language = "en-US", FontSize = fontSize };
@@ -744,7 +919,13 @@ public sealed class PptxCreateTool : ITool
         }
         else
         {
-            pPr = new D.ParagraphProperties(new D.NoBullet());
+            pPr = new D.ParagraphProperties();
+            if (spaceBeforePct > 0)
+            {
+                pPr.AppendChild(new D.SpaceBefore(new D.SpacingPercent { Val = spaceBeforePct }));
+            }
+
+            pPr.AppendChild(new D.NoBullet());
         }
 
         para.AppendChild(pPr);
