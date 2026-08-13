@@ -622,7 +622,7 @@ public sealed class XlsxCreateTool : ITool
     private static readonly string[] DangerCommands =
         { "cmd", "dde", "msexcel", "msquery", "rundll", "powershell", "system" };
 
-    private static bool IsDangerousFormula(string expr)
+    internal static bool IsDangerousFormula(string expr)
     {
         if (string.IsNullOrEmpty(expr))
         {
@@ -659,7 +659,7 @@ public sealed class XlsxCreateTool : ITool
         return (new Regex($@"(?<![A-Za-z0-9_.]){f}(?=\s*\()", RegexOptions.IgnoreCase | RegexOptions.Compiled), repl);
     }).ToArray();
 
-    private static string NormalizeFormula(string expr)
+    internal static string NormalizeFormula(string expr)
     {
         foreach (var (rx, repl) in ModernFuncRules)
         {

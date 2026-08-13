@@ -88,6 +88,7 @@ public static class GuiBootstrap
         list.Add(new DocxCreateTool());
         list.Add(new DocxEditTool());   // 기존 docx 템플릿 채우기(텍스트 치환, 서식 보존).
         list.Add(new XlsxCreateTool());
+        list.Add(new XlsxEditTool());   // 기존 xlsx 템플릿 채우기(셀 값 설정, 서식 보존).
         list.Add(new PptxCreateTool());
         list.Add(new OfficeDocInspectTool());
         list.Add(new ChunkBuildTool());
