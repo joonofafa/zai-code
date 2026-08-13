@@ -287,7 +287,7 @@ public class WebFetchToolTests
     {
         var (text, err) = await Run("""{"url":"http://169.254.169.254/latest/meta-data/"}""");
         Assert.True(err);
-        Assert.Contains("차단", text);
+        Assert.Contains("169.254.169.254", text); // 차단된 메타데이터 IP 가 메시지에 그대로 노출(언어무관)
     }
 }
 

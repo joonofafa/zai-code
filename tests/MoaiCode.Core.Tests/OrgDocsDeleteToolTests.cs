@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 using MoaiCode.Tools.Knowledge;
 using Xunit;
 
@@ -80,7 +81,7 @@ public sealed class OrgDocsDeleteToolTests
         Assert.Equal("DELETE", r.Method);
         Assert.Equal("/knowledge/123", r.Path);
         Assert.Contains("orgId=org1", r.Query);
-        Assert.Contains("삭제됨", r.Text);
+        Assert.Contains(L10n.Get("tools.orgDocsDelete.deleted", "123"), r.Text);
     }
 
     [Fact]
@@ -90,7 +91,7 @@ public sealed class OrgDocsDeleteToolTests
             new { documentId = "999", orgId = "org1" });
 
         Assert.True(r.Error);
-        Assert.Contains("본인이 업로드한 문서만", r.Text);
+        Assert.Contains(L10n.Get("tools.orgDocsDelete.forbidden"), r.Text);
     }
 
     [Fact]
@@ -100,7 +101,7 @@ public sealed class OrgDocsDeleteToolTests
             new { documentId = "404", orgId = "org1" });
 
         Assert.True(r.Error);
-        Assert.Contains("찾을 수 없습니다", r.Text);
+        Assert.Contains(L10n.Get("tools.orgDocsDelete.notFound", "404"), r.Text);
     }
 
     [Fact]

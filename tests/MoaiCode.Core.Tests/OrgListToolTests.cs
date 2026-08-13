@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 using MoaiCode.Tools.Knowledge;
 using Xunit;
 
@@ -38,7 +39,7 @@ public sealed class OrgListToolTests
         Assert.Equal("/organizations", r.Path);
         Assert.Equal("Bearer sk-test-key", r.Auth);
         Assert.Contains("[o1] AI본부", r.Text);
-        Assert.Contains("기본", r.Text);         // isPrimary 표기
+        Assert.Contains(L10n.Get("tools.orgList.primary"), r.Text);         // isPrimary 표기
         Assert.Contains("[o2] 플랫폼팀", r.Text);
         Assert.StartsWith("<system-reminder>", r.Text); // untrusted 경계
     }

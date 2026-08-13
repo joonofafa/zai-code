@@ -1,5 +1,6 @@
 using System.Text.Json;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 using MoaiCode.Tools.OpenXml;
 using Xunit;
 
@@ -68,7 +69,7 @@ public sealed class ChunkToolsTests : IDisposable
 
         // 빌드
         var build = await Run(new ChunkBuildTool(), new { path = "src" });
-        Assert.Contains("새로 청킹 2개", build);
+        Assert.Contains(BuildSummaryPrefix(built: 2, skipped: 0), build);
         Assert.True(Directory.Exists(Path.Combine(src, ".moai-chunks")));
 
         // 개요(디렉토리)
@@ -83,7 +84,7 @@ public sealed class ChunkToolsTests : IDisposable
 
         // 증분: 변경 없이 재빌드하면 스킵
         var rebuild = await Run(new ChunkBuildTool(), new { path = "src" });
-        Assert.Contains("변경없음 2개", rebuild);
+        Assert.Contains(BuildSummaryPrefix(built: 0, skipped: 2), rebuild);
     }
 
     [Fact]
@@ -95,10 +96,10 @@ public sealed class ChunkToolsTests : IDisposable
         await File.WriteAllTextAsync(Path.Combine(sub, "deep.txt"), "deep content");
 
         var top = await Run(new ChunkBuildTool(), new { path = "root" });
-        Assert.Contains("새로 청킹 1개", top); // sub 제외
+        Assert.Contains(BuildSummaryPrefix(built: 1, skipped: 0), top); // sub 제외
 
         var rec = await Run(new ChunkBuildTool(), new { path = "root", recursive = true });
-        Assert.Contains("새로 청킹 1개", rec); // sub/deep.txt 추가(top.txt 는 변경없음)
+        Assert.Contains(BuildSummaryPrefix(built: 1, skipped: 1), rec); // sub/deep.txt 추가(top.txt 는 변경없음)
         var overview = await Run(new ChunkFetchTool(), new { path = "root" });
         Assert.Contains(Path.Combine("sub", "deep.txt"), overview);
     }
@@ -161,7 +162,16 @@ public sealed class ChunkToolsTests : IDisposable
 
         var text = await Run(new ChunkSearchTool(),
             new { path = "src", queryVector = new[] { 1.0, 0.0 } }, expectOk: false); // 2차원
-        Assert.Contains("차원", text);
+        Assert.Contains(L10n.Get("tools.chunkSearch.dimMismatch", 2, 3), text);
+    }
+
+    // ChunkBuild 요약(resultSummary)의 built/skipped 카운트만 언어무관으로 비교한다.
+    // 총 청크 수({2})는 청킹 결과에 따라 달라지므로 센티널로 대체해 그 앞부분만 취한다.
+    private static string BuildSummaryPrefix(int built, int skipped)
+    {
+        const string sentinel = "";
+        var s = L10n.Get("tools.chunkBuild.resultSummary", built, skipped, sentinel);
+        return s[..s.IndexOf(sentinel, StringComparison.Ordinal)];
     }
 
     private async Task<string> BuildTwoSingleChunkDocs()

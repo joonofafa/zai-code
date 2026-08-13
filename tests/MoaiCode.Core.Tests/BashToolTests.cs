@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 using MoaiCode.Tools.Bash;
 using Xunit;
 
@@ -88,7 +89,9 @@ public class BashToolExecutionTests
     {
         var (output, err) = await Run("""{"command":"rm -rf /"}""");
         Assert.True(err);
-        Assert.Contains("거부", output);
+        Assert.Contains(
+            L10n.Get("tools.bashSecurity.blockedFmt", L10n.Get("tools.bashSecurity.criticalDelete")),
+            output);
     }
 
     [Fact]

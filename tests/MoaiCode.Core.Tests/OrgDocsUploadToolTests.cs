@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 using MoaiCode.Tools.Knowledge;
 using Xunit;
 
@@ -50,7 +51,7 @@ public sealed class OrgDocsUploadToolTests : IDisposable
     {
         var (text, err) = await RunAsync(new { orgId = "org1", path = "nope.docx" });
         Assert.True(err);
-        Assert.Contains("파일이 없습니다", text);
+        Assert.Contains(L10n.Get("tools.orgDocsUpload.missingFiles"), text);
     }
 
     [Fact]
@@ -107,7 +108,7 @@ public sealed class OrgDocsUploadToolTests : IDisposable
             Assert.Contains("organization", gotBody);
             Assert.Contains("boundary=MoaiBoundary", gotContentType); // 무따옴표 boundary
             // 결과 렌더
-            Assert.Contains("업로드 완료", text);
+            Assert.Contains(L10n.Get("tools.orgDocsUpload.completedHeader", 1, 1), text);
             Assert.Contains("id=123", text);
         }
         finally
@@ -130,8 +131,9 @@ public sealed class OrgDocsUploadToolTests : IDisposable
 
         var (text, err) = await RunAsync(new { path = "." }); // 서버/env 불필요 — 미리보기는 로컬
         Assert.False(err, text);
-        Assert.Contains("업로드 미리보기", text);
-        Assert.Contains("2개", text);
+        // 미리보기 헤더(문서 2개, 총 2B, 기본 공개범위 private)를 언어무관으로 검증.
+        Assert.Contains(L10n.Get("tools.orgDocsUpload.previewHeader", 2, "2B", "private"), text);
+        Assert.Contains("02.", text); // 두 번째 문서까지 번호 매겨 나열(개수=2)
         Assert.Contains("a.docx", text);
         Assert.Contains("b.txt", text);
         Assert.DoesNotContain("c.png", text); // 비문서형 제외
@@ -149,7 +151,7 @@ public sealed class OrgDocsUploadToolTests : IDisposable
 
         var (text, err) = await RunAsync(new { path = ".", recursive = true });
         Assert.False(err, text);
-        Assert.Contains("3개", text);
+        Assert.Contains(L10n.Get("tools.orgDocsUpload.previewHeader", 3, "3B", "private"), text);
         Assert.Contains(Path.Combine("sub", "d.pdf"), text); // 상대경로로 서브폴더 노출
     }
 
@@ -195,7 +197,7 @@ public sealed class OrgDocsUploadToolTests : IDisposable
             Assert.False(err, text);
             Assert.Equal(1, requestCount);   // 한 요청에 전부
             Assert.Equal(2, filesParts);     // files 파트 2개(다중)
-            Assert.Contains("업로드 완료 — 2/2", text);
+            Assert.Contains(L10n.Get("tools.orgDocsUpload.completedHeader", 2, 2), text);
         }
         finally
         {

@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 using MoaiCode.Tools.Knowledge;
 using Xunit;
 
@@ -64,7 +65,9 @@ public sealed class OrgDocsListToolTests
             {
                 var (text, err) = await RunAsync(new { });   // orgId 없음
                 Assert.True(err);
-                Assert.Contains("여러 조직", text);
+                Assert.Contains(
+                    L10n.Get("tools.orgResolver.ambiguous", "OrgDocsList", "[a] 본부A, [b] 본부B"),
+                    text);
                 Assert.Contains("[a]", text);
                 Assert.Contains("[b]", text);
             });
@@ -159,7 +162,7 @@ public sealed class OrgDocsListToolTests
             Assert.Equal("Bearer sk-test-key", gotAuth);
             Assert.Contains("취업규칙", text);
             Assert.Contains("organization", text);
-            Assert.Contains("처리:uploaded", text); // 완료 아닌 상태 표기
+            Assert.Contains(L10n.Get("tools.orgDocsList.processing", "uploaded"), text); // 완료 아닌 상태 표기
             Assert.Contains("RAG off", text);       // ragEnabled=false 표기
             Assert.StartsWith("<system-reminder>", text); // untrusted 경계
         }
