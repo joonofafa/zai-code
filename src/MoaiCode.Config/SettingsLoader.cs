@@ -21,26 +21,31 @@ public static class SettingsLoader
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
         var settings = Settings.Default;
+        // ~/.claude 는 Claude Code(별개 제품)의 설정 파일 — 공유 설정은 받되 model/티어는 상속하지 않는다
+        // (Claude Code 모델명 "opus[1m]" 등이 moai 게이트웨이로 새어 404 나던 문제 방지). 모델은 ~/.moai + env 만.
         settings = ApplyLayer(
             settings,
             Path.Combine(home, ".claude", "settings.json"),
             allowSensitive: true,
             allowAutomation: true,
-            allowPermissionRules: true);
+            allowPermissionRules: true,
+            allowModel: false);
         settings = ApplyLayer(
             settings,
             Path.Combine(home, ".moai", "settings.json"),
             allowSensitive: true,
             allowAutomation: true,
-            allowPermissionRules: true);
+            allowPermissionRules: true,
+            allowModel: true);
 
-        // 보안: 프로젝트 레이어는 민감/실행/권한 관련 키를 덮어쓰지 못한다.
+        // 보안: 프로젝트 레이어는 민감/실행/권한 관련 키를 덮어쓰지 못한다. 프로젝트 .claude 도 model 미상속.
         settings = ApplyLayer(
             settings,
             Path.Combine(workingDirectory, ".claude", "settings.json"),
             allowSensitive: false,
             allowAutomation: false,
-            allowPermissionRules: false);
+            allowPermissionRules: false,
+            allowModel: false);
 
         return ApplyEnv(settings);
     }
@@ -54,7 +59,8 @@ public static class SettingsLoader
         string json,
         bool allowSensitive,
         bool allowAutomation,
-        bool allowPermissionRules)
+        bool allowPermissionRules,
+        bool allowModel = true)
     {
         JsonDocument doc;
         try
@@ -76,10 +82,13 @@ public static class SettingsLoader
 
             return baseline with
             {
-                Model = GetString(root, "model", "model_id") ?? baseline.Model,
-                ModelLow = GetString(root, "modelLow") ?? baseline.ModelLow,
-                ModelMid = GetString(root, "modelMid") ?? baseline.ModelMid,
-                ModelHigh = GetString(root, "modelHigh") ?? baseline.ModelHigh,
+                // 모델/티어는 moai 전용 네임스페이스(게이트웨이 모델명)라 ~/.claude(Claude Code 설정)에서
+                // 상속하지 않는다. Claude Code 의 model(예: "opus[1m]")이 새어들어와 게이트웨이 404 를
+                // 내던 문제 방지 — moai 는 ~/.moai + env(+/model) 에서만 모델을 받는다.
+                Model = allowModel ? GetString(root, "model", "model_id") ?? baseline.Model : baseline.Model,
+                ModelLow = allowModel ? GetString(root, "modelLow") ?? baseline.ModelLow : baseline.ModelLow,
+                ModelMid = allowModel ? GetString(root, "modelMid") ?? baseline.ModelMid : baseline.ModelMid,
+                ModelHigh = allowModel ? GetString(root, "modelHigh") ?? baseline.ModelHigh : baseline.ModelHigh,
                 Provider = allowSensitive ? GetString(root, "provider") ?? baseline.Provider : baseline.Provider,
                 BaseUrl = allowSensitive ? GetString(root, "baseUrl", "base_url") ?? baseline.BaseUrl : baseline.BaseUrl,
                 Language = L10n.NormalizeLanguage(GetString(root, "language", "locale", "uiLanguage", "ui_language"))
@@ -91,7 +100,7 @@ public static class SettingsLoader
                 LoginAt = allowSensitive ? GetString(root, "loginAt", "login_at") ?? baseline.LoginAt : baseline.LoginAt,
                 OrgName = allowSensitive ? GetString(root, "orgName", "org_name") ?? baseline.OrgName : baseline.OrgName,
                 Name = allowSensitive ? GetString(root, "name", "userName") ?? baseline.Name : baseline.Name,
-                AvailableModels = allowSensitive ? GetString(root, "availableModels") ?? baseline.AvailableModels : baseline.AvailableModels,
+                AvailableModels = allowModel && allowSensitive ? GetString(root, "availableModels") ?? baseline.AvailableModels : baseline.AvailableModels,
                 ProxyUrl = allowSensitive ? GetString(root, "proxyUrl", "proxy_url", "proxy") ?? baseline.ProxyUrl : baseline.ProxyUrl,
                 ProxyUser = allowSensitive ? GetString(root, "proxyUser", "proxy_user") ?? baseline.ProxyUser : baseline.ProxyUser,
                 ProxyBypass = allowSensitive ? GetString(root, "proxyBypass", "proxy_bypass", "noProxy") ?? baseline.ProxyBypass : baseline.ProxyBypass,
@@ -132,7 +141,8 @@ public static class SettingsLoader
         string path,
         bool allowSensitive,
         bool allowAutomation,
-        bool allowPermissionRules)
+        bool allowPermissionRules,
+        bool allowModel = true)
     {
         if (!File.Exists(path))
         {
@@ -144,7 +154,8 @@ public static class SettingsLoader
             File.ReadAllText(path),
             allowSensitive,
             allowAutomation,
-            allowPermissionRules);
+            allowPermissionRules,
+            allowModel);
     }
 
     public static Settings ApplyEnv(Settings baseline)

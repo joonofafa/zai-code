@@ -113,10 +113,10 @@ public static class AppBootstrap
             var sync = await TeamSkills.SyncAsync(teamBaseUrl!, teamApiKey!, ct).ConfigureAwait(false);
             if (sync.Error is not null)
             {
-                // 인증 거부(401/403)는 이 서버가 CLI 키로 조직 스킬 접근을 허용하지 않는 예상된 상황이라
-                // 사용자가 조치할 수 없다 → 시작 시 빨간 에러로 놀래키지 않고 로그에만 남긴다.
-                // 그 외(네트워크/타임아웃/5xx 등)만 사용자에게 친화 메시지(빨강)로 표시.
-                if (!IsAuthError(sync.Error))
+                // 인증 거부(401/403)·서버 오류(5xx)는 사용자가 조치할 수 없는 서버측 상황이라
+                // 시작 시 빨간 에러로 놀래키지 않고 로그에만 남긴다. 사용자가 대응 가능한 것
+                // (네트워크/타임아웃 등)만 친화 메시지(빨강)로 표시.
+                if (!IsAuthError(sync.Error) && !IsServerError(sync.Error))
                 {
                     Console.WriteLine($"\x1b[31m{L10n.Get("cli.skills.teamLoadFailed")}\x1b[0m");
                 }
@@ -442,6 +442,10 @@ public static class AppBootstrap
         error.Contains("HTTP 401", StringComparison.Ordinal)
         || error.Contains("HTTP 403", StringComparison.Ordinal)
         || error.Contains("AUTHENTICATION_REQUIRED", StringComparison.Ordinal);
+
+    // 서버측 오류(5xx) — 사용자가 조치할 수 없는 서버 상태. 시작 배너엔 표시하지 않고 로그만.
+    private static bool IsServerError(string error) =>
+        System.Text.RegularExpressions.Regex.IsMatch(error, @"HTTP 5\d\d");
 
     private static bool IsEnvTruthy(string name)
     {
