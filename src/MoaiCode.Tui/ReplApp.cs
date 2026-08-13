@@ -427,10 +427,10 @@ public sealed class ReplApp
         if (_ctx.State.Brainstorming)
         {
             _ctx.State.BrainstormTurnsLeft--;
-            if (_ctx.State.BrainstormTurnsLeft <= 0)
-            {
-                _ctx.Engine.AddSystemReminder(Reminders.BrainstormFinalize);
-            }
+            // 한도 도달이면 플랜 마무리, 아니면 '이번 턴 질문 하나' 넛지(컴팩션 후에도 규칙 유지).
+            _ctx.Engine.AddSystemReminder(_ctx.State.BrainstormTurnsLeft <= 0
+                ? Reminders.BrainstormFinalize
+                : Reminders.BrainstormOneQuestion);
         }
 
         // 이 턴 전용 취소 토큰. Ctrl+C(시그널) 또는 ESC 로 cancel → 엔진/툴이 멈추고 프롬프트로 복귀(프로세스 유지).
