@@ -201,7 +201,7 @@
   "common.multiselect.saved": "  ✓ {0} enabled · {1} disabled — saved",
   "common.select.help": "(↑/↓ move · Enter select · Esc cancel · number to pick{0})",
   "common.select.more": " · {0} total",
-  "common.select.selected": "  ✓ selected: {0}. {1}",
+  "common.select.selected": "  ✓ Selected: {0}. {1}",
   "common.cancelled": "(cancelled)",
   "common.unchanged": "No change",
   "repl.help": "Help: /help\nSession: /resume\nInterrupt: ESC or Ctrl + C",
