@@ -57,7 +57,8 @@ public sealed class ModeAwarePermissionGate : IPermissionGate
                 return true;
         }
 
-        // 워크스페이스 밖 절대경로 Write/Edit: 권한 모드(auto/auto-act)·기본 게이트와 무관하게 반드시 확인.
+        // 워크스페이스 밖 Write/Edit(대상 경로) 또는 Glob/Grep(검색 루트): 권한 모드와 무관하게 반드시 확인.
+        // (빈 작업 디렉토리에서 부모/형제로 헤매는 것을 막는 안전 경계.)
         if (_confine && WritesOutsideWorkspace(tool, call))
         {
             // 비대화형(프롬프트 불가)에서는 안전하게 거부.
@@ -164,10 +165,13 @@ public sealed class ModeAwarePermissionGate : IPermissionGate
     private static string DescribeArgs(ToolUseBlock call) =>
         ReadString(call, "command") ?? call.Input.GetRawText();
 
-    // Write/Edit 의 대상 경로가 워크스페이스 밖이면 true.
+    // Write/Edit 의 대상 경로, 또는 Glob/Grep 의 검색 루트가 워크스페이스 밖이면 true.
+    // (Glob/Grep 포함 이유: 빈 작업 디렉토리에서 부모/형제 디렉토리를 뒤지며 무관한 프로젝트로
+    //  헤매는 것을 초기에 멈추고 사용자에게 확인시키기 위함. 읽기(Read)는 메모리/설정 등 정당한
+    //  외부 단일파일 접근이 있어 제외.)
     private bool WritesOutsideWorkspace(ITool tool, ToolUseBlock call)
     {
-        if (tool.Name is not ("Write" or "Edit"))
+        if (tool.Name is not ("Write" or "Edit" or "Glob" or "Grep"))
         {
             return false;
         }
