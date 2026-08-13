@@ -529,15 +529,35 @@ public sealed class ReplApp
     // 상태줄을 raw ANSI 문자열로 생성 (박스 하단 + Shift+Tab 제자리 갱신 공용).
     private string BuildStatusLine()
     {
-        var (modeTxt, ansi) = _ctx.State.Mode switch
+        var (modeKey, ansi) = _ctx.State.Mode switch
         {
-            AgentMode.Plan => ("plan mode", "\x1b[33m"),       // yellow
-            AgentMode.AutoAct => ("auto-act mode", "\x1b[38;5;39m"), // deepskyblue
-            _ => ("act mode", "\x1b[32m"),                     // green
+            AgentMode.Plan => ("repl.mode.plan", "\x1b[33m"),       // yellow
+            AgentMode.AutoAct => ("repl.mode.autoAct", "\x1b[38;5;39m"), // deepskyblue
+            _ => ("repl.mode.act", "\x1b[32m"),                     // green
         };
 
-        var model = CurrentModelLabel();
-        return $"{ansi}{modeTxt}\x1b[0m\x1b[38;5;249m (shift+tab to cycle) · {model}\x1b[0m";
+        var modeTxt = L10n.Get(modeKey);
+        var toggle = L10n.Get("repl.status.toggle");
+        var model = ModelStatusLabel();
+        return $"{ansi}{modeTxt}\x1b[0m\x1b[38;5;249m ({toggle}) · {model}\x1b[0m";
+    }
+
+    // 상태줄 모델 표기: 난이도 티어(MOAI_MODEL_LOW/MID/HIGH)가 하나라도 설정돼 있으면
+    // 티어별 모델(L/M/H), 아니면 단일 현재 모델. 미설정 티어는 기본(현재) 모델로 채운다.
+    private string ModelStatusLabel()
+    {
+        var low = Environment.GetEnvironmentVariable("MOAI_MODEL_LOW");
+        var mid = Environment.GetEnvironmentVariable("MOAI_MODEL_MID");
+        var high = Environment.GetEnvironmentVariable("MOAI_MODEL_HIGH");
+        if (string.IsNullOrWhiteSpace(low) && string.IsNullOrWhiteSpace(mid) && string.IsNullOrWhiteSpace(high))
+        {
+            return CurrentModelLabel();
+        }
+
+        var def = CurrentModelLabel();
+        static string Id(string s) { var i = s.LastIndexOf('/'); return (i >= 0 ? s[(i + 1)..] : s).Trim(); }
+        string T(string? v) => Id(string.IsNullOrWhiteSpace(v) ? def : v!);
+        return $"L:{T(low)} M:{T(mid)} H:{T(high)}";
     }
 
     // act → auto-act → plan → act 순환.
