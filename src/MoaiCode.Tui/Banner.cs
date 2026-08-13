@@ -78,10 +78,28 @@ public static class Banner
         return v is null ? "?" : $"{v.Major}.{v.Minor}.{v.Build}";
     }
 
+    /// <summary>Git commit SHA embedded at build time (e.g. "a1b2c3d4" or "a1b2c3d4-dirty"),
+    /// or empty when the build was made without git. Read from AssemblyInformationalVersion.</summary>
+    public static string GitSha()
+    {
+        var info = Assembly.GetEntryAssembly()?
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (string.IsNullOrEmpty(info))
+        {
+            return string.Empty;
+        }
+
+        var plus = info.IndexOf('+');
+        return plus >= 0 && plus + 1 < info.Length ? info[(plus + 1)..] : string.Empty;
+    }
+
     public static string VersionString()
     {
         var v = Assembly.GetEntryAssembly()?.GetName().Version;
         var ver = v is null ? "?" : $"{v.Major}.{v.Minor}.{v.Build}";
+
+        var sha = GitSha();
+        var shaPart = sha.Length > 0 ? $" ({sha})" : string.Empty;
 
         var built = string.Empty;
         try
@@ -91,12 +109,18 @@ public static class Banner
             {
                 built = " · build " + File.GetLastWriteTime(path).ToString("yyyy-MM-dd HH:mm");
             }
+            else if (!string.IsNullOrEmpty(path))
+            {
+                // The on-disk binary is gone (replaced by a reinstall) — this process is
+                // running stale code. Surface it so the fix (relaunch) is obvious.
+                built = " · stale binary — restart moai";
+            }
         }
         catch
         {
             // 빌드시각 표기 실패는 무시 (버전만 표시).
         }
 
-        return $"v{ver}{built}";
+        return $"v{ver}{shaPart}{built}";
     }
 }

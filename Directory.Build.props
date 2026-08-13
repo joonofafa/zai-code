@@ -12,5 +12,34 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <!-- 단일 exe 배포 시 ICU 미동봉으로 크기↓ (필요 시 false) -->
     <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- SDK 가 InformationalVersion 뒤에 전체 40자 커밋 해시를 자동 append 하는 것을 끈다.
+         아래 EmbedGitRevision 타겟이 short SHA(+dirty) 형태로 직접 설정한다. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
+
+  <!-- Embed the git commit SHA (+ "-dirty" when tracked sources are modified) into
+       AssemblyInformationalVersion on every build. This makes each binary identify its
+       exact source revision even when <Version> was not bumped, so a stale running process
+       is unambiguous. git-less builds fall back to the plain <Version>. -->
+  <Target Name="EmbedGitRevision"
+          BeforeTargets="GetAssemblyVersion;CoreGenerateAssemblyInfo"
+          Condition="'$(DesignTimeBuild)' != 'true'">
+    <Exec Command="git rev-parse --short=8 HEAD"
+          ConsoleToMSBuild="true" ContinueOnError="true"
+          StandardOutputImportance="low"
+          WorkingDirectory="$(MSBuildThisFileDirectory)">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitSha" />
+      <Output TaskParameter="ExitCode" PropertyName="_GitExit" />
+    </Exec>
+    <Exec Command="git status --porcelain --untracked-files=no"
+          ConsoleToMSBuild="true" ContinueOnError="true"
+          StandardOutputImportance="low"
+          WorkingDirectory="$(MSBuildThisFileDirectory)">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitDirty" />
+    </Exec>
+    <PropertyGroup Condition="'$(_GitExit)' == '0' and '$(_GitSha)' != ''">
+      <InformationalVersion>$(Version)+$(_GitSha)</InformationalVersion>
+      <InformationalVersion Condition="'$(_GitDirty)' != ''">$(Version)+$(_GitSha)-dirty</InformationalVersion>
+    </PropertyGroup>
+  </Target>
 </Project>

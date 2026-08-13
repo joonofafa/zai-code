@@ -88,6 +88,8 @@ public sealed class ReplApp
         // 시그니처 배너: 그라데이션 ASCII (Banner.Render)
         Banner.Render();
         AnsiConsole.MarkupLine($"[yellow]MoAI Code — Enterprise Coding Agent (V {Banner.Version()})[/]");
+        // Build identity (git SHA + build time, or a "stale binary" flag when running a replaced binary).
+        AnsiConsole.MarkupLine($"[grey50]{Markup.Escape(Banner.VersionString())}[/]");
         AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(L10n.Get("repl.help"))}[/]");
         // 배너~프롬프트 사이 공백 2줄.
         AnsiConsole.WriteLine();
