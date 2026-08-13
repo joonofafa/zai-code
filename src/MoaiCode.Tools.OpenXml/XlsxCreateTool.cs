@@ -456,7 +456,9 @@ public sealed class XlsxCreateTool : ITool
         {
             if (v.Length > 1 && v[0] == '=')
             {
-                return Formula(reference, v[1..], cs);
+                var expr = v[1..];
+                // 수식 인젝션(DDE/명령) 방어: 위험 패턴이면 라이브 수식이 아니라 텍스트로 기록.
+                return IsDangerousFormula(expr) ? Str(reference, v, 0u) : Formula(reference, expr, cs);
             }
 
             var isPct = v.EndsWith('%');
@@ -472,7 +474,9 @@ public sealed class XlsxCreateTool : ITool
         // 수식: "=..." → 라이브 수식(값은 Excel/LibreOffice 가 열 때 계산).
         if (v.Length > 1 && v[0] == '=')
         {
-            return Formula(reference, v[1..], 0u);
+            var expr = v[1..];
+            // 수식 인젝션(DDE/명령) 방어: 위험 패턴이면 라이브 수식이 아니라 텍스트로 기록.
+            return IsDangerousFormula(expr) ? Str(reference, v, 0u) : Formula(reference, expr, 0u);
         }
 
         // 퍼센트: "12.5%" → 0.125 + 퍼센트 서식.
@@ -539,6 +543,37 @@ public sealed class XlsxCreateTool : ITool
         }
 
         return code.Contains("yyyy") ? 12 : 0;
+    }
+
+    // 수식 인젝션(CSV/DDE) 방어: 정상 수식(=SUM, =A1+B1, =IF(...))은 글자·괄호·숫자·셀참조로 시작한다.
+    // 신뢰할 수 없는 데이터가 라이브 수식이 되는 대표 벡터만 차단한다(오탐 최소화):
+    //  (1) '='다음 첫 글자가 + - @  (OWASP CSV 인젝션 lead-in)
+    //  (2) DDE 파이프 '|' 포함        (예: cmd|'/c calc'!A0)
+    //  (3) 알려진 명령 토큰으로 시작   (cmd/dde/msexcel/msquery/rundll/powershell/system)
+    // 위험하면 라이브 수식 대신 텍스트로 기록해 실행을 막는다(InlineString 은 평가되지 않음).
+    private static readonly string[] DangerCommands =
+        { "cmd", "dde", "msexcel", "msquery", "rundll", "powershell", "system" };
+
+    private static bool IsDangerousFormula(string expr)
+    {
+        if (string.IsNullOrEmpty(expr))
+        {
+            return false;
+        }
+
+        var c0 = expr[0];
+        if (c0 is '+' or '-' or '@')
+        {
+            return true;
+        }
+
+        if (expr.Contains('|'))
+        {
+            return true;
+        }
+
+        var low = expr.TrimStart().ToLowerInvariant();
+        return DangerCommands.Any(k => low.StartsWith(k, StringComparison.Ordinal));
     }
 
     private static Cell Formula(string reference, string expr, uint styleIndex)
