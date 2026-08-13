@@ -54,7 +54,9 @@ public static class AppBootstrap
 
         // 닫힌 Office 문서 생성/검증(Open XML) — 전 플랫폼.
         toolList.Add(new MoaiCode.Tools.OpenXml.DocxCreateTool());
+        toolList.Add(new MoaiCode.Tools.OpenXml.DocxEditTool());   // 기존 docx 템플릿 채우기(텍스트 치환).
         toolList.Add(new MoaiCode.Tools.OpenXml.XlsxCreateTool());
+        toolList.Add(new MoaiCode.Tools.OpenXml.XlsxEditTool());   // 기존 xlsx 템플릿 채우기(셀 값 설정).
         toolList.Add(new MoaiCode.Tools.OpenXml.PptxCreateTool());
         toolList.Add(new MoaiCode.Tools.OpenXml.OfficeDocInspectTool());
 
