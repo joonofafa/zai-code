@@ -6,6 +6,7 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.OpenXml;
 
@@ -22,9 +23,10 @@ public sealed class DocxCreateTool : ITool
         bullet/numbered lists, and tables) over a flat 'paragraphs' array. Text in any block may use
         markdown-style **bold** and *italic*.
         DOCUMENT FORMS: set "template" to a Korean business doc type and produce the standard sections
-        as heading blocks, filling each — report(보고서): 개요·배경·현황·분석·결론 및 제언;
-        incident(경위서): 발생 개요·경위·원인·조치 사항·재발 방지 대책;
-        proposal(제안서): 배경 및 목적·제안 내용·기대 효과·추진 일정·소요 예산.
+        as heading blocks, filling each — report: overview, background, current status, analysis,
+        conclusions and recommendations; incident: incident summary, sequence of events, cause,
+        actions taken, recurrence-prevention measures; proposal: background and objectives, proposal
+        details, expected effects, schedule, required budget.
         If you provide no blocks, the standard section skeleton is scaffolded for the user to fill.
         For editing an OPEN document on Windows, use the COM tools.
         """;
@@ -38,7 +40,7 @@ public sealed class DocxCreateTool : ITool
           "type": "object",
           "properties": {
             "path": { "type": "string", "description": "Output .docx path (relative to workspace)" },
-            "template": { "type": "string", "enum": ["report", "incident", "proposal"], "description": "Korean business document form. report=보고서, incident=경위서, proposal=제안서. Produce the standard sections as heading blocks (see tool description). If no blocks are given, the section skeleton is scaffolded." },
+            "template": { "type": "string", "enum": ["report", "incident", "proposal"], "description": "Korean business document form: report, incident, or proposal. Produce the standard sections as heading blocks (see tool description). If no blocks are given, the section skeleton is scaffolded." },
             "title": { "type": "string", "description": "Document title (large bold heading, first line)" },
             "blocks": {
               "type": "array",
@@ -131,8 +133,8 @@ public sealed class DocxCreateTool : ITool
 
         var bodyCount = inp.Blocks?.Count ?? inp.Paragraphs?.Count ?? 0;
         yield return error is not null
-            ? new ToolOutput($"DocxCreate: 실패 — {error}", IsError: true)
-            : new ToolOutput($"OK: {full} 생성 ({bodyCount} 블록, {(inp.Images?.Count ?? 0)} 이미지).");
+            ? new ToolOutput(L10n.Get("tools.docxCreate.failed", error), IsError: true)
+            : new ToolOutput(L10n.Get("tools.docxCreate.ok", full, bodyCount, inp.Images?.Count ?? 0));
     }
 
     private static void Write(string path, Input inp, string workingDir)
@@ -186,7 +188,7 @@ public sealed class DocxCreateTool : ITool
             var imgFull = OpenXmlPaths.ResolveForRead(workingDir, img.Path!);
             if (!File.Exists(imgFull))
             {
-                throw new FileNotFoundException($"이미지 없음: {img.Path}");
+                throw new FileNotFoundException(L10n.Get("tools.docxCreate.imageNotFound", img.Path));
             }
 
             var width = img.WidthInches is > 0 ? img.WidthInches!.Value : 5.0;

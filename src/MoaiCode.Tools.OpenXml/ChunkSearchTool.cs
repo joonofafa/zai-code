@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.OpenXml;
 
@@ -61,7 +62,7 @@ public sealed class ChunkSearchTool : ITool
         var inp = input.Deserialize<Input>();
         if (inp is null || string.IsNullOrWhiteSpace(inp.Path))
         {
-            yield return new ToolOutput("ChunkSearch: 'path'(디렉토리)가 필요합니다.", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.chunkSearch.pathRequired"), IsError: true);
             yield break;
         }
 
@@ -75,12 +76,12 @@ public sealed class ChunkSearchTool : ITool
         }
         catch (Exception ex)
         {
-            setupError = $"ChunkSearch: 잘못된 경로 — {ex.Message}";
+            setupError = L10n.Get("tools.chunkSearch.badPath", ex.Message);
         }
 
         if (setupError is null && !Directory.Exists(anchor))
         {
-            setupError = $"ChunkSearch: 디렉토리가 없습니다: {inp.Path}";
+            setupError = L10n.Get("tools.chunkSearch.dirNotFound", inp.Path);
         }
 
         if (setupError is not null)
@@ -93,9 +94,7 @@ public sealed class ChunkSearchTool : ITool
         var vm = store.Exists ? store.LoadVectorManifest() : null;
         if (vm is null || vm.Documents.Count == 0)
         {
-            yield return new ToolOutput(
-                "ChunkSearch: 벡터(.moai-chunks/vectors.json)가 없습니다. 외부 임베딩 파이프라인이 " +
-                "먼저 벡터를 생성해야 합니다 (docs/CHUNK_VEC_FORMAT.md).", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.chunkSearch.noVectors"), IsError: true);
             yield break;
         }
 
@@ -183,12 +182,12 @@ public sealed class ChunkSearchTool : ITool
             }
             catch (Exception ex)
             {
-                return $"ChunkSearch: 잘못된 queryVectorFile — {ex.Message}";
+                return L10n.Get("tools.chunkSearch.badQueryVectorFile", ex.Message);
             }
 
             if (!File.Exists(full))
             {
-                return $"ChunkSearch: queryVectorFile 이 없습니다: {inp.QueryVectorFile}";
+                return L10n.Get("tools.chunkSearch.queryVectorFileNotFound", inp.QueryVectorFile);
             }
 
             try
@@ -200,18 +199,17 @@ public sealed class ChunkSearchTool : ITool
             }
             catch (Exception ex)
             {
-                return $"ChunkSearch: queryVectorFile 파싱 실패 — {ex.Message}";
+                return L10n.Get("tools.chunkSearch.queryVectorFileParseFailed", ex.Message);
             }
         }
         else
         {
-            return "ChunkSearch: 'queryVector' 또는 'queryVectorFile' 이 필요합니다 " +
-                   "(외부에서 같은 임베딩 모델로 미리 계산한 질의 벡터).";
+            return L10n.Get("tools.chunkSearch.queryRequired");
         }
 
         if (query.Length != dim)
         {
-            return $"ChunkSearch: 질의 벡터 차원({query.Length})이 저장 벡터 dim({dim})과 다릅니다.";
+            return L10n.Get("tools.chunkSearch.dimMismatch", query.Length, dim);
         }
 
         return null;
@@ -248,11 +246,10 @@ public sealed class ChunkSearchTool : ITool
         int scanned, int stale, List<string> failed)
     {
         var sb = new StringBuilder();
-        sb.Append("ChunkSearch — ").Append(top.Count).Append("건 (스캔 ").Append(scanned)
-          .Append("청크, 모델 ").Append(vm.EmbModel ?? "?").Append(", dim ").Append(vm.Dim).Append(')');
+        sb.Append(L10n.Get("tools.chunkSearch.resultHeader", top.Count, scanned, vm.EmbModel ?? "?", vm.Dim));
         if (stale > 0)
         {
-            sb.Append(" · stale 문서 ").Append(stale).Append("개 건너뜀");
+            sb.Append(L10n.Get("tools.chunkSearch.resultStale", stale));
         }
 
         sb.AppendLine();
@@ -266,7 +263,7 @@ public sealed class ChunkSearchTool : ITool
 
         if (failed.Count > 0)
         {
-            sb.Append("실패: ").Append(string.Join(", ", failed));
+            sb.Append(L10n.Get("tools.chunkSearch.resultFailed", string.Join(", ", failed)));
         }
 
         return sb.ToString().TrimEnd();

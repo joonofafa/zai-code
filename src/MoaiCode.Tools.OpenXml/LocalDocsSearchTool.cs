@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.OpenXml;
 
@@ -55,7 +56,7 @@ public sealed class LocalDocsSearchTool : ITool
         var inp = input.Deserialize<Input>();
         if (inp is null || string.IsNullOrWhiteSpace(inp.Query) || string.IsNullOrWhiteSpace(inp.Path))
         {
-            yield return new ToolOutput("LocalDocsSearch: 'query' 와 'path' 가 필요합니다.", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.localDocsSearch.inputRequired"), IsError: true);
             yield break;
         }
 
@@ -72,7 +73,7 @@ public sealed class LocalDocsSearchTool : ITool
 
         if (pathError is not null)
         {
-            yield return new ToolOutput($"LocalDocsSearch: 잘못된 경로 — {pathError}", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.localDocsSearch.badPath", pathError), IsError: true);
             yield break;
         }
 
@@ -80,7 +81,7 @@ public sealed class LocalDocsSearchTool : ITool
         var vm = store.Exists ? store.LoadVectorManifest() : null;
         if (vm is null || vm.Documents.Count == 0)
         {
-            yield return new ToolOutput("LocalDocsSearch: 이 폴더에 로컬 인덱스가 없습니다. 먼저 LocalIndexBuild 로 인덱싱하세요.", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.localDocsSearch.noIndex"), IsError: true);
             yield break;
         }
 
@@ -99,7 +100,7 @@ public sealed class LocalDocsSearchTool : ITool
 
         if (error is not null)
         {
-            yield return new ToolOutput($"LocalDocsSearch: 실패 — {error}", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.localDocsSearch.failed", error), IsError: true);
             yield break;
         }
 
@@ -112,11 +113,11 @@ public sealed class LocalDocsSearchTool : ITool
         var top = await LocalSearch.SearchAsync(store, vm, query, topK, ct).ConfigureAwait(false);
         if (top.Count == 0)
         {
-            return "LocalDocsSearch: 일치하는 청크가 없습니다.";
+            return L10n.Get("tools.localDocsSearch.noMatches");
         }
 
         var sb = new StringBuilder();
-        sb.Append("로컬 검색 결과 top-").Append(top.Count).Append(" (model=").Append(vm.EmbModel).Append("):\n");
+        sb.Append(L10n.Get("tools.localDocsSearch.resultHeader", top.Count, vm.EmbModel));
         foreach (var h in top)
         {
             var snippet = h.Text.Length > 400 ? h.Text[..400] + "…" : h.Text;
@@ -155,7 +156,7 @@ public static class LocalSearch
         var q = emb.Vectors[0];
         if (q.Length != vm.Dim)
         {
-            throw new InvalidDataException($"질의 차원({q.Length})이 인덱스 dim({vm.Dim})과 다릅니다. 재인덱싱이 필요합니다.");
+            throw new InvalidDataException(L10n.Get("tools.localDocsSearch.dimMismatch", q.Length, vm.Dim));
         }
 
         var hits = new List<LocalHit>();

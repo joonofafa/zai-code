@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Validation;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 using DW = DocumentFormat.OpenXml.Wordprocessing;
 using XL = DocumentFormat.OpenXml.Spreadsheet;
 using PP = DocumentFormat.OpenXml.Presentation;
@@ -71,7 +72,7 @@ public sealed class OfficeDocInspectTool : ITool
         }
 
         yield return error is not null
-            ? new ToolOutput($"OfficeDocInspect: 실패 — {error}", IsError: true)
+            ? new ToolOutput(L10n.Get("tools.officeDocInspect.failed", error), IsError: true)
             : new ToolOutput(JsonSerializer.Serialize(summary, JsonOpts));
     }
 
@@ -83,7 +84,7 @@ public sealed class OfficeDocInspectTool : ITool
             ".docx" => InspectDocx(path),
             ".xlsx" => InspectXlsx(path),
             ".pptx" => InspectPptx(path),
-            _ => throw new ArgumentException($"지원하지 않는 형식: {ext} (.docx/.xlsx/.pptx)"),
+            _ => throw new ArgumentException(L10n.Get("tools.officeDocInspect.unsupportedFormat", ext)),
         };
     }
 

@@ -5,6 +5,7 @@ using DW = DocumentFormat.OpenXml.Wordprocessing;
 using DA = DocumentFormat.OpenXml.Drawing;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.OpenXml;
 
@@ -35,7 +36,7 @@ public static class DocumentTextExtractor
             ".xlsx" => ExtractXlsx(path),
             ".pptx" => ExtractPptx(path),
             ".pdf" => ExtractPdf(path),
-            var ext => throw new NotSupportedException($"지원하지 않는 형식: {ext}"),
+            var ext => throw new NotSupportedException(L10n.Get("tools.documentTextExtractor.unsupportedFormat", ext)),
         };
     }
 

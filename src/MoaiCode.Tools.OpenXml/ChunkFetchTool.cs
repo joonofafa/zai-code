@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.OpenXml;
 
@@ -57,7 +58,7 @@ public sealed class ChunkFetchTool : ITool
         var inp = input.Deserialize<Input>();
         if (inp is null || string.IsNullOrWhiteSpace(inp.Path))
         {
-            yield return new ToolOutput("ChunkFetch: 'path'(디렉토리 또는 파일)가 필요합니다.", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.chunkFetch.pathRequired"), IsError: true);
             yield break;
         }
 
@@ -76,7 +77,7 @@ public sealed class ChunkFetchTool : ITool
 
         if (pathError is not null)
         {
-            yield return new ToolOutput($"ChunkFetch: 잘못된 경로 — {pathError}", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.chunkFetch.badPath", pathError), IsError: true);
             yield break;
         }
 
@@ -94,7 +95,7 @@ public sealed class ChunkFetchTool : ITool
         }
         else
         {
-            yield return new ToolOutput($"ChunkFetch: 경로가 없습니다: {inp.Path}", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.chunkFetch.pathNotFound", inp.Path), IsError: true);
             yield break;
         }
 
@@ -102,14 +103,14 @@ public sealed class ChunkFetchTool : ITool
         if (!store.Exists)
         {
             yield return new ToolOutput(
-                $"ChunkFetch: '{anchor}' 에 청크가 없습니다. 먼저 ChunkBuild 로 청킹하세요.", IsError: true);
+                L10n.Get("tools.chunkFetch.noChunks", anchor), IsError: true);
             yield break;
         }
 
         var manifest = store.LoadManifest();
         if (manifest.Documents.Count == 0)
         {
-            yield return new ToolOutput("ChunkFetch: 청킹된 문서가 없습니다. ChunkBuild 를 먼저 실행하세요.", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.chunkFetch.noDocs"), IsError: true);
             yield break;
         }
 
@@ -125,7 +126,7 @@ public sealed class ChunkFetchTool : ITool
         if (entry is null)
         {
             yield return new ToolOutput(
-                $"ChunkFetch: '{source}' 문서를 찾을 수 없습니다. 개요를 보려면 path 를 디렉토리로 주세요.", IsError: true);
+                L10n.Get("tools.chunkFetch.docNotFound", source), IsError: true);
             yield break;
         }
 
@@ -141,15 +142,14 @@ public sealed class ChunkFetchTool : ITool
     {
         var total = manifest.Documents.Sum(d => d.Chunks);
         var sb = new StringBuilder();
-        sb.Append(".moai-chunks 개요 — 문서 ").Append(manifest.Documents.Count).Append("개, 총 청크 ")
-          .Append(total).Append("개 (청크 ").Append(manifest.ChunkSize).Append("자·오버랩 ")
-          .Append(manifest.Overlap).AppendLine("자)");
+        sb.AppendLine(L10n.Get("tools.chunkFetch.overviewHeader",
+            manifest.Documents.Count, total, manifest.ChunkSize, manifest.Overlap));
         foreach (var d in manifest.Documents)
         {
-            sb.Append("  • ").Append(d.Source).Append(" — ").Append(d.Chunks).Append("청크").AppendLine();
+            sb.AppendLine(L10n.Get("tools.chunkFetch.overviewDocLine", d.Source, d.Chunks));
         }
 
-        sb.Append("→ 특정 문서 청크: source 를 위 이름으로 지정(또는 path 를 그 파일로) + offset/limit.");
+        sb.Append(L10n.Get("tools.chunkFetch.overviewFooter"));
         return sb.ToString();
     }
 
@@ -157,8 +157,8 @@ public sealed class ChunkFetchTool : ITool
     {
         var sb = new StringBuilder();
         var end = offset + page.Count;
-        sb.Append("문서: ").Append(entry.Source).Append(" — 총 ").Append(total).Append("청크 중 ")
-          .Append(offset).Append('–').Append(end == 0 ? 0 : end - 1).AppendLine(" 표시");
+        sb.AppendLine(L10n.Get("tools.chunkFetch.chunksHeader",
+            entry.Source, total, offset, end == 0 ? 0 : end - 1));
         foreach (var c in page)
         {
             sb.Append('[').Append(c.Index).Append("] ").AppendLine(c.Text);
@@ -166,15 +166,15 @@ public sealed class ChunkFetchTool : ITool
 
         if (end < total)
         {
-            sb.Append("(더 있음: offset=").Append(end).Append(" 으로 이어서 조회)");
+            sb.Append(L10n.Get("tools.chunkFetch.chunksMore", end));
         }
         else if (page.Count == 0)
         {
-            sb.Append("(해당 범위에 청크 없음 — offset 확인)");
+            sb.Append(L10n.Get("tools.chunkFetch.chunksEmpty"));
         }
         else
         {
-            sb.Append("(끝)");
+            sb.Append(L10n.Get("tools.chunkFetch.chunksEnd"));
         }
 
         return sb.ToString();

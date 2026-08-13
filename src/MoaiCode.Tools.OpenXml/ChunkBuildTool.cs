@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.OpenXml;
 
@@ -56,7 +57,7 @@ public sealed class ChunkBuildTool : ITool
         var inp = input.Deserialize<Input>();
         if (inp is null || string.IsNullOrWhiteSpace(inp.Path))
         {
-            yield return new ToolOutput("ChunkBuild: 'path'(파일 또는 디렉토리)가 필요합니다.", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.chunkBuild.pathRequired"), IsError: true);
             yield break;
         }
 
@@ -75,7 +76,7 @@ public sealed class ChunkBuildTool : ITool
 
         if (pathError is not null)
         {
-            yield return new ToolOutput($"ChunkBuild: 잘못된 경로 — {pathError}", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.chunkBuild.badPath", pathError), IsError: true);
             yield break;
         }
 
@@ -100,14 +101,13 @@ public sealed class ChunkBuildTool : ITool
         }
         else
         {
-            yield return new ToolOutput($"ChunkBuild: 경로가 없습니다: {inp.Path}", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.chunkBuild.pathNotFound", inp.Path), IsError: true);
             yield break;
         }
 
         if (files.Count == 0)
         {
-            yield return new ToolOutput(
-                "ChunkBuild: 청킹할 지원 문서가 없습니다 (.txt/.md/.csv/.docx/.xlsx/.pptx/.pdf).", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.chunkBuild.noDocs"), IsError: true);
             yield break;
         }
 
@@ -167,16 +167,14 @@ public sealed class ChunkBuildTool : ITool
         string chunksDir, int built, int skipped, int totalChunks, int size, int overlap, List<string> failures)
     {
         var sb = new StringBuilder();
-        sb.Append("ChunkBuild 완료 — 새로 청킹 ").Append(built).Append("개, 변경없음 ").Append(skipped)
-          .Append("개 · 총 청크 ").Append(totalChunks).AppendLine("개");
-        sb.Append("청크 크기 ").Append(size).Append("자 · 오버랩 ").Append(overlap).Append("자 → ")
-          .Append(chunksDir).AppendLine();
+        sb.AppendLine(L10n.Get("tools.chunkBuild.resultSummary", built, skipped, totalChunks));
+        sb.AppendLine(L10n.Get("tools.chunkBuild.resultParams", size, overlap, chunksDir));
         if (failures.Count > 0)
         {
-            sb.Append("실패 ").Append(failures.Count).Append("개: ").Append(string.Join(", ", failures)).AppendLine();
+            sb.AppendLine(L10n.Get("tools.chunkBuild.resultFailures", failures.Count, string.Join(", ", failures)));
         }
 
-        sb.Append("→ ChunkFetch 로 청크를 가져올 수 있습니다.");
+        sb.Append(L10n.Get("tools.chunkBuild.resultFooter"));
         return sb.ToString();
     }
 }

@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.OpenXml;
 
@@ -60,7 +61,7 @@ public sealed class LocalIndexBuildTool : ITool
         var inp = input.Deserialize<Input>();
         if (inp is null || string.IsNullOrWhiteSpace(inp.Path))
         {
-            yield return new ToolOutput("LocalIndexBuild: 'path'(파일 또는 디렉토리)가 필요합니다.", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.localIndexBuild.pathRequired"), IsError: true);
             yield break;
         }
 
@@ -77,7 +78,7 @@ public sealed class LocalIndexBuildTool : ITool
 
         if (pathError is not null)
         {
-            yield return new ToolOutput($"LocalIndexBuild: 잘못된 경로 — {pathError}", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.localIndexBuild.badPath", pathError), IsError: true);
             yield break;
         }
 
@@ -101,13 +102,13 @@ public sealed class LocalIndexBuildTool : ITool
         }
         else
         {
-            yield return new ToolOutput($"LocalIndexBuild: 경로가 없습니다: {inp.Path}", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.localIndexBuild.pathNotFound", inp.Path), IsError: true);
             yield break;
         }
 
         if (files.Count == 0)
         {
-            yield return new ToolOutput("LocalIndexBuild: 인덱싱할 지원 문서가 없습니다.", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.localIndexBuild.noDocs"), IsError: true);
             yield break;
         }
 
@@ -137,7 +138,7 @@ public sealed class LocalIndexBuildTool : ITool
 
         if (error is not null)
         {
-            yield return new ToolOutput($"LocalIndexBuild: 실패 — {error}", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.localIndexBuild.failed", error), IsError: true);
             yield break;
         }
 
@@ -214,17 +215,16 @@ public sealed class LocalIndexBuildTool : ITool
             bySource.Values.OrderBy(d => d.Source, StringComparer.Ordinal).ToList()));
 
         var sb = new StringBuilder();
-        sb.Append("LocalIndexBuild 완료 — 인덱싱 ").Append(indexed).Append("개, 변경없음 ").Append(skipped)
-          .Append("개, 총 청크 ").Append(totalChunks);
+        sb.Append(L10n.Get("tools.localIndexBuild.resultSummary", indexed, skipped, totalChunks));
         if (model is not null)
         {
-            sb.Append(" (model=").Append(model).Append(')');
+            sb.Append(L10n.Get("tools.localIndexBuild.resultModel", model));
         }
 
-        sb.Append(". 로컬 저장: ").Append(store.ChunksDir);
+        sb.Append(L10n.Get("tools.localIndexBuild.resultStore", store.ChunksDir));
         if (failures.Count > 0)
         {
-            sb.Append(" | 실패 ").Append(failures.Count).Append(": ").Append(string.Join(", ", failures));
+            sb.Append(L10n.Get("tools.localIndexBuild.resultFailures", failures.Count, string.Join(", ", failures)));
         }
 
         return sb.ToString();

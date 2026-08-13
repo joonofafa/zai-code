@@ -7,6 +7,7 @@ using DocumentFormat.OpenXml.Presentation;
 using D = DocumentFormat.OpenXml.Drawing;
 using P = DocumentFormat.OpenXml.Presentation;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.OpenXml;
 
@@ -216,7 +217,7 @@ public sealed class PptxCreateTool : ITool
         var inp = input.Deserialize<Input>();
         if (inp is null || string.IsNullOrWhiteSpace(inp.Path) || inp.Slides is null || inp.Slides.Count == 0)
         {
-            yield return new ToolOutput("PptxCreate: 'path' 와 최소 1개 'slides' 가 필요합니다.", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.pptxCreate.inputRequired"), IsError: true);
             yield break;
         }
 
@@ -234,8 +235,8 @@ public sealed class PptxCreateTool : ITool
         }
 
         yield return error is not null
-            ? new ToolOutput($"PptxCreate: 실패 — {error}", IsError: true)
-            : new ToolOutput($"OK: {full} 생성 ({inp.Slides.Count} 슬라이드).");
+            ? new ToolOutput(L10n.Get("tools.pptxCreate.failed", error), IsError: true)
+            : new ToolOutput(L10n.Get("tools.pptxCreate.ok", full, inp.Slides.Count));
     }
 
     private static void Write(string path, string? template, List<SlideIn> slides, string workingDir)
@@ -302,7 +303,7 @@ public sealed class PptxCreateTool : ITool
                 var imgFull = OpenXmlPaths.ResolveForRead(workingDir, imgPath);
                 if (!File.Exists(imgFull))
                 {
-                    throw new FileNotFoundException($"이미지 없음: {imgPath}");
+                    throw new FileNotFoundException(L10n.Get("tools.pptxCreate.imageNotFound", imgPath));
                 }
 
                 var isTextImage = string.Equals(s.Layout?.Trim(), "text_image", StringComparison.OrdinalIgnoreCase);

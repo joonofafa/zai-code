@@ -7,6 +7,7 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.OpenXml;
 
@@ -27,9 +28,9 @@ public sealed class XlsxCreateTool : ITool
         install packages (openpyxl, exceljs, etc.) or write scripts to build spreadsheets.
         Charts reference vertical single-column ranges of the same sheet (e.g. categories "A2:A11",
         series values "B2:B11").
-        BUSINESS FORMS: set "template" to scaffold a standard Korean form (expense/지출결의서,
-        invoice/거래명세서, inventory/재고관리표) — you get the title, header row, table columns
-        (with 금액 currency / 수량 int formats) and a 합계 SUM formula. Then either omit "sheets"
+        BUSINESS FORMS: set "template" to scaffold a standard Korean form (expense, invoice,
+        inventory) — you get the title, header row, table columns (with currency/amount and
+        integer/quantity formats) and a total SUM formula. Then either omit "sheets"
         to emit the blank form, or provide "sheets" yourself to fill the same layout with real rows.
         """;
 
@@ -42,7 +43,7 @@ public sealed class XlsxCreateTool : ITool
           "type": "object",
           "properties": {
             "path": { "type": "string", "description": "Output .xlsx path (relative to workspace)" },
-            "template": { "type": "string", "enum": ["expense", "invoice", "inventory"], "description": "Optional business form to scaffold: expense(지출결의서), invoice(거래명세서), inventory(재고관리표). If set and 'sheets' is omitted, emits the standard blank form." },
+            "template": { "type": "string", "enum": ["expense", "invoice", "inventory"], "description": "Optional business form to scaffold: expense, invoice, inventory. If set and 'sheets' is omitted, emits the standard blank form." },
             "sheets": {
               "type": "array",
               "description": "Sheets; each a name + rows (array of string cells)",
@@ -176,7 +177,7 @@ public sealed class XlsxCreateTool : ITool
         var sheets = (inp?.Sheets is { Count: > 0 }) ? inp!.Sheets : FormSheets(inp?.Template);
         if (inp is null || string.IsNullOrWhiteSpace(inp.Path) || sheets is null || sheets.Count == 0)
         {
-            yield return new ToolOutput("XlsxCreate: 'path' 와 최소 1개 'sheets'(또는 'template') 가 필요합니다.", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.xlsxCreate.inputRequired"), IsError: true);
             yield break;
         }
 
@@ -194,8 +195,8 @@ public sealed class XlsxCreateTool : ITool
         }
 
         yield return error is not null
-            ? new ToolOutput($"XlsxCreate: 실패 — {error}", IsError: true)
-            : new ToolOutput($"OK: {full} 생성 ({sheets.Count} 시트).");
+            ? new ToolOutput(L10n.Get("tools.xlsxCreate.failed", error), IsError: true)
+            : new ToolOutput(L10n.Get("tools.xlsxCreate.ok", full, sheets.Count));
     }
 
     private static void Write(string path, List<SheetIn> sheets)

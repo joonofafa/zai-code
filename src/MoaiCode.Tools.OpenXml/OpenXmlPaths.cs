@@ -1,3 +1,5 @@
+using MoaiCode.Localization;
+
 namespace MoaiCode.Tools.OpenXml;
 
 /// <summary>출력 경로를 워크스페이스 기준으로 해석하고 확장자를 검증한다.</summary>
@@ -8,13 +10,13 @@ internal static class OpenXmlPaths
     {
         if (string.IsNullOrWhiteSpace(path))
         {
-            throw new ArgumentException("path 가 필요합니다.");
+            throw new ArgumentException(L10n.Get("tools.openXmlPaths.pathRequired"));
         }
 
         var full = Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(workingDirectory, path));
         if (!full.EndsWith(expectedExt, StringComparison.OrdinalIgnoreCase))
         {
-            throw new ArgumentException($"경로 확장자가 {expectedExt} 여야 합니다: {path}");
+            throw new ArgumentException(L10n.Get("tools.openXmlPaths.badExtension", expectedExt, path));
         }
 
         var dir = Path.GetDirectoryName(full);
@@ -31,13 +33,13 @@ internal static class OpenXmlPaths
     {
         if (string.IsNullOrWhiteSpace(path))
         {
-            throw new ArgumentException("path 가 필요합니다.");
+            throw new ArgumentException(L10n.Get("tools.openXmlPaths.pathRequired"));
         }
 
         var full = Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(workingDirectory, path));
         if (!File.Exists(full))
         {
-            throw new FileNotFoundException($"파일이 없습니다: {path}");
+            throw new FileNotFoundException(L10n.Get("tools.openXmlPaths.fileNotFound", path));
         }
 
         return full;

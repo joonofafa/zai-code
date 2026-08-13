@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.OpenXml;
 
@@ -104,7 +105,7 @@ public sealed class ChunkStore
         if (dim <= 0 || bytes.Length % (dim * 4) != 0)
         {
             throw new InvalidDataException(
-                $"'{vecRelFile}' 크기({bytes.Length}B)가 dim={dim} float32 행에 맞지 않습니다.");
+                L10n.Get("tools.chunkStore.vecSizeMismatch", vecRelFile, bytes.Length, dim));
         }
 
         var rows = bytes.Length / (dim * 4);
