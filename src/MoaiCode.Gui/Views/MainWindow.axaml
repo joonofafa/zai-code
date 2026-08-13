@@ -118,7 +118,7 @@
             </Grid>
           </Border>
 
-          <TextBlock Text="{l10n:Loc gui.folders.sectionTitle}" FontSize="12" FontWeight="SemiBold"
+          <TextBlock Text="{Binding FoldersSectionTitle}" FontSize="12" FontWeight="SemiBold"
                      Foreground="{DynamicResource TextSecondaryBrush}" />
 
           <ItemsControl ItemsSource="{Binding Folders}">

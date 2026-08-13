@@ -154,7 +154,9 @@ public sealed partial class MainViewModel
             ? t.Prompt!.Replace(sentinel, string.Empty).Trim()
             : t.Prompt!.Replace(sentinel, $"「{topic}」");
 
-        // 선택된 자료 출처를 프롬프트에 결정적으로 결합(모델이 반드시 해당 소스로 근거 수집).
+        // 자료 출처를 프롬프트에 결정적으로 결합. 선택=사용 지시, 미선택=명시적 금지.
+        // (미선택이 '암묵적 허용'이 되어 모델이 임의로 웹 검색하던 문제를 막는다 — 툴은 항상 가용하므로
+        //  프롬프트에서 스코프를 확정해야 한다.)
         var sources = new List<string>();
         if (SrcWeb)
         {
@@ -171,10 +173,31 @@ public sealed partial class MainViewModel
             sources.Add(L10n.Get("gui.prompt.srcLocalFmt", fc.Path));
         }
 
+        // 선택되지 않은 외부 소스는 명시적으로 금지.
+        var forbidden = new List<string>();
+        if (!SrcWeb)
+        {
+            forbidden.Add(L10n.Get("gui.prompt.noWeb"));
+        }
+
+        if (!SrcOrg)
+        {
+            forbidden.Add(L10n.Get("gui.prompt.noOrg"));
+        }
+
         if (sources.Count > 0)
         {
             prompt += "\n\n" + L10n.Get("gui.prompt.srcHeader") + "\n- "
                       + string.Join("\n- ", sources);
+            if (forbidden.Count > 0)
+            {
+                prompt += "\n" + string.Join("\n", forbidden);
+            }
+        }
+        else
+        {
+            // 아무 소스도 선택하지 않음 → 외부 검색 전면 금지(자체 지식으로만 작성).
+            prompt += "\n\n" + L10n.Get("gui.prompt.srcNone");
         }
 
         ShowTopicDialog = false;
@@ -203,6 +226,9 @@ public sealed partial class MainViewModel
     // ── 공유 폴더 대시보드 ──
     public ObservableCollection<FolderRow> Folders { get; } = new();
     public int WatchedFolderCount => Folders.Count;
+
+    // 섹션 제목 "연결된 폴더 (n/10)" — 현재 개수/상한 표시.
+    public string FoldersSectionTitle => L10n.Get("gui.folders.sectionTitleFmt", Folders.Count, MaxFolders);
 
     [ObservableProperty] private string _syncStatus = L10n.Get("gui.status.idle");
 
@@ -290,9 +316,13 @@ public sealed partial class MainViewModel
         }
 
         OnPropertyChanged(nameof(WatchedFolderCount));
+        OnPropertyChanged(nameof(FoldersSectionTitle));
     }
 
     /// <summary>로컬 폴더 연결(코드비하인드에서 폴더 선택 후 호출). 설정에 등록만 한다(자동 업로드 없음).</summary>
+    // 연결 가능한 로컬 폴더 상한. 인덱싱/워처/출처 토글이 과도해지지 않도록 제한한다.
+    private const int MaxFolders = 10;
+
     public void AddFolder(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -303,6 +333,12 @@ public sealed partial class MainViewModel
         var s = GuiSettings.Load();
         if (s.ConnectedFolders.Any(f => string.Equals(f.Path, path, StringComparison.OrdinalIgnoreCase)))
         {
+            return;
+        }
+
+        if (s.ConnectedFolders.Count >= MaxFolders)
+        {
+            SyncStatus = L10n.Get("gui.folders.limitFmt", MaxFolders);
             return;
         }
 
