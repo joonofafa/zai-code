@@ -84,18 +84,19 @@ public static class LoginFlow
         new FileCredentialStore().Set("OPENAI_API_KEY", r.ApiKey);
         var baseUrl = string.IsNullOrEmpty(r.BaseUrl) ? host + "/api/v1" : r.BaseUrl;
 
-        // 모델 선택.
+        // 모델 선택: /model 과 동일한 공용 ModelPicker(단일 또는 하/중/상 티어). 로그인은 settings 에 쓴다.
         var model = r.DefaultModel;
-        if (r.Models.Count > 0)
-        {
-            var defIdx = Math.Max(0, r.Models.ToList().FindIndex(m =>
-                string.Equals(m, r.DefaultModel, StringComparison.OrdinalIgnoreCase)));
-            var pick = SelectList.Prompt(L10n.Get("slash.model.pickTitle"), r.Models, defIdx);
-            if (pick >= 0)
+        string? modelLow = null, modelMid = null, modelHigh = null;
+        ModelPicker.Run(
+            r.Models,
+            r.DefaultModel,
+            m => model = m,
+            (tier, m) =>
             {
-                model = r.Models[pick];
-            }
-        }
+                if (tier == "low") modelLow = m;
+                else if (tier == "mid") modelMid = m;
+                else modelHigh = m;
+            });
 
         SettingsWriter.Set(new Dictionary<string, string?>
         {
@@ -103,6 +104,9 @@ public static class LoginFlow
             ["host"] = host,
             ["baseUrl"] = baseUrl,
             ["model"] = model,
+            ["modelLow"] = modelLow,     // null 이면 티어 클리어(단일 모드)
+            ["modelMid"] = modelMid,
+            ["modelHigh"] = modelHigh,
             ["account"] = email,
             ["loginAt"] = DateTimeOffset.Now.ToString("o"),
             ["orgName"] = r.OrgName,

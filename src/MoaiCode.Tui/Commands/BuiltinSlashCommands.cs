@@ -36,34 +36,14 @@ internal sealed class ModelCommand : ISlashCommand
     public string Name => "model";
     public string Description => L10n.Get("slash.model.description");
 
-    // 라이브 세션의 모델을 화살표 선택으로 교체한다. 대화형이면 먼저 "모델별 업무 분할
-    // (난이도별 다른 모델)" 여부를 묻고, 예 → 하급·중급·고급 순 선택, 아니오 → 단일 모델 선택.
+    // 라이브 세션의 모델을 선택한다. 공용 ModelPicker(로그인 화면과 공유): "모델별 업무 분할(Y/n)"
+    // → 예=하/중/상 티어, 아니오=단일 모델. 저장 방식만 콜백으로 주입한다.
     public async Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
         var mc = ctx.Models;
         if (mc is null)
         {
             return new SlashResult(L10n.Get("slash.model.unsupported", ctx.ProviderDesc));
-        }
-
-        // /model (대화형): 먼저 "모델별 업무 분할 여부"를 묻는다.
-        // 예 → 하급·중급·고급 순으로 각 티어 모델 선택(난이도 라우팅). 아니오 → 단일 모델 선택.
-        if (!Console.IsInputRedirected)
-        {
-            var split = SelectList.Prompt(
-                L10n.Get("slash.model.splitPrompt"),
-                new[] { L10n.Get("slash.model.splitYes"), L10n.Get("slash.model.splitNo") },
-                0);
-            if (split < 0)
-            {
-                return new SlashResult(L10n.Get("common.unchanged"));
-            }
-
-            if (split == 0)
-            {
-                return await ConfigureTiersAsync(mc, ctx, ct).ConfigureAwait(false);
-            }
-            // split == 1 → 아래 단일 모델 선택으로 진행.
         }
 
         Spectre.Console.AnsiConsole.MarkupLine($"[grey70]{Spectre.Console.Markup.Escape(L10n.Get("slash.model.fetching"))}[/]");
@@ -73,59 +53,13 @@ internal sealed class ModelCommand : ISlashCommand
             return new SlashResult(L10n.Get("slash.model.fetchFailed"));
         }
 
-        // 현재 모델을 기본 선택으로.
-        var list = models.ToList();
-        var defIdx = list.FindIndex(m => string.Equals(m, mc.CurrentModel, StringComparison.OrdinalIgnoreCase));
-        if (defIdx < 0)
-        {
-            defIdx = 0;
-        }
-
-        var pick = SelectList.Prompt(L10n.Get("slash.model.pickTitle"), models, defIdx);
-        if (pick < 0)
-        {
-            return new SlashResult(L10n.Get("common.unchanged"));
-        }
-
-        var chosen = models[pick];
-        mc.CurrentModel = chosen;          // 라이브 반영 (QueryEngine/서브에이전트/컴팩션 공유 인스턴스)
-        ctx.PersistModel?.Invoke(chosen);  // settings.json + env 저장 (다음 실행에도 유지)
-        return new SlashResult(L10n.Get("slash.model.changed", chosen));
-    }
-
-    // 난이도별(하급/중급/고급) 모델을 순차로 선택·저장한다. 각 티어에서 취소(Esc)하면 그 티어는 변경하지 않는다.
-    private static async Task<SlashResult> ConfigureTiersAsync(
-        MoaiCode.Core.Agent.IModelControl mc, SlashContext ctx, CancellationToken ct)
-    {
-        Spectre.Console.AnsiConsole.MarkupLine($"[grey70]{Spectre.Console.Markup.Escape(L10n.Get("slash.model.fetching"))}[/]");
-        var avail = await mc.ListModelsAsync(ct).ConfigureAwait(false);
-        if (avail.Count == 0)
-        {
-            return new SlashResult(L10n.Get("slash.model.fetchFailed"));
-        }
-
-        var summary = new System.Text.StringBuilder(L10n.Get("slash.model.tierSummary") + "\n");
-        foreach (var tier in new[] { "low", "mid", "high" })
-        {
-            var label = L10n.Get(tier switch { "low" => "slash.model.tierLow", "high" => "slash.model.tierHigh", _ => "slash.model.tierMid" });
-            var envKey = tier switch { "low" => "MOAI_MODEL_LOW", "high" => "MOAI_MODEL_HIGH", _ => "MOAI_MODEL_MID" };
-            var opts = new List<string> { L10n.Get("slash.model.tierClearOption") };
-            opts.AddRange(avail);
-            var cur = Environment.GetEnvironmentVariable(envKey);
-            var def = cur is null ? 0 : Math.Max(0, opts.FindIndex(o => string.Equals(o, cur, StringComparison.OrdinalIgnoreCase)));
-            var pick = SelectList.Prompt(L10n.Get("slash.model.tierPickTitle", label, tier), opts, def < 0 ? 0 : def);
-            if (pick < 0)
-            {
-                summary.AppendLine($"  {label}: {L10n.Get("slash.model.tierUnchanged")}");
-                continue;
-            }
-
-            var tierModel = pick == 0 ? null : opts[pick];
-            ctx.PersistTierModel?.Invoke(tier, tierModel);
-            summary.AppendLine($"  {label}: {tierModel ?? L10n.Get("slash.model.tierDefault")}");
-        }
-
-        return new SlashResult(summary.ToString().TrimEnd());
+        var summary = ModelPicker.Run(
+            models,
+            mc.CurrentModel,
+            chosen => { mc.CurrentModel = chosen; ctx.PersistModel?.Invoke(chosen); }, // 라이브 반영 + settings/env 영속
+            (tier, model) => ctx.PersistTierModel?.Invoke(tier, model),
+            tier => Environment.GetEnvironmentVariable(tier switch { "low" => "MOAI_MODEL_LOW", "high" => "MOAI_MODEL_HIGH", _ => "MOAI_MODEL_MID" }));
+        return new SlashResult(summary);
     }
 }
 
