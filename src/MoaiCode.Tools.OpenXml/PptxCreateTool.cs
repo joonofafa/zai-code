@@ -34,7 +34,7 @@ public sealed class PptxCreateTool : ITool
           - table: data — provide "table" (headers + rows)
           - quote: one strong statement — put it in "title"
         "shapes" places free-form boxes/arrows (rect/roundRect/ellipse/arrow/chevron/diamond) at inch
-        coordinates (slide is 10 x 7.5) for diagrams. ALWAYS use this to produce a .pptx file. Do NOT
+        coordinates (slide is 13.33 x 7.5 (16:9)) for diagrams. ALWAYS use this to produce a .pptx file. Do NOT
         install packages (pptxgenjs, python-pptx, etc.) or write scripts. For editing an OPEN presentation
         on Windows, use PowerPointEdit.
         """;
@@ -80,7 +80,7 @@ public sealed class PptxCreateTool : ITool
                   },
                   "shapes": {
                     "type": "array",
-                    "description": "Free-form positioned shapes for diagrams (e.g. process boxes + arrows). Coordinates in INCHES; the slide is 10 x 7.5. Drawn on top of the semantic layout.",
+                    "description": "Free-form positioned shapes for diagrams (e.g. process boxes + arrows). Coordinates in INCHES; the slide is 13.33 x 7.5 (16:9). Drawn on top of the semantic layout.",
                     "items": {
                       "type": "object",
                       "properties": {
@@ -100,7 +100,7 @@ public sealed class PptxCreateTool : ITool
                   },
                   "image": {
                     "type": "object",
-                    "description": "An image to place on the slide (e.g. a figure from ImageCreate). Coordinates in INCHES on the 10 x 7.5 slide; drawn on top.",
+                    "description": "An image to place on the slide (e.g. a figure from ImageCreate). Coordinates in INCHES on the 13.33 x 7.5 (16:9) slide; drawn on top.",
                     "properties": {
                       "path": { "type": "string", "description": "Image path (.png/.jpg, relative to workspace)" },
                       "x": { "type": "number", "description": "Left, inches (default centers horizontally)" },
@@ -172,35 +172,41 @@ public sealed class PptxCreateTool : ITool
         string BodyFont,     // 본문 글꼴
         int TitlePt,         // 제목 pt
         int SubtitlePt,      // 부제 pt
-        int BodyPt);         // 본문 pt
+        int BodyPt,          // 본문 pt
+        string PanelHex,     // 카드/패널 배경(배경보다 살짝 대비)
+        string FooterHex);   // 푸터(페이지번호·구분선) 무채색
 
     // A형: 연그레이 배경 + 좌측 accent 바 + 뚜렷한 타이포 계층(큰 제목/중간 부제/본문).
     private static readonly ThemePreset TemplateA = new(
         Name: "A", BgHex: "F7F8FA", AccentHex: "2F5496", TitleHex: "1F3864",
         SubtitleHex: "44546A", BodyHex: "333333",
         TitleFont: "Calibri Light", BodyFont: "Calibri",
-        TitlePt: 30, SubtitlePt: 17, BodyPt: 15);
+        TitlePt: 30, SubtitlePt: 17, BodyPt: 15,
+        PanelHex: "FFFFFF", FooterHex: "AAB0BC");
 
     // B형: 흰 배경 + 큰 강조 타이포(키노트풍).
     private static readonly ThemePreset TemplateB = new(
         Name: "B", BgHex: "FFFFFF", AccentHex: "C00000", TitleHex: "C00000",
         SubtitleHex: "595959", BodyHex: "262626",
         TitleFont: "Arial", BodyFont: "Arial",
-        TitlePt: 34, SubtitlePt: 18, BodyPt: 16);
+        TitlePt: 34, SubtitlePt: 18, BodyPt: 16,
+        PanelHex: "F5F5F5", FooterHex: "B3B3B3");
 
     // C형: 미니멀(흰 배경·검정 타이포·회색 부제·얇은 무채색 바, 여백 큰).
     private static readonly ThemePreset TemplateC = new(
         Name: "C", BgHex: "FFFFFF", AccentHex: "222222", TitleHex: "111111",
         SubtitleHex: "888888", BodyHex: "333333",
         TitleFont: "Calibri Light", BodyFont: "Calibri",
-        TitlePt: 30, SubtitlePt: 16, BodyPt: 15);
+        TitlePt: 30, SubtitlePt: 16, BodyPt: 15,
+        PanelHex: "F6F6F6", FooterHex: "BBBBBB");
 
     // D형: 다크(짙은 남색 배경·밝은 텍스트·시안 강조 포인트).
     private static readonly ThemePreset TemplateD = new(
         Name: "D", BgHex: "1F2430", AccentHex: "4FC3F7", TitleHex: "FFFFFF",
         SubtitleHex: "AEB6C7", BodyHex: "E3E8F0",
         TitleFont: "Calibri Light", BodyFont: "Calibri",
-        TitlePt: 32, SubtitlePt: 17, BodyPt: 15);
+        TitlePt: 32, SubtitlePt: 17, BodyPt: 15,
+        PanelHex: "2A3242", FooterHex: "5A6478");
 
     private static ThemePreset ResolveTemplate(string? t) => t?.Trim().ToUpperInvariant() switch
     {
@@ -292,10 +298,12 @@ public sealed class PptxCreateTool : ITool
         var preset = ResolveTemplate(template);
         var slideIdList = new SlideIdList();
         uint slideId = 256;
+        var slideNo = 0;
         foreach (var s in slides)
         {
+            slideNo++;
             var slidePart = presPart.AddNewPart<SlidePart>();
-            slidePart.Slide = BuildSlide(s, preset);
+            slidePart.Slide = BuildSlide(s, preset, slideNo, slides.Count);
             slidePart.AddPart(layoutPart);
 
             if (s.Image is { Path: { } imgPath } && !string.IsNullOrWhiteSpace(imgPath))
@@ -334,16 +342,17 @@ public sealed class PptxCreateTool : ITool
                 RelationshipId = presPart.GetIdOfPart(masterPart),
             }),
             slideIdList,
-            new SlideSize { Cx = 9144000, Cy = 6858000 },
+            new SlideSize { Cx = (int)SlideW, Cy = (int)SlideH },
             new NotesSize { Cx = 6858000, Cy = 9144000 });
     }
 
-    // 슬라이드 기하(EMU). 9144000×6858000 = 4:3 기본.
-    private const long SlideW = 9144000;      // 4:3 슬라이드 폭
-    private const long SlideH = 6858000;      // 4:3 슬라이드 높이
+    // 슬라이드 기하(EMU). 12192000×6858000 = 16:9(와이드). 세로(H)는 4:3과 동일하므로
+    // 세로 배치 상수는 그대로 두고 가로만 넓어진다 — 기존 레이아웃 수직 흐름 무영향.
+    private const long SlideW = 12192000;     // 16:9 슬라이드 폭
+    private const long SlideH = 6858000;      // 슬라이드 높이
     private const long LeftBarW = 110000;     // 좌측 accent 세로 바 폭
     private const long MarginX = 685800;      // 0.75"
-    private const long ContentW = 7772400;    // 슬라이드 폭 - 좌우 여백
+    private const long ContentW = 10820400;   // 슬라이드 폭 - 좌우 여백(16:9)
     private const long BodyTop = 1500000;
     private const long BodyBottom = 6500000;
     private const long RowHeight = 370840;    // 표 행 높이 ≈ 0.4"
@@ -362,7 +371,7 @@ public sealed class PptxCreateTool : ITool
 
     // 템플릿(디자인 프리셋) × 레이아웃(객체 배치)로 슬라이드를 만든다.
     // 디자인(색·타이포·정렬)은 프리셋이 규격으로 고정하고, 콘텐츠만 채운다.
-    private static Slide BuildSlide(SlideIn s, ThemePreset p)
+    private static Slide BuildSlide(SlideIn s, ThemePreset p, int index, int total)
     {
         var tree = new ShapeTree(NvGroupShapeProps(), new GroupShapeProperties());
         uint id = 2;
@@ -441,21 +450,29 @@ public sealed class PptxCreateTool : ITool
         if (hasCols)
         {
             var cols = s.Columns!.Take(2).ToList();
-            const long gap = 304800;
+            const long gap = 360000;
             var colW = (ContentW - gap) / 2;
+            const long pad = 260000;              // 카드 안쪽 여백 ≈ 0.28"
+            var cardH = BodyBottom - bodyTop;
             for (var i = 0; i < cols.Count; i++)
             {
                 var x = MarginX + i * (colW + gap);
+                // 배경 카드 + 상단 accent 칩 — '떠 있는 텍스트'가 아니라 구조를 가진 카드로 읽히게.
+                tree.AppendChild(Panel(id++, x, bodyTop, colW, cardH, p.PanelHex));
+                tree.AppendChild(AccentBar(id++, x + pad, bodyTop + pad, 300000, 46000, p.AccentHex));
+
+                var bullets = cols[i].Bullets ?? new List<string>();
+                var colSize = Math.Min(p.BodyPt * 100, BulletFontSize(bullets.Count));
+                var colGap = BulletSpaceBefore(bullets.Count);
                 var paras = new List<D.Paragraph>();
                 if (!string.IsNullOrWhiteSpace(cols[i].Heading))
                 {
                     paras.Add(TextParagraph(cols[i].Heading!, p.SubtitlePt * 100, bold: true, bullet: false, color: p.AccentHex, fontName: p.BodyFont));
                 }
 
-                var colSize = Math.Min(p.BodyPt * 100, BulletFontSize((cols[i].Bullets ?? new List<string>()).Count));
-                foreach (var b in cols[i].Bullets ?? new List<string>())
+                foreach (var b in bullets)
                 {
-                    paras.Add(TextParagraph(b, colSize, bold: false, bullet: true, color: p.BodyHex, fontName: p.BodyFont));
+                    paras.Add(TextParagraph(b, colSize, bold: false, bullet: true, color: p.BodyHex, fontName: p.BodyFont, spaceBeforePct: colGap));
                 }
 
                 if (paras.Count == 0)
@@ -463,14 +480,29 @@ public sealed class PptxCreateTool : ITool
                     paras.Add(TextParagraph(string.Empty, p.BodyPt * 100, false, false, null));
                 }
 
-                tree.AppendChild(MakeShape(id++, $"Col{i + 1}", x, bodyTop, colW, bodyH, paras));
+                // 텍스트는 칩 아래로 인셋 배치(카드 안쪽 패딩 반영).
+                tree.AppendChild(MakeShape(id++, $"Col{i + 1}", x + pad, bodyTop + pad + 120000, colW - 2 * pad, cardH - 2 * pad - 120000, paras));
             }
         }
         else if (hasBullets)
         {
             var size = Math.Min(p.BodyPt * 100, BulletFontSize(s.Bullets!.Count));
-            tree.AppendChild(MakeShape(id++, "Body", MarginX, bodyTop, bodyW, bodyH,
-                s.Bullets!.Select(b => TextParagraph(b, size, bold: false, bullet: true, color: p.BodyHex, fontName: p.BodyFont))));
+            var gap = BulletSpaceBefore(s.Bullets!.Count);
+            var paras = s.Bullets!.Select(b => TextParagraph(b, size, bold: false, bullet: true, color: p.BodyHex, fontName: p.BodyFont, spaceBeforePct: gap));
+
+            // text_image 는 우측 이미지와 균형을 위해 카드 없이. 그 외 단일 본문은 카드로 프레이밍
+            // (덱 전체를 카드 언어로 통일 — 빈 하단이 '카드 패딩'으로 읽혀 데드스페이스가 정돈된다).
+            if (layout == "text_image")
+            {
+                tree.AppendChild(MakeShape(id++, "Body", MarginX, bodyTop, bodyW, bodyH, paras));
+            }
+            else
+            {
+                const long pad = 320000;      // 카드 안쪽 여백 ≈ 0.35"
+                tree.AppendChild(Panel(id++, MarginX, bodyTop, ContentW, bodyH, p.PanelHex));
+                tree.AppendChild(AccentBar(id++, MarginX + pad, bodyTop + pad, 300000, 46000, p.AccentHex));
+                tree.AppendChild(MakeShape(id++, "Body", MarginX + pad, bodyTop + pad + 130000, ContentW - 2 * pad, bodyH - 2 * pad - 130000, paras));
+            }
         }
 
         if (hasTable)
@@ -486,6 +518,8 @@ public sealed class PptxCreateTool : ITool
             }
         }
 
+        // 콘텐츠 계열 슬라이드 하단 푸터(구분선 + 페이지 번호).
+        AppendFooter(tree, ref id, index, total, p);
         return WrapSlide(tree);
     }
 
@@ -525,6 +559,30 @@ public sealed class PptxCreateTool : ITool
             body);
     }
 
+    // 정렬 지정 가능한 단일 문단(푸터·라벨 등). CenteredText 의 일반화.
+    private static D.Paragraph AlignedText(string text, int fontSizePt, bool bold, string? color, string? fontName, D.TextAlignmentTypeValues align)
+    {
+        var runProps = new D.RunProperties { Language = "en-US", FontSize = fontSizePt * 100 };
+        if (bold)
+        {
+            runProps.Bold = true;
+        }
+
+        if (color is not null)
+        {
+            runProps.AppendChild(new D.SolidFill(new D.RgbColorModelHex { Val = color }));
+        }
+
+        if (!string.IsNullOrEmpty(fontName))
+        {
+            runProps.AppendChild(new D.LatinFont { Typeface = fontName });
+        }
+
+        var para = new D.Paragraph(new D.ParagraphProperties(new D.NoBullet()) { Alignment = align });
+        para.AppendChild(new D.Run(runProps, new D.Text(text)));
+        return para;
+    }
+
     private static D.Paragraph CenteredText(string text, int fontSizePt, bool bold, string? color, string? fontName = null)
     {
         var runProps = new D.RunProperties { Language = "en-US", FontSize = fontSizePt * 100 };
@@ -559,11 +617,20 @@ public sealed class PptxCreateTool : ITool
     };
 
     // 위치·크기(xfrm)와 사각형 지오메트리를 갖춘 텍스트 도형. spPr 이 비면 PowerPoint 가 렌더하지 못한다.
+    // anchor: 상자 안 수직 정렬. 본문 불릿을 Center 로 두면 콘텐츠가 적을 때 상단에 몰려 하단이
+    // 텅 비는 '데드스페이스'를 없애고 시각적으로 균형이 잡힌다(제목·부제는 상단 유지=null).
     private static P.Shape MakeShape(
-        uint id, string name, long x, long y, long cx, long cy, IEnumerable<D.Paragraph> paragraphs)
+        uint id, string name, long x, long y, long cx, long cy, IEnumerable<D.Paragraph> paragraphs,
+        D.TextAnchoringTypeValues? anchor = null)
     {
         // normAutofit: 텍스트가 상자를 넘치면 PowerPoint 가 폰트를 자동 축소(오버플로우 방지).
-        var body = new P.TextBody(new D.BodyProperties(new D.NormalAutoFit()), new D.ListStyle());
+        var bodyProps = new D.BodyProperties(new D.NormalAutoFit());
+        if (anchor is { } a)
+        {
+            bodyProps.Anchor = a;
+        }
+
+        var body = new P.TextBody(bodyProps, new D.ListStyle());
         foreach (var p in paragraphs)
         {
             body.AppendChild(p);
@@ -597,7 +664,45 @@ public sealed class PptxCreateTool : ITool
             new P.TextBody(new D.BodyProperties(), new D.ListStyle(), new D.Paragraph()));
     }
 
-    private static D.Paragraph TextParagraph(string text, int fontSize, bool bold, bool bullet, string? color, string? fontName = null)
+    // 카드/패널: 살짝 둥근 모서리의 채운 사각형(본문을 담는 배경 카드). 텍스트보다 먼저 그려 뒤에 깔린다.
+    private static P.Shape Panel(uint id, long x, long y, long w, long h, string color)
+    {
+        var geo = new D.PresetGeometry(
+            new D.AdjustValueList(new D.ShapeGuide { Name = "adj", Formula = "val 4200" }))
+        { Preset = D.ShapeTypeValues.RoundRectangle };
+        return new P.Shape(
+            new P.NonVisualShapeProperties(
+                new P.NonVisualDrawingProperties { Id = id, Name = "Panel" },
+                new P.NonVisualShapeDrawingProperties(),
+                new P.ApplicationNonVisualDrawingProperties()),
+            new P.ShapeProperties(
+                new D.Transform2D(new D.Offset { X = x, Y = y }, new D.Extents { Cx = w, Cy = h }),
+                geo,
+                new D.SolidFill(new D.RgbColorModelHex { Val = color })),
+            new P.TextBody(new D.BodyProperties(), new D.ListStyle(), new D.Paragraph()));
+    }
+
+    // 불릿 수가 적을수록 문단 앞 여백(spaceBefore, %)을 키워 세로로 고르게 퍼뜨린다.
+    // (상단 앵커 유지 + 하단 데드스페이스 완화. 넘치면 normAutofit 이 폰트를 줄여 보호.)
+    private static int BulletSpaceBefore(int count) => count switch
+    {
+        <= 3 => 160000,  // 160%
+        <= 4 => 120000,  // 120%
+        <= 5 => 80000,   // 80%
+        <= 6 => 45000,   // 45%
+        _ => 20000,      // 20%
+    };
+
+    // 하단 푸터: 얇은 구분선 + "n / N" 페이지 번호(무채색). 콘텐츠 슬라이드의 바닥을 정돈해 준다.
+    private static void AppendFooter(ShapeTree tree, ref uint id, int index, int total, ThemePreset p)
+    {
+        const long footY = 6480000;
+        tree.AppendChild(AccentBar(id++, MarginX, footY, 460000, 26000, p.AccentHex));
+        tree.AppendChild(MakeShape(id++, "PageNo", SlideW - MarginX - 900000, footY - 120000, 900000, 300000,
+            new[] { AlignedText($"{index} / {total}", 11, false, p.FooterHex, p.BodyFont, D.TextAlignmentTypeValues.Right) }));
+    }
+
+    private static D.Paragraph TextParagraph(string text, int fontSize, bool bold, bool bullet, string? color, string? fontName = null, int spaceBeforePct = 0)
     {
         var runProps = new D.RunProperties { Language = "en-US", FontSize = fontSize };
         if (bold)
@@ -617,12 +722,18 @@ public sealed class PptxCreateTool : ITool
         }
 
         var para = new D.Paragraph();
-        // 본문 불릿: 줄간격 여유(120%)로 매달린 줄·과밀 완화. 불릿 색은 본문 색에 맞춘다
-        // (다크 배경에서 검정 불릿이 안 보이는 것 방지). 자식 순서: lnSpc → buClr → buFont → buChar.
+        // 본문 불릿: 줄간격 여유(120%)로 매달린 줄·과밀 완화. 불릿이 적을수록 spaceBefore(문단 앞 여백)를
+        // 키워 세로로 고르게 퍼뜨린다(상단 앵커 유지 + 하단 데드스페이스 완화). 불릿 색은 본문 색에 맞춘다
+        // (다크 배경에서 검정 불릿이 안 보이는 것 방지). 자식 순서: lnSpc → spcBef → buClr → buFont → buChar.
         D.ParagraphProperties pPr;
         if (bullet)
         {
             pPr = new D.ParagraphProperties(new D.LineSpacing(new D.SpacingPercent { Val = 120000 }));
+            if (spaceBeforePct > 0)
+            {
+                pPr.AppendChild(new D.SpaceBefore(new D.SpacingPercent { Val = spaceBeforePct }));
+            }
+
             if (color is not null)
             {
                 pPr.AppendChild(new D.BulletColor(new D.RgbColorModelHex { Val = color }));
@@ -766,9 +877,11 @@ public sealed class PptxCreateTool : ITool
             new D.FollowedHyperlinkColor(new D.RgbColorModelHex { Val = "954F72" }))
         { Name = "Office" };
 
+        // EA(동아시아) 폰트를 명시 — 한글 텍스트가 Windows/PowerPoint 에서 일관되게 렌더되도록.
+        // Latin 은 템플릿별 런에서 지정하고, 한글 글리프는 이 EA 폰트를 따른다.
         var fontScheme = new D.FontScheme(
-            new D.MajorFont(new D.LatinFont { Typeface = "Calibri Light" }, new D.EastAsianFont { Typeface = string.Empty }, new D.ComplexScriptFont { Typeface = string.Empty }),
-            new D.MinorFont(new D.LatinFont { Typeface = "Calibri" }, new D.EastAsianFont { Typeface = string.Empty }, new D.ComplexScriptFont { Typeface = string.Empty }))
+            new D.MajorFont(new D.LatinFont { Typeface = "Calibri Light" }, new D.EastAsianFont { Typeface = "Malgun Gothic" }, new D.ComplexScriptFont { Typeface = string.Empty }),
+            new D.MinorFont(new D.LatinFont { Typeface = "Calibri" }, new D.EastAsianFont { Typeface = "Malgun Gothic" }, new D.ComplexScriptFont { Typeface = string.Empty }))
         { Name = "Office" };
 
         var fmtScheme = new D.FormatScheme(
