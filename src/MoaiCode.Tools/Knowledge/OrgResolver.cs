@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Knowledge;
 
@@ -75,21 +76,20 @@ internal static class OrgResolver
         }
         catch (EndpointMissingException)
         {
-            return (null, $"{toolName}: orgId 가 없고, 서버에 조직 조회 엔드포인트(/api/v1/organizations)가 " +
-                          "없어 자동 해소할 수 없습니다. orgId 를 직접 지정하거나 open-moai 배포가 필요합니다.");
+            return (null, L10n.Get("tools.orgResolver.endpointMissing", toolName));
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            return (null, $"{toolName}: 조직 조회 타임아웃 — orgId 를 직접 지정하세요.");
+            return (null, L10n.Get("tools.orgResolver.timeout", toolName));
         }
         catch (HttpRequestException ex)
         {
-            return (null, $"{toolName}: 조직 조회 실패 — {ex.Message}. orgId 를 직접 지정하세요.");
+            return (null, L10n.Get("tools.orgResolver.requestFailed", toolName, ex.Message));
         }
 
         if (orgs.Count == 0)
         {
-            return (null, $"{toolName}: 소속된 조직이 없습니다. 관리자에게 조직 배정을 요청하세요.");
+            return (null, L10n.Get("tools.orgResolver.noOrgs", toolName));
         }
 
         if (orgs.Count == 1)
@@ -98,8 +98,8 @@ internal static class OrgResolver
         }
 
         var list = string.Join(", ", orgs.Select(o =>
-            $"[{o.Id}] {o.Name}{(o.IsPrimary == true ? "(기본)" : "")}"));
-        return (null, $"{toolName}: 여러 조직에 속해 있어 대상을 특정할 수 없습니다. orgId 를 지정하세요 — {list}");
+            $"[{o.Id}] {o.Name}{(o.IsPrimary == true ? L10n.Get("tools.orgResolver.primary") : "")}"));
+        return (null, L10n.Get("tools.orgResolver.ambiguous", toolName, list));
     }
 
     internal sealed class EndpointMissingException : Exception

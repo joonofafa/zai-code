@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Files;
 
@@ -59,7 +60,7 @@ public sealed class FileEditTool : ITool
         // 하드 플로어: 시스템 임계 경로(/boot,/etc,...) 수정은 권한 모드와 무관하게 거부.
         if (PathSafety.DenyWriteReason(path) is { } deny)
         {
-            yield return new ToolOutput($"Edit 거부 — {deny}: {path}", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.files.editDenied", deny, path), IsError: true);
             yield break;
         }
 

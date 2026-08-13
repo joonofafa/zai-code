@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Knowledge;
 
@@ -21,7 +22,7 @@ public sealed class OrgDatasListTool : ITool
     public string Name => "OrgDatasList";
 
     public string Description => """
-        Lists the queryable data tables in the organization data warehouse (데이터 문서함) of the connected account,
+        Lists the queryable data tables in the organization data warehouse of the connected account,
         WITH their schema (columns, types, sample values). Call this FIRST — before OrgDatas — to
         learn what tables and columns exist so you can write a correct read-only SELECT for OrgDatas.
         Use when the user asks about tabular/record data (sales, metrics, records) rather than documents.
@@ -56,7 +57,7 @@ public sealed class OrgDatasListTool : ITool
         if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(key))
         {
             yield return new ToolOutput(
-                "OrgDatasList: open-moai 연결 정보가 없습니다. `moai login` 으로 로그인하세요.", IsError: true);
+                L10n.Get("tools.orgDatasList.notLoggedIn"), IsError: true);
             yield break;
         }
 
@@ -73,16 +74,15 @@ public sealed class OrgDatasListTool : ITool
         }
         catch (EndpointMissingException)
         {
-            error = "OrgDatasList: 이 서버에 데이터함 엔드포인트(/api/v1/record-collections)가 없습니다. " +
-                    "open-moai 측에 배포가 필요합니다 (docs/SERVER_TASK_RECORD_DATA.md).";
+            error = L10n.Get("tools.orgDatasList.endpointMissing");
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
-            error = $"OrgDatasList: {Timeout.TotalSeconds:0}초 타임아웃";
+            error = L10n.Get("tools.orgDatasList.timeout", Timeout.TotalSeconds);
         }
         catch (HttpRequestException ex)
         {
-            error = $"OrgDatasList: 요청 실패 — {ex.Message}";
+            error = L10n.Get("tools.orgDatasList.requestFailed", ex.Message);
         }
 
         if (error is not null)
@@ -94,7 +94,7 @@ public sealed class OrgDatasListTool : ITool
         var cols = data?.Collections ?? new List<CollectionInfo>();
         if (cols.Count == 0)
         {
-            yield return new ToolOutput("(조회 가능한 데이터 테이블이 없습니다)");
+            yield return new ToolOutput(L10n.Get("tools.orgDatasList.noTables"));
             yield break;
         }
 
@@ -109,7 +109,7 @@ public sealed class OrgDatasListTool : ITool
 
             if (c.TotalRecords is { } n)
             {
-                sb.Append("  (~").Append(n.ToString("N0")).Append("건)");
+                sb.Append(L10n.Get("tools.orgDatasList.recordCount", n.ToString("N0")));
             }
 
             sb.AppendLine();
@@ -118,7 +118,7 @@ public sealed class OrgDatasListTool : ITool
                 sb.Append("   - ").Append(col.Name).Append(" : ").Append(col.Type ?? "?");
                 if (col.Sample is { Count: > 0 } s)
                 {
-                    sb.Append("  예) ").Append(string.Join(", ", s.Take(3).Select(v => v.ToString())));
+                    sb.Append(L10n.Get("tools.orgDatasList.example")).Append(string.Join(", ", s.Take(3).Select(v => v.ToString())));
                 }
 
                 sb.AppendLine();

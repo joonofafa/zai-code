@@ -7,6 +7,7 @@ using System.Text.Json.Serialization;
 using System.Web;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Knowledge;
 
@@ -22,7 +23,7 @@ public sealed class OrgDocsListTool : ITool
     public string Name => "OrgDocsList";
 
     public string Description => """
-        Lists the uploaded documents in an organization's knowledge base (조직 문서함): title, filename, type, size,
+        Lists the uploaded documents in an organization's knowledge base: title, filename, type, size,
         visibility, processing status. This is BROWSING, not search — for semantic search use OrgDocs.
         orgId is optional: if omitted it is auto-resolved from your login (used automatically when you
         belong to exactly one organization; if several, you'll be asked to pick — see OrgList).
@@ -72,7 +73,7 @@ public sealed class OrgDocsListTool : ITool
         if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(key))
         {
             yield return new ToolOutput(
-                "OrgDocsList: open-moai 연결 정보가 없습니다. `moai login` 으로 로그인하세요.", IsError: true);
+                L10n.Get("tools.orgDocsList.notLoggedIn"), IsError: true);
             yield break;
         }
 
@@ -103,16 +104,15 @@ public sealed class OrgDocsListTool : ITool
         }
         catch (EndpointMissingException)
         {
-            error = "OrgDocsList: 이 서버에 문서 목록 엔드포인트(/api/v1/knowledge)가 없습니다. " +
-                    "open-moai 측 배포가 필요합니다.";
+            error = L10n.Get("tools.orgDocsList.endpointMissing");
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
-            error = $"OrgDocsList: {Timeout.TotalSeconds:0}초 타임아웃";
+            error = L10n.Get("tools.orgDocsList.timeout", Timeout.TotalSeconds);
         }
         catch (HttpRequestException ex)
         {
-            error = $"OrgDocsList: 요청 실패 — {ex.Message}";
+            error = L10n.Get("tools.orgDocsList.requestFailed", ex.Message);
         }
 
         if (error is not null)
@@ -124,12 +124,12 @@ public sealed class OrgDocsListTool : ITool
         var items = data?.Items ?? new List<DocItem>();
         if (items.Count == 0)
         {
-            yield return new ToolOutput("(조직 문서함에 문서가 없습니다)");
+            yield return new ToolOutput(L10n.Get("tools.orgDocsList.noDocs"));
             yield break;
         }
 
         var sb = new StringBuilder();
-        sb.Append("조직 문서 ").Append(items.Count).AppendLine("건");
+        sb.AppendLine(L10n.Get("tools.orgDocsList.header", items.Count));
         sb.AppendLine();
         foreach (var d in items)
         {
@@ -140,7 +140,7 @@ public sealed class OrgDocsListTool : ITool
             if (!string.IsNullOrWhiteSpace(d.Visibility)) meta.Add(d.Visibility!);
             if (d.FileSize is { } s) meta.Add(FormatSize(s));
             if (!string.IsNullOrWhiteSpace(d.ProcessingStatus) && d.ProcessingStatus != "completed")
-                meta.Add("처리:" + d.ProcessingStatus);
+                meta.Add(L10n.Get("tools.orgDocsList.processing", d.ProcessingStatus));
             if (d.RagEnabled == false) meta.Add("RAG off");
             if (meta.Count > 0) sb.Append("  (").Append(string.Join(" · ", meta)).Append(')');
             sb.AppendLine();

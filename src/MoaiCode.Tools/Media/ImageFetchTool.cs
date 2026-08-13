@@ -10,6 +10,7 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Media;
 
@@ -75,11 +76,11 @@ public sealed class ImageFetchTool : ITool
         if (!Uri.TryCreate(inp.Url, UriKind.Absolute, out var uri)
             || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
-            yield return new ToolOutput($"ImageFetch: http(s) URL 만 허용됩니다: {inp.Url}", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.imageFetch.onlyHttp", inp.Url), IsError: true);
             yield break;
         }
 
-        yield return new ToolStatus($"이미지 다운로드 중: {uri}");
+        yield return new ToolStatus(L10n.Get("tools.imageFetch.downloading", uri));
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(Timeout);
@@ -93,15 +94,15 @@ public sealed class ImageFetchTool : ITool
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
-            error = $"ImageFetch: {Timeout.TotalSeconds:0}초 타임아웃";
+            error = L10n.Get("tools.imageFetch.timeout", Timeout.TotalSeconds);
         }
         catch (HttpRequestException ex)
         {
-            error = "ImageFetch: 요청 실패 — " + ex.Message;
+            error = L10n.Get("tools.imageFetch.requestFailed", ex.Message);
         }
         catch (Exception ex)
         {
-            error = "ImageFetch: 오류 — " + ex.Message;
+            error = L10n.Get("tools.imageFetch.error", ex.Message);
         }
 
         if (error is not null)
@@ -112,14 +113,14 @@ public sealed class ImageFetchTool : ITool
 
         if (bytes is null || bytes.Length == 0)
         {
-            yield return new ToolOutput("ImageFetch: 빈 응답입니다.", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.imageFetch.emptyResponse"), IsError: true);
             yield break;
         }
 
         if (!mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
         {
             yield return new ToolOutput(
-                $"ImageFetch: 이미지가 아닙니다(content-type={(string.IsNullOrEmpty(mediaType) ? "?" : mediaType)}).",
+                L10n.Get("tools.imageFetch.notImage", string.IsNullOrEmpty(mediaType) ? "?" : mediaType),
                 IsError: true);
             yield break;
         }
@@ -140,7 +141,7 @@ public sealed class ImageFetchTool : ITool
         catch (Exception ex)
         {
             outPath = string.Empty;
-            writeErr = "ImageFetch: 저장 실패 — " + ex.Message;
+            writeErr = L10n.Get("tools.imageFetch.saveFailed", ex.Message);
         }
 
         if (writeErr is not null)
@@ -150,7 +151,7 @@ public sealed class ImageFetchTool : ITool
         }
 
         var kb = bytes.Length / 1024.0;
-        yield return new ToolOutput($"이미지 저장됨: {outPath} ({kb:0}KB, {mediaType})");
+        yield return new ToolOutput(L10n.Get("tools.imageFetch.saved", outPath, kb, mediaType));
     }
 
     // 확장자가 없거나 이미지 확장자가 아니면 content-type 에 맞춰 붙인다.
@@ -203,13 +204,13 @@ public sealed class ImageFetchTool : ITool
             {
                 if (hop >= MaxRedirects)
                 {
-                    throw new HttpRequestException($"리다이렉트 {MaxRedirects}회 초과");
+                    throw new HttpRequestException(L10n.Get("tools.imageFetch.redirectExceeded", MaxRedirects));
                 }
 
                 current = loc.IsAbsoluteUri ? loc : new Uri(current, loc);
                 if (current.Scheme != Uri.UriSchemeHttp && current.Scheme != Uri.UriSchemeHttps)
                 {
-                    throw new HttpRequestException($"리다이렉트 대상 스킴 비허용: {current.Scheme}");
+                    throw new HttpRequestException(L10n.Get("tools.imageFetch.redirectSchemeDenied", current.Scheme));
                 }
 
                 continue;
@@ -257,7 +258,7 @@ public sealed class ImageFetchTool : ITool
             }
             catch
             {
-                throw new HttpRequestException($"호스트 해석 실패: {uri.Host}");
+                throw new HttpRequestException(L10n.Get("tools.imageFetch.hostResolveFailed", uri.Host));
             }
         }
 
@@ -265,7 +266,7 @@ public sealed class ImageFetchTool : ITool
         {
             if (ip.IsIPv6LinkLocal)
             {
-                throw new HttpRequestException($"링크로컬 IP 접근 차단({ip})");
+                throw new HttpRequestException(L10n.Get("tools.imageFetch.linkLocalBlocked", ip));
             }
 
             if (ip.AddressFamily == AddressFamily.InterNetwork)
@@ -273,7 +274,7 @@ public sealed class ImageFetchTool : ITool
                 var b = ip.GetAddressBytes();
                 if (b[0] == 169 && b[1] == 254)
                 {
-                    throw new HttpRequestException($"메타데이터 IP 접근 차단({ip})");
+                    throw new HttpRequestException(L10n.Get("tools.imageFetch.metadataBlocked", ip));
                 }
             }
         }

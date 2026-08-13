@@ -7,6 +7,7 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Web;
 
@@ -72,7 +73,7 @@ public sealed class WebFetchTool : ITool
         if (!Uri.TryCreate(inp.Url, UriKind.Absolute, out var uri) ||
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
-            yield return new ToolOutput($"WebFetch: http(s) URL 만 허용됩니다: {inp.Url}", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.webFetch.onlyHttp", inp.Url), IsError: true);
             yield break;
         }
 
@@ -93,15 +94,15 @@ public sealed class WebFetchTool : ITool
         }
         catch (SsrfBlockedException ex)
         {
-            error = $"WebFetch 거부 — {ex.Message}";
+            error = L10n.Get("tools.webFetch.denied", ex.Message);
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
-            error = $"WebFetch: {Timeout.TotalSeconds:0}초 타임아웃 — {uri}";
+            error = L10n.Get("tools.webFetch.timeout", Timeout.TotalSeconds, uri);
         }
         catch (HttpRequestException ex)
         {
-            error = $"WebFetch: 요청 실패 — {ex.Message}";
+            error = L10n.Get("tools.webFetch.requestFailed", ex.Message);
         }
 
         if (error is not null)
@@ -145,13 +146,13 @@ public sealed class WebFetchTool : ITool
             {
                 if (hop >= MaxRedirects)
                 {
-                    throw new HttpRequestException($"리다이렉트 {MaxRedirects}회 초과");
+                    throw new HttpRequestException(L10n.Get("tools.webFetch.redirectExceeded", MaxRedirects));
                 }
 
                 current = loc.IsAbsoluteUri ? loc : new Uri(current, loc);
                 if (current.Scheme != Uri.UriSchemeHttp && current.Scheme != Uri.UriSchemeHttps)
                 {
-                    throw new SsrfBlockedException($"리다이렉트 대상 스킴 비허용: {current.Scheme}");
+                    throw new SsrfBlockedException(L10n.Get("tools.webFetch.redirectSchemeDenied", current.Scheme));
                 }
 
                 continue;
@@ -164,7 +165,7 @@ public sealed class WebFetchTool : ITool
             // 바이너리(PDF/이미지 등)를 텍스트로 디코딩하면 쓰레기 문자열이 컨텍스트를 오염시킨다.
             if (!IsTextual(media))
             {
-                return ($"(binary content: {media}, {bytes.Length} bytes — 텍스트로 표시하지 않음)",
+                return (L10n.Get("tools.webFetch.binaryContent", media, bytes.Length),
                     current.ToString(), status);
             }
 
@@ -294,7 +295,7 @@ public sealed class WebFetchTool : ITool
             }
             catch
             {
-                throw new SsrfBlockedException($"호스트 해석 실패: {uri.Host}");
+                throw new SsrfBlockedException(L10n.Get("tools.webFetch.hostResolveFailed", uri.Host));
             }
         }
 
@@ -302,7 +303,7 @@ public sealed class WebFetchTool : ITool
         {
             if (IsLinkLocalOrMetadata(ip))
             {
-                throw new SsrfBlockedException($"링크로컬/메타데이터 IP 접근 차단({ip})");
+                throw new SsrfBlockedException(L10n.Get("tools.webFetch.linkLocalMetadataBlocked", ip));
             }
         }
     }

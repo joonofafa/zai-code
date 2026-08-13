@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Knowledge;
 
@@ -16,7 +17,7 @@ public sealed class OrgListTool : ITool
 
     public string Description => """
         Lists the organizations the logged-in user belongs to (id, name, role, whether it's the primary
-        org). Use this to obtain the orgId needed by the knowledge base (조직 문서함) tools (OrgDocsList/OrgDocsUpload/
+        org). Use this to obtain the orgId needed by the knowledge base tools (OrgDocsList/OrgDocsUpload/
         OrgDocsDelete). Those tools also auto-resolve orgId from your login when you have exactly one
         organization, so you usually do NOT need to ask the user for it. Read-only, no arguments.
         """;
@@ -37,7 +38,7 @@ public sealed class OrgListTool : ITool
         if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(key))
         {
             yield return new ToolOutput(
-                "OrgList: open-moai 연결 정보가 없습니다. `moai login` 으로 로그인하세요.", IsError: true);
+                L10n.Get("tools.orgList.notLoggedIn"), IsError: true);
             yield break;
         }
 
@@ -49,16 +50,15 @@ public sealed class OrgListTool : ITool
         }
         catch (OrgResolver.EndpointMissingException)
         {
-            error = "OrgList: 이 서버에 조직 조회 엔드포인트(/api/v1/organizations)가 없습니다. " +
-                    "open-moai 측 배포가 필요합니다.";
+            error = L10n.Get("tools.orgList.endpointMissing");
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            error = "OrgList: 조직 조회 타임아웃";
+            error = L10n.Get("tools.orgList.timeout");
         }
         catch (HttpRequestException ex)
         {
-            error = $"OrgList: 요청 실패 — {ex.Message}";
+            error = L10n.Get("tools.orgList.requestFailed", ex.Message);
         }
 
         if (error is not null)
@@ -69,19 +69,19 @@ public sealed class OrgListTool : ITool
 
         if (orgs is null || orgs.Count == 0)
         {
-            yield return new ToolOutput("(소속된 조직이 없습니다)");
+            yield return new ToolOutput(L10n.Get("tools.orgList.noOrgs"));
             yield break;
         }
 
         var sb = new StringBuilder();
-        sb.Append("소속 조직 ").Append(orgs.Count).AppendLine("개");
+        sb.AppendLine(L10n.Get("tools.orgList.header", orgs.Count));
         sb.AppendLine();
         foreach (var o in orgs)
         {
-            sb.Append("• [").Append(o.Id).Append("] ").Append(o.Name ?? "(이름 없음)");
+            sb.Append("• [").Append(o.Id).Append("] ").Append(o.Name ?? L10n.Get("tools.orgList.noName"));
             var meta = new List<string>();
             if (!string.IsNullOrWhiteSpace(o.Role)) meta.Add(o.Role!);
-            if (o.IsPrimary == true) meta.Add("기본");
+            if (o.IsPrimary == true) meta.Add(L10n.Get("tools.orgList.primary"));
             if (meta.Count > 0) sb.Append("  (").Append(string.Join(" · ", meta)).Append(')');
             sb.AppendLine();
         }

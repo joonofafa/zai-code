@@ -1,3 +1,5 @@
+using MoaiCode.Localization;
+
 namespace MoaiCode.Tools;
 
 /// <summary>
@@ -55,20 +57,20 @@ public static class PathSafety
         }
         catch
         {
-            return "경로 해석 실패";
+            return L10n.Get("tools.pathSafety.resolveFailed");
         }
 
         var norm = p.TrimEnd('/', '\\');
         if (norm.Length == 0)
         {
-            return "파일시스템 루트";
+            return L10n.Get("tools.pathSafety.filesystemRoot");
         }
 
         // 파일시스템 루트 자체 (/, C:\).
         var root = (Path.GetPathRoot(norm) ?? string.Empty).TrimEnd('/', '\\');
         if (norm.Length <= root.Length)
         {
-            return "파일시스템 루트";
+            return L10n.Get("tools.pathSafety.filesystemRoot");
         }
 
         if (OperatingSystem.IsWindows())
@@ -81,7 +83,7 @@ public static class PathSafety
             if (norm.Equals(critical, StringComparison.Ordinal) ||
                 norm.StartsWith(critical + "/", StringComparison.Ordinal))
             {
-                return $"시스템 임계 경로({critical}) 쓰기/수정은 금지됩니다";
+                return L10n.Get("tools.pathSafety.criticalPathDenied", critical);
             }
         }
 
@@ -110,7 +112,7 @@ public static class PathSafety
             if (norm.Equals(r, StringComparison.OrdinalIgnoreCase) ||
                 norm.StartsWith(r + "\\", StringComparison.OrdinalIgnoreCase))
             {
-                return $"시스템 임계 경로({r}) 쓰기/수정은 금지됩니다";
+                return L10n.Get("tools.pathSafety.criticalPathDenied", r);
             }
         }
 

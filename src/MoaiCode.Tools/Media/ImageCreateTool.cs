@@ -11,6 +11,7 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Media;
 
@@ -84,7 +85,7 @@ public sealed class ImageCreateTool : ITool
         if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(key))
         {
             yield return new ToolOutput(
-                "ImageCreate: open-moai 연결 정보가 없습니다. `moai login` 으로 로그인하세요.", IsError: true);
+                L10n.Get("tools.imageCreate.notLoggedIn"), IsError: true);
             yield break;
         }
 
@@ -102,7 +103,7 @@ public sealed class ImageCreateTool : ITool
         }
         catch (Exception ex)
         {
-            pathErr = "ImageCreate: 잘못된 경로 — " + ex.Message;
+            pathErr = L10n.Get("tools.imageCreate.badPath", ex.Message);
         }
 
         if (pathErr is not null)
@@ -111,7 +112,7 @@ public sealed class ImageCreateTool : ITool
             yield break;
         }
 
-        yield return new ToolStatus($"이미지 생성 중: {inp.Prompt!.Trim()}");
+        yield return new ToolStatus(L10n.Get("tools.imageCreate.generating", inp.Prompt!.Trim()));
 
         var url = baseUrl.TrimEnd('/') + "/images/generations";
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -125,15 +126,15 @@ public sealed class ImageCreateTool : ITool
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
-            error = $"ImageCreate: {Timeout.TotalSeconds:0}초 타임아웃";
+            error = L10n.Get("tools.imageCreate.timeout", Timeout.TotalSeconds);
         }
         catch (HttpRequestException ex)
         {
-            error = "ImageCreate: 요청 실패 — " + ex.Message;
+            error = L10n.Get("tools.imageCreate.requestFailed", ex.Message);
         }
         catch (Exception ex)
         {
-            error = "ImageCreate: 오류 — " + ex.Message;
+            error = L10n.Get("tools.imageCreate.error", ex.Message);
         }
 
         if (error is not null)
@@ -145,7 +146,7 @@ public sealed class ImageCreateTool : ITool
         var b64 = data?.Data is { Count: > 0 } ? data.Data[0].B64 : null;
         if (string.IsNullOrEmpty(b64))
         {
-            yield return new ToolOutput("ImageCreate: 서버가 이미지를 반환하지 않았습니다.", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.imageCreate.noImage"), IsError: true);
             yield break;
         }
 
@@ -163,7 +164,7 @@ public sealed class ImageCreateTool : ITool
         }
         catch (Exception ex)
         {
-            writeErr = "ImageCreate: 저장 실패 — " + ex.Message;
+            writeErr = L10n.Get("tools.imageCreate.saveFailed", ex.Message);
         }
 
         if (writeErr is not null)
@@ -173,7 +174,7 @@ public sealed class ImageCreateTool : ITool
         }
 
         var kb = new FileInfo(outPath).Length / 1024.0;
-        yield return new ToolOutput($"이미지 생성됨: {outPath} ({kb:0}KB, model={data?.Model})");
+        yield return new ToolOutput(L10n.Get("tools.imageCreate.created", outPath, kb, data?.Model));
     }
 
     private static async Task<GenResponse?> CallAsync(

@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Web;
 
@@ -77,7 +78,7 @@ public sealed class WebSearchTool : ITool
         if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(key))
         {
             yield return new ToolOutput(
-                "WebSearch: open-moai 연결 정보가 없습니다. `moai login` 으로 로그인하세요 (baseUrl/API 키 필요).",
+                L10n.Get("tools.webSearch.notLoggedIn"),
                 IsError: true);
             yield break;
         }
@@ -96,16 +97,15 @@ public sealed class WebSearchTool : ITool
         }
         catch (EndpointMissingException)
         {
-            error = "WebSearch: 이 서버에 검색 엔드포인트(/api/v1/search)가 없습니다. " +
-                    "open-moai 측에 웹검색 API(POST /api/v1/search) 배포가 필요합니다.";
+            error = L10n.Get("tools.webSearch.endpointMissing");
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
-            error = $"WebSearch: {Timeout.TotalSeconds:0}초 타임아웃";
+            error = L10n.Get("tools.webSearch.timeout", Timeout.TotalSeconds);
         }
         catch (HttpRequestException ex)
         {
-            error = $"WebSearch: 요청 실패 — {ex.Message}";
+            error = L10n.Get("tools.webSearch.requestFailed", ex.Message);
         }
 
         if (error is not null)

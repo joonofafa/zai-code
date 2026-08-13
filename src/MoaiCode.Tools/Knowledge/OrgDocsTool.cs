@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Knowledge;
 
@@ -23,7 +24,7 @@ public sealed class OrgDocsTool : ITool
     public string Name => "OrgDocs";
 
     public string Description => """
-        Searches the user's personal and organization knowledge base (조직 문서함) on the connected
+        Searches the user's personal and organization knowledge base on the connected
         open-moai server and returns relevant document snippets (title, snippet, scope, score).
 
         Use this when the task references INTERNAL/ORGANIZATIONAL knowledge that is NOT in the codebase:
@@ -89,7 +90,7 @@ public sealed class OrgDocsTool : ITool
         if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(key))
         {
             yield return new ToolOutput(
-                "OrgDocs: open-moai 연결 정보가 없습니다. `moai login` 으로 로그인하세요 (baseUrl/API 키 필요).",
+                L10n.Get("tools.orgDocs.notLoggedIn"),
                 IsError: true);
             yield break;
         }
@@ -108,16 +109,15 @@ public sealed class OrgDocsTool : ITool
         }
         catch (EndpointMissingException)
         {
-            error = "OrgDocs: 이 서버에 문서함 검색 엔드포인트(/api/v1/knowledge/search)가 없습니다. " +
-                    "open-moai 측에 배포가 필요합니다.";
+            error = L10n.Get("tools.orgDocs.endpointMissing");
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
-            error = $"OrgDocs: {Timeout.TotalSeconds:0}초 타임아웃";
+            error = L10n.Get("tools.orgDocs.timeout", Timeout.TotalSeconds);
         }
         catch (HttpRequestException ex)
         {
-            error = $"OrgDocs: 요청 실패 — {ex.Message}";
+            error = L10n.Get("tools.orgDocs.requestFailed", ex.Message);
         }
 
         if (error is not null)
@@ -129,7 +129,7 @@ public sealed class OrgDocsTool : ITool
         var results = data?.Results ?? new List<DocResult>();
         if (results.Count == 0)
         {
-            yield return new ToolOutput("(문서함에서 관련 문서를 찾지 못했습니다)");
+            yield return new ToolOutput(L10n.Get("tools.orgDocs.noResults"));
             yield break;
         }
 

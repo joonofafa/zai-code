@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Knowledge;
 
@@ -28,7 +29,7 @@ public sealed class OrgDatasTool : ITool
     public string Name => "OrgDatas";
 
     public string Description => """
-        Runs a READ-ONLY SQL SELECT against a data table in the organization data warehouse (데이터 문서함) and
+        Runs a READ-ONLY SQL SELECT against a data table in the organization data warehouse and
         returns the result as a table. First call OrgDatasList to get table names, columns, and
         sample values, then write a SELECT here. Only SELECT/WITH/EXPLAIN/SHOW/DESCRIBE/PRAGMA are
         allowed (no INSERT/UPDATE/DELETE/DROP). Give the collection's id (from OrgDatasList) and the SQL.
@@ -70,14 +71,14 @@ public sealed class OrgDatasTool : ITool
         var inp = input.Deserialize<Input>();
         if (inp is null || string.IsNullOrWhiteSpace(inp.CollectionId) || string.IsNullOrWhiteSpace(inp.Sql))
         {
-            yield return new ToolOutput("OrgDatas: 'collection_id' 와 'sql' 이 필요합니다.", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.orgDatas.inputRequired"), IsError: true);
             yield break;
         }
 
         if (!IsReadOnlySql(inp.Sql))
         {
             yield return new ToolOutput(
-                "OrgDatas: 읽기전용 SELECT 만 허용됩니다 (INSERT/UPDATE/DELETE/DROP 및 다중문 불가).",
+                L10n.Get("tools.orgDatas.readOnly"),
                 IsError: true);
             yield break;
         }
@@ -87,7 +88,7 @@ public sealed class OrgDatasTool : ITool
         if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(key))
         {
             yield return new ToolOutput(
-                "OrgDatas: open-moai 연결 정보가 없습니다. `moai login` 으로 로그인하세요.", IsError: true);
+                L10n.Get("tools.orgDatas.notLoggedIn"), IsError: true);
             yield break;
         }
 
@@ -104,16 +105,15 @@ public sealed class OrgDatasTool : ITool
         }
         catch (EndpointMissingException)
         {
-            error = "OrgDatas: 이 서버에 데이터 쿼리 엔드포인트(/api/v1/record-collections/query)가 없습니다. " +
-                    "open-moai 측에 배포가 필요합니다 (docs/SERVER_TASK_RECORD_DATA.md).";
+            error = L10n.Get("tools.orgDatas.endpointMissing");
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
-            error = $"OrgDatas: {Timeout.TotalSeconds:0}초 타임아웃";
+            error = L10n.Get("tools.orgDatas.timeout", Timeout.TotalSeconds);
         }
         catch (HttpRequestException ex)
         {
-            error = $"OrgDatas: 요청 실패 — {ex.Message}";
+            error = L10n.Get("tools.orgDatas.requestFailed", ex.Message);
         }
 
         if (error is not null)
@@ -173,17 +173,17 @@ public sealed class OrgDatasTool : ITool
     {
         if (data is null)
         {
-            return "(빈 응답)";
+            return L10n.Get("tools.orgDatas.emptyResponse");
         }
 
         if (data.Columns is { Count: > 0 } cols && data.Rows is not null)
         {
             var sb = new StringBuilder();
             var n = data.RowCount ?? data.Rows.Count;
-            sb.Append("조회 결과 (").Append(n).Append("건)");
+            sb.Append(L10n.Get("tools.orgDatas.resultHeader", n));
             if (data.Truncated == true)
             {
-                sb.Append(" — maxRows 로 잘림");
+                sb.Append(L10n.Get("tools.orgDatas.truncated"));
             }
 
             sb.AppendLine().AppendLine();
@@ -200,7 +200,7 @@ public sealed class OrgDatasTool : ITool
         }
 
         // 폴백: 서버가 markdown 만 준 경우.
-        return string.IsNullOrWhiteSpace(data.MarkdownTable) ? "(결과 없음)" : data.MarkdownTable!.Trim();
+        return string.IsNullOrWhiteSpace(data.MarkdownTable) ? L10n.Get("tools.orgDatas.noResults") : data.MarkdownTable!.Trim();
     }
 
     private static string Cell(JsonElement v) => v.ValueKind switch

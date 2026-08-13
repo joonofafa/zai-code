@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Files;
 
@@ -117,7 +118,7 @@ public sealed class FileReadTool : ITool
             }
             catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
             {
-                readError = $"Read: 30초 내 읽기 미완료 — FIFO/장치 등 특수 파일이거나 과대 파일일 수 있습니다: {path}";
+                readError = L10n.Get("tools.files.readTimeout", path);
                 text = string.Empty;
             }
             catch (IOException ex)

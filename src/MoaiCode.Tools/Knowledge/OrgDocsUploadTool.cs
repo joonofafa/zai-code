@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Web;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Knowledge;
 
@@ -29,7 +30,7 @@ public sealed class OrgDocsUploadTool : ITool
     public string Name => "OrgDocsUpload";
 
     public string Description => """
-        Uploads local file(s) to the organization's knowledge base (조직 문서함), where they are embedded for later search.
+        Uploads local file(s) to the organization's knowledge base, where they are embedded for later search.
         `path` may be a single file OR a directory; `paths` may list several files/directories. When a
         directory is given, only document-type files (.docx/.xlsx/.pptx/.pdf/.txt/.md/.csv) are picked up
         — top-level only unless `recursive: true`. Write action — asks for confirmation.
@@ -101,7 +102,7 @@ public sealed class OrgDocsUploadTool : ITool
         if (roots.Count == 0)
         {
             yield return new ToolOutput(
-                "OrgDocsUpload: 'path'(파일 또는 디렉토리) 또는 'paths'(여러 개)가 필요합니다.", IsError: true);
+                L10n.Get("tools.orgDocsUpload.pathRequired"), IsError: true);
             yield break;
         }
 
@@ -115,16 +116,15 @@ public sealed class OrgDocsUploadTool : ITool
 
         if (sendable.Count == 0)
         {
-            var sb = new StringBuilder("OrgDocsUpload: 업로드할 문서를 찾지 못했습니다.");
+            var sb = new StringBuilder(L10n.Get("tools.orgDocsUpload.noDocs"));
             if (notFound.Count > 0)
             {
-                sb.Append(" 파일이 없습니다: ").Append(string.Join(", ", notFound));
+                sb.Append(L10n.Get("tools.orgDocsUpload.missingFiles")).Append(string.Join(", ", notFound));
             }
 
             foreach (var (p, size) in oversized)
             {
-                sb.Append(" (건너뜀: ").Append(RelativeTo(context, p)).Append(' ')
-                  .Append(FormatSize(size)).Append(" > 100MB)");
+                sb.Append(L10n.Get("tools.orgDocsUpload.skippedOversizeInline", RelativeTo(context, p), FormatSize(size)));
             }
 
             yield return new ToolOutput(sb.ToString(), IsError: true);
@@ -143,7 +143,7 @@ public sealed class OrgDocsUploadTool : ITool
         if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(key))
         {
             yield return new ToolOutput(
-                "OrgDocsUpload: open-moai 연결 정보가 없습니다. `moai login` 으로 로그인하세요.", IsError: true);
+                L10n.Get("tools.orgDocsUpload.notLoggedIn"), IsError: true);
             yield break;
         }
 
@@ -169,16 +169,15 @@ public sealed class OrgDocsUploadTool : ITool
         }
         catch (EndpointMissingException)
         {
-            error = "OrgDocsUpload: 이 서버에 업로드 엔드포인트(/api/v1/knowledge)가 없습니다. " +
-                    "open-moai 측 배포가 필요합니다.";
+            error = L10n.Get("tools.orgDocsUpload.endpointMissing");
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
-            error = $"OrgDocsUpload: {Timeout.TotalMinutes:0}분 타임아웃";
+            error = L10n.Get("tools.orgDocsUpload.timeout", Timeout.TotalMinutes);
         }
         catch (HttpRequestException ex)
         {
-            error = $"OrgDocsUpload: 요청 실패 — {ex.Message}";
+            error = L10n.Get("tools.orgDocsUpload.requestFailed", ex.Message);
         }
 
         if (error is not null)
@@ -228,7 +227,7 @@ public sealed class OrgDocsUploadTool : ITool
             }
             catch (Exception ex)
             {
-                return (sendable, oversized, notFound, $"OrgDocsUpload: 잘못된 경로 '{root}' — {ex.Message}");
+                return (sendable, oversized, notFound, L10n.Get("tools.orgDocsUpload.badPath", root, ex.Message));
             }
 
             if (Directory.Exists(full))
@@ -265,8 +264,7 @@ public sealed class OrgDocsUploadTool : ITool
         var total = sendable.Sum(p => new FileInfo(p).Length);
         var vis = NormalizeVisibility(visibility) ?? "private";
         var sb = new StringBuilder();
-        sb.Append("업로드 미리보기 — ").Append(sendable.Count).Append("개 문서 (총 ")
-          .Append(FormatSize(total)).Append("), 공개범위=").Append(vis).AppendLine();
+        sb.AppendLine(L10n.Get("tools.orgDocsUpload.previewHeader", sendable.Count, FormatSize(total), vis));
         var i = 1;
         foreach (var p in sendable)
         {
@@ -276,16 +274,15 @@ public sealed class OrgDocsUploadTool : ITool
 
         foreach (var (p, size) in oversized)
         {
-            sb.Append("  건너뜀: ").Append(RelativeTo(context, p)).Append("  (")
-              .Append(FormatSize(size)).Append(" > 100MB)").AppendLine();
+            sb.AppendLine(L10n.Get("tools.orgDocsUpload.previewSkippedOversize", RelativeTo(context, p), FormatSize(size)));
         }
 
         if (notFound.Count > 0)
         {
-            sb.Append("  없음: ").Append(string.Join(", ", notFound)).AppendLine();
+            sb.AppendLine(L10n.Get("tools.orgDocsUpload.notFoundLine", string.Join(", ", notFound)));
         }
 
-        sb.Append("→ 이대로 올리려면 같은 호출에 confirm:true 를 추가해 다시 실행하세요.");
+        sb.Append(L10n.Get("tools.orgDocsUpload.confirmHint"));
         return sb.ToString();
     }
 
@@ -300,19 +297,19 @@ public sealed class OrgDocsUploadTool : ITool
         if (docs.Count == 0 && skipped.Count > 0)
         {
             var s = skipped[0];
-            sb.Append("OrgDocsUpload: 업로드 거부됨 — ").Append(s.Filename).Append(": ").Append(s.Reason);
+            sb.Append(L10n.Get("tools.orgDocsUpload.rejected", s.Filename, s.Reason));
             return sb.ToString();
         }
 
-        sb.Append("업로드 완료 — ").Append(docs.Count).Append('/').Append(attempted).AppendLine("개");
+        sb.AppendLine(L10n.Get("tools.orgDocsUpload.completedHeader", docs.Count, attempted));
         foreach (var d in docs)
         {
             sb.Append("  • '").Append(d.Filename).Append("' (id=")
               .Append(d.Id.ValueKind == JsonValueKind.Undefined ? "?" : d.Id.ToString())
-              .Append(", 상태=").Append(d.Status ?? "uploaded").Append(')');
+              .Append(L10n.Get("tools.orgDocsUpload.statusLabel")).Append(d.Status ?? "uploaded").Append(')');
             if (!string.IsNullOrWhiteSpace(data?.Visibility))
             {
-                sb.Append(" 공개범위=").Append(data!.Visibility);
+                sb.Append(L10n.Get("tools.orgDocsUpload.visibilityLabel")).Append(data!.Visibility);
             }
 
             sb.AppendLine();
@@ -320,21 +317,20 @@ public sealed class OrgDocsUploadTool : ITool
 
         foreach (var s in skipped)
         {
-            sb.Append("  건너뜀: ").Append(s.Filename).Append(" — ").Append(s.Reason).AppendLine();
+            sb.AppendLine(L10n.Get("tools.orgDocsUpload.skippedLine", s.Filename, s.Reason));
         }
 
         foreach (var (p, size) in oversized)
         {
-            sb.Append("  건너뜀: ").Append(RelativeTo(context, p)).Append(" — 100MB 초과 (")
-              .Append(FormatSize(size)).Append(')').AppendLine();
+            sb.AppendLine(L10n.Get("tools.orgDocsUpload.skippedOversizeLine", RelativeTo(context, p), FormatSize(size)));
         }
 
         if (notFound.Count > 0)
         {
-            sb.Append("  없음: ").Append(string.Join(", ", notFound)).AppendLine();
+            sb.AppendLine(L10n.Get("tools.orgDocsUpload.notFoundLine", string.Join(", ", notFound)));
         }
 
-        sb.Append("문서함 임베딩은 서버가 비동기 처리합니다(검색 반영까지 잠시 소요). OrgDocsList 로 상태 확인.");
+        sb.Append(L10n.Get("tools.orgDocsUpload.asyncNote"));
         return sb.ToString();
     }
 

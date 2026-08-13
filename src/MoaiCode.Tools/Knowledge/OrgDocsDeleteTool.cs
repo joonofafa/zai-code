@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Web;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Knowledge;
 
@@ -20,7 +21,7 @@ public sealed class OrgDocsDeleteTool : ITool
     public string Name => "OrgDocsDelete";
 
     public string Description => """
-        Permanently deletes a document from the organization's knowledge base (조직 문서함): removes the file, its chunks and
+        Permanently deletes a document from the organization's knowledge base: removes the file, its chunks and
         vectors. Irreversible write action — asks for confirmation. Requires the documentId (from
         OrgDocsList). orgId is optional: if omitted it is auto-resolved from your login (used automatically
         when you belong to exactly one organization; if several, you'll be asked to pick — see OrgList).
@@ -56,7 +57,7 @@ public sealed class OrgDocsDeleteTool : ITool
         var inp = input.Deserialize<Input>();
         if (inp is null || string.IsNullOrWhiteSpace(inp.DocumentId))
         {
-            yield return new ToolOutput("OrgDocsDelete: 'documentId' 가 필요합니다.", IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.orgDocsDelete.documentIdRequired"), IsError: true);
             yield break;
         }
 
@@ -65,7 +66,7 @@ public sealed class OrgDocsDeleteTool : ITool
         if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(key))
         {
             yield return new ToolOutput(
-                "OrgDocsDelete: open-moai 연결 정보가 없습니다. `moai login` 으로 로그인하세요.", IsError: true);
+                L10n.Get("tools.orgDocsDelete.notLoggedIn"), IsError: true);
             yield break;
         }
 
@@ -91,20 +92,19 @@ public sealed class OrgDocsDeleteTool : ITool
         }
         catch (NotFoundException)
         {
-            error = $"OrgDocsDelete: 문서를 찾을 수 없습니다 (id={inp.DocumentId}). 이미 삭제됐거나 접근 불가.";
+            error = L10n.Get("tools.orgDocsDelete.notFound", inp.DocumentId);
         }
         catch (ForbiddenException)
         {
-            error = "OrgDocsDelete: 삭제 권한이 없습니다 — 본인이 업로드한 문서만 삭제할 수 있습니다 " +
-                    "(조직 매니저/관리자 제외). 서버가 소유자를 검증합니다.";
+            error = L10n.Get("tools.orgDocsDelete.forbidden");
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
-            error = $"OrgDocsDelete: {Timeout.TotalSeconds:0}초 타임아웃";
+            error = L10n.Get("tools.orgDocsDelete.timeout", Timeout.TotalSeconds);
         }
         catch (HttpRequestException ex)
         {
-            error = $"OrgDocsDelete: 요청 실패 — {ex.Message}";
+            error = L10n.Get("tools.orgDocsDelete.requestFailed", ex.Message);
         }
 
         if (error is not null)
@@ -114,7 +114,7 @@ public sealed class OrgDocsDeleteTool : ITool
         }
 
         var id = data?.Id.ValueKind is JsonValueKind.Undefined or null ? inp.DocumentId : data!.Id.ToString();
-        yield return new ToolOutput($"OK: 문서 {id} 삭제됨 (벡터·청크 포함).");
+        yield return new ToolOutput(L10n.Get("tools.orgDocsDelete.deleted", id));
     }
 
     private static async Task<DeleteResponse?> CallAsync(string url, string key, CancellationToken ct)
