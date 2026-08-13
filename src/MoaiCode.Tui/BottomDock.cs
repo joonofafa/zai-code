@@ -24,6 +24,14 @@ public sealed class BottomDock
 
     private const int ResizePollMs = 40;   // 키 대기 중 리사이즈 폴링 주기
 
+    // 브레인스토밍 모드: 입력창 배경을 어두운 파랑으로 강조하고 숨쉬듯 펄스(어두운→덜 어두운→어두운).
+    // 40ms 폴에 편승해 프레임마다 음영을 바꿔 입력행만 다시 그린다(별도 스레드 없음).
+    private bool _brainstorm;
+    private int _animTick;
+    private int _animShade = BrainstormPalette[0];
+    private static readonly int[] BrainstormPalette = { 17, 18, 19, 20, 19, 18 }; // 256색 파랑 음영(숨쉬기)
+    private const int AnimTicksPerFrame = 3;   // 40ms*3 ≈ 120ms/프레임
+
     public BottomDock(Func<string> status) => _status = status;
 
     private static int Height()
@@ -105,7 +113,9 @@ public sealed class BottomDock
         // 입력행: 각 행을 clear 후 절대 좌표로 직접 출력(auto-wrap 미사용).
         // '!' 셸 모드면 어두운 빨강 배경 + '❯' 숨김(폭 유지 위해 공백 2칸), 아니면 어두운 회색 배경 + 초록 '❯'.
         var shell = _shell;
-        var bg = shell ? LineEditor.ShellBg : LineEditor.InputBg;
+        var bg = shell ? LineEditor.ShellBg
+               : _brainstorm ? $"\x1b[48;5;{_animShade}m"   // 브레인스토밍: 펄스하는 어두운 파랑
+               : LineEditor.InputBg;
         for (var i = 0; i < inputRows; i++)
         {
             sb.Append($"\x1b[{inputRow0 + i};1H\x1b[2K");
@@ -178,10 +188,14 @@ public sealed class BottomDock
     public string? ReadLine(
         IReadOnlyList<string> history,
         IReadOnlyList<string> slashCommands,
-        Func<string>? cycleMode)
+        Func<string>? cycleMode,
+        bool brainstorm = false)
     {
         _slash = slashCommands;
         _shell = false;
+        _brainstorm = brainstorm;
+        _animTick = 0;
+        _animShade = BrainstormPalette[0];
         var buf = new StringBuilder();
         var pos = 0;
         var histIdx = history.Count;
@@ -347,6 +361,17 @@ public sealed class BottomDock
                 _lastW = w;
                 _lastH = h;
                 OnResize(buf, pos);
+            }
+            else if (_brainstorm)
+            {
+                // 브레인스토밍 펄스: 프레임이 바뀌는 순간에만 입력행을 다시 그린다(음영 변경).
+                _animTick++;
+                var shade = BrainstormPalette[(_animTick / AnimTicksPerFrame) % BrainstormPalette.Length];
+                if (shade != _animShade)
+                {
+                    _animShade = shade;
+                    Draw(buf, pos);
+                }
             }
 
             Thread.Sleep(ResizePollMs);

@@ -54,11 +54,26 @@ public static class LineEditor
         return "\x1b[48;5;52m";
     }
 
+    // 브레인스토밍 모드 입력 라인 배경 — 어두운 파랑(256색 18 ≈ #000087). (BottomDock 은 펄스 애니메이션,
+    // 이 폴백 에디터는 정적 파랑.) MOAI_BRAINSTORM_BG 로 256색 조정 가능.
+    internal static readonly string BrainstormBg = ResolveBrainstormBg();
+
+    private static string ResolveBrainstormBg()
+    {
+        var env = Environment.GetEnvironmentVariable("MOAI_BRAINSTORM_BG");
+        if (int.TryParse(env, out var n) && n is >= 0 and <= 255)
+        {
+            return $"\x1b[48;5;{n}m";
+        }
+        return "\x1b[48;5;18m";
+    }
+
     public static string? ReadLine(
         IReadOnlyList<string> history,
         IReadOnlyList<string> slashCommands,
         Func<string>? cycleMode = null,
-        Func<string>? statusLine = null)
+        Func<string>? statusLine = null,
+        bool brainstorm = false)
     {
         if (Console.IsInputRedirected)
         {
@@ -78,7 +93,7 @@ public static class LineEditor
         var pos = 0;
         var histIdx = history.Count;
         var savedCurrent = "";
-        var r = new PromptRenderer(hasStatus, slashCommands);
+        var r = new PromptRenderer(hasStatus, slashCommands, brainstorm);
         r.Refresh(buf, pos);
 
         // 붙여넣기를 ESC[200~ … ESC[201~ 로 감싸 받는다 → 붙여넣은 개행이 Enter 로 오인되지 않는다.
@@ -253,13 +268,15 @@ public static class LineEditor
     {
         private readonly bool _hasStatus;
         private readonly IReadOnlyList<string> _slash;
+        private readonly bool _brainstorm;   // 브레인스토밍 모드: 입력 라인 배경 파랑
         private int _oldRows = 1;   // 직전 렌더가 차지한 물리 행 수(>=1)
         private int _oldOff;        // 직전 렌더에서 커서가 있던 표시폭 오프셋(프롬프트 시작 기준 버퍼 내)
 
-        public PromptRenderer(bool hasStatus, IReadOnlyList<string> slash)
+        public PromptRenderer(bool hasStatus, IReadOnlyList<string> slash, bool brainstorm)
         {
             _hasStatus = hasStatus;
             _slash = slash;
+            _brainstorm = brainstorm;
         }
 
         private static int Cols()
@@ -314,7 +331,7 @@ public static class LineEditor
             var shell = buf.Length > 0 && buf[0] == '!';   // '!' 셸 모드: 어두운 빨강 배경 + '❯' 숨김
             if (InputBg.Length > 0)
             {
-                sb.Append(shell ? ShellBg : InputBg);      // 배경 on (셸 모드면 빨강)
+                sb.Append(shell ? ShellBg : _brainstorm ? BrainstormBg : InputBg); // 배경 on (셸=빨강, 브레인스토밍=파랑)
                 if (shell)
                 {
                     sb.Append("  ");                       // '❯' 제거 — 폭 유지 위해 공백 2칸(wrap 계산 불변)

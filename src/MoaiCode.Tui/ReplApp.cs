@@ -115,13 +115,14 @@ public sealed class ReplApp
             {
                 // 하단 고정: 상태줄+입력창은 화면 맨 아래, 출력은 위 영역에서 스크롤.
                 input = _dock.ReadLine(_history, _slashNames,
-                    () => { CycleMode(); return BuildStatusLine(); });
+                    () => { CycleMode(); return BuildStatusLine(); },
+                    _ctx.State.Brainstorming);
             }
             else if (_useRawEditor)
             {
                 Func<string> cycle = () => { CycleMode(); return BuildStatusLine(); };
                 // 상태줄을 프롬프트 위에 출력하는 단순 모드 (wrap 중복 없음).
-                input = LineEditor.ReadLine(_history, _slashNames, cycle, BuildStatusLine);
+                input = LineEditor.ReadLine(_history, _slashNames, cycle, BuildStatusLine, _ctx.State.Brainstorming);
             }
             else
             {
