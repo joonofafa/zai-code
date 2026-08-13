@@ -49,11 +49,6 @@ public static class AppBootstrap
         ResolveCredentials();
 
         var model = ProviderFactory.CreateDefault(out var providerDesc);
-        if (verbose)
-        {
-            Console.WriteLine("Provider: BCCard AI Department");
-            Console.WriteLine($"Version: {Banner.VersionString()}");
-        }
 
         var toolList = new List<ITool>(ToolRegistry.BuiltIn) { new BashTool() };
 

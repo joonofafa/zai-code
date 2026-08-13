@@ -71,6 +71,13 @@ public static class Banner
     private static int Lerp(int a, int b, double t) => (int)Math.Round(a + (b - a) * t);
 
     /// <summary>버전 + 바이너리 빌드시각 (구버전 실행 여부를 한눈에 판별).</summary>
+    /// <summary>빌드 정보 없이 버전 번호만 (예: "0.9.7"). 배너 타이틀 표기용.</summary>
+    public static string Version()
+    {
+        var v = Assembly.GetEntryAssembly()?.GetName().Version;
+        return v is null ? "?" : $"{v.Major}.{v.Minor}.{v.Build}";
+    }
+
     public static string VersionString()
     {
         var v = Assembly.GetEntryAssembly()?.GetName().Version;
