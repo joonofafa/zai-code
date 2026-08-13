@@ -76,7 +76,7 @@ public sealed class BottomDock
 
         // 인라인 자동완성(ghost): 입력이 한 줄이고 커서가 끝이며 프롬프트+버퍼+ghost 가 폭에 들어갈 때만
         // 첫 행 버퍼 뒤에 연한 글자로 덧그린다(예약 행수·wrap 계산은 버퍼 기준 그대로 — 레이아웃 안정).
-        var ghost = LineEditor.GhostSuffix(buf.ToString(), _slash);
+        var ghost = LineEditor.EffectiveGhost(buf, _slash);
         var blen = LineEditor.DisplayWidth(buf.ToString());
         var showGhost = !_shell && ghost.Length > 0 && pos == buf.Length && inputRows == 1
                         && plen + blen + LineEditor.DisplayWidth(ghost) <= w;
@@ -296,7 +296,7 @@ public sealed class BottomDock
                         }
                         break;
                     }
-                    if (TryComplete(buf, ref pos, slashCommands))
+                    if (LineEditor.TryAcceptSeed(buf, ref pos) || TryComplete(buf, ref pos, slashCommands))
                     {
                         Draw(buf, pos);
                     }

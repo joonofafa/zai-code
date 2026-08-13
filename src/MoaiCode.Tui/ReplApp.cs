@@ -25,6 +25,24 @@ public sealed class ReplApp
     private readonly string _sessionId;
     private CancellationTokenSource? _activeTurnCts;
     private bool _producedOutputInTurn;   // 이번 턴에 화면에 뭔가 렌더됐는지(빈 응답 감지)
+    private string? _brainstormSuggestion; // 브레인스토밍: AI가 이번 턴에 남긴 답변 제안(다음 입력 ghost)
+
+    // 브레인스토밍 답변 제안 마커. AI 가 질문 뒤 마지막에 "[[SUGGEST]] <추천답>" 으로 남긴다.
+    private const string SuggestMarker = "[[SUGGEST]]";
+
+    // 표시 텍스트에서 제안 마커를 떼어내고 제안을 돌려준다(마커는 화면에 보이지 않게).
+    private static (string Clean, string? Suggest) ExtractSuggest(string text)
+    {
+        var i = text.LastIndexOf(SuggestMarker, StringComparison.Ordinal);
+        if (i < 0)
+        {
+            return (text, null);
+        }
+
+        var suggest = text[(i + SuggestMarker.Length)..].Trim().Trim('`', '"', '\'').Trim();
+        var clean = text[..i].TrimEnd();
+        return (clean, suggest.Length > 0 ? suggest : null);
+    }
 
     // 타입어헤드: 턴 처리 중 친 입력을 모아 턴 종료 후 순차 제출. MOAI_TYPEAHEAD=0/false/off 로 끔(기본 on).
     private readonly TurnInputQueue _turnInput = new();
@@ -111,6 +129,9 @@ public sealed class ReplApp
         while (!quit && !ct.IsCancellationRequested)
         {
             string? input;
+            // 브레인스토밍: 이번 입력에 AI 추천 답을 희미한 ghost 로 띄운다(Tab 채택, 타이핑 시 사라짐).
+            LineEditor.SeedGhost = _ctx.State.Brainstorming ? _brainstormSuggestion : null;
+
             if (_dock is not null)
             {
                 // 하단 고정: 상태줄+입력창은 화면 맨 아래, 출력은 위 영역에서 스크롤.
@@ -426,6 +447,7 @@ public sealed class ReplApp
         // 브레인스토밍: 이 턴을 카운트하고, 한도에 도달하면 이번 턴에 플랜을 강제 마무리한다.
         if (_ctx.State.Brainstorming)
         {
+            _brainstormSuggestion = null;   // 이번 턴의 새 제안으로 교체될 때까지 초기화
             _ctx.State.BrainstormTurnsLeft--;
             // 한도 도달이면 플랜 마무리, 아니면 '이번 턴 질문 하나' 넛지(컴팩션 후에도 규칙 유지).
             _ctx.Engine.AddSystemReminder(_ctx.State.BrainstormTurnsLeft <= 0
@@ -544,6 +566,7 @@ public sealed class ReplApp
             if (planCreated || _ctx.State.BrainstormTurnsLeft <= 0)
             {
                 BrainstormCommand.End(_ctx);
+                _brainstormSuggestion = null;
                 AnsiConsole.WriteLine();
                 AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(L10n.Get("slash.brainstorm.planReady"))}[/]");
             }
@@ -812,6 +835,11 @@ public sealed class ReplApp
             }
 
             var cleanText = ThinkFilter.Strip(sb.ToString());
+            if (_ctx.State.Brainstorming)
+            {
+                (cleanText, var suggest) = ExtractSuggest(cleanText);
+                if (suggest is not null) _brainstormSuggestion = suggest;
+            }
             if (!string.IsNullOrWhiteSpace(cleanText))
             {
                 _producedOutputInTurn = true;
@@ -877,6 +905,11 @@ public sealed class ReplApp
 
         // 추론(<think>...</think>)을 제거하고, 실제 내용이 있을 때만 마크다운 패널을 렌더한다.
         var finalText = ThinkFilter.Strip(sb.ToString());
+        if (_ctx.State.Brainstorming)
+        {
+            (finalText, var suggest) = ExtractSuggest(finalText);
+            if (suggest is not null) _brainstormSuggestion = suggest;
+        }
         if (!string.IsNullOrWhiteSpace(finalText))
         {
             _producedOutputInTurn = true;

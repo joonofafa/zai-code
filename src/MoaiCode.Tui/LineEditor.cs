@@ -68,6 +68,28 @@ public static class LineEditor
         return "\x1b[48;5;18m";
     }
 
+    // 브레인스토밍 답변 제안(ghost 기본값): 버퍼가 비어 있을 때 AI 추천 답을 희미하게 보여주고
+    // Tab 으로 통째로 채택한다. ReplApp 이 매 입력 전 설정(브레인스토밍이 아니거나 제안이 없으면 null).
+    // 입력 위젯은 한 번에 하나만 활성이므로 static 으로 두 에디터(LineEditor/BottomDock)가 공유해도 안전.
+    internal static string? SeedGhost;
+
+    // 현재 표시할 ghost: 버퍼가 비어 있고 SeedGhost 가 있으면 그 제안, 아니면 슬래시 자동완성.
+    internal static string EffectiveGhost(StringBuilder buf, IReadOnlyList<string> slash)
+        => buf.Length == 0 && !string.IsNullOrEmpty(SeedGhost) ? SeedGhost! : GhostSuffix(buf.ToString(), slash);
+
+    // 빈 버퍼에서 Tab: SeedGhost(브레인스토밍 제안)를 통째로 채운다. 채웠으면 true.
+    internal static bool TryAcceptSeed(StringBuilder buf, ref int pos)
+    {
+        if (buf.Length == 0 && !string.IsNullOrEmpty(SeedGhost))
+        {
+            buf.Append(SeedGhost);
+            pos = buf.Length;
+            return true;
+        }
+
+        return false;
+    }
+
     public static string? ReadLine(
         IReadOnlyList<string> history,
         IReadOnlyList<string> slashCommands,
@@ -189,7 +211,7 @@ public static class LineEditor
                         r.Finish();
                         return CycleModeSignal;
                     }
-                    if (TryComplete(buf, ref pos, slashCommands))
+                    if (TryAcceptSeed(buf, ref pos) || TryComplete(buf, ref pos, slashCommands))
                     {
                         r.Refresh(buf, pos);
                     }
@@ -297,7 +319,7 @@ public static class LineEditor
 
             // 인라인 자동완성(ghost): 커서가 버퍼 끝이고 프롬프트+버퍼+ghost 가 한 줄에 들어갈 때만
             // 버퍼 뒤에 연한 글자로 덧그린다(줄바꿈/커서 계산은 버퍼 기준 그대로 — 리스크 격리).
-            var ghost = GhostSuffix(buf.ToString(), _slash);
+            var ghost = EffectiveGhost(buf, _slash);
             var showGhost = ghost.Length > 0 && pos == buf.Length && total + DisplayWidth(ghost) <= cols;
 
             var rows = RowCount(total, cols);

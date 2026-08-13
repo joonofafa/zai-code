@@ -68,15 +68,20 @@ public static class Reminders
         "questions in one message, and never ask the user to answer multiple things at once — exactly one " +
         "question per turn so they can answer each individually. Adapt each question to the previous answer. " +
         "Draw from areas like goals, target users, scope boundaries, constraints, data/inputs, edge cases, " +
-        "tech choices, and success criteria. Keep it conversational and concise. Do NOT dump a full plan " +
+        "tech choices, and success criteria. Keep it conversational and concise. After each question, on a " +
+        "NEW final line, give your single best recommended answer as: [[SUGGEST]] <concise answer> (one line, " +
+        "no markdown) — it becomes a faint default the user can accept with Tab. Do NOT dump a full plan " +
         "early. When the requirements are concrete enough, synthesize ONE actionable, phased implementation " +
         "plan by calling the PlanCreate tool (phases with tasks; tag task difficulty), then briefly summarize " +
         "it and stop — do not begin implementing.";
 
-    // 매 브레인스토밍 턴 짧은 넛지(컴팩션 후에도 '한 번에 하나' 규칙 유지)
+    // 매 브레인스토밍 턴 짧은 넛지(컴팩션 후에도 '한 번에 하나' + 제안 마커 규칙 유지)
     public const string BrainstormOneQuestion =
         "Brainstorming: ask exactly ONE clarifying question this turn, then stop and wait for the user's " +
-        "answer. Do not bundle multiple questions or use a numbered list.";
+        "answer. Do not bundle multiple questions or use a numbered list. After the question, on a NEW " +
+        "final line, give your single best recommended answer in exactly this form: [[SUGGEST]] <answer>. " +
+        "It becomes a faint, editable default the user can accept with Tab, so keep it short — a word or " +
+        "brief phrase on one line (no markdown, no quotes).";
 
     // 브레인스토밍 턴 한도 도달 → 즉시 플랜 마무리
     public const string BrainstormFinalize =
