@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
+using MoaiCode.Config;
 using MoaiCode.Core.Agent;
 using MoaiCode.Localization;
 
@@ -30,6 +31,7 @@ public sealed class EngineAgentBackend : IAgentBackend
         string prompt, [EnumeratorCancellation] CancellationToken ct)
     {
         var run = new StringBuilder();
+        MoaiLog.Info($"gui: send start (promptChars={prompt.Length})");
 
         await foreach (var ev in _engine.SubmitAsync(prompt, ct))
         {
@@ -49,6 +51,7 @@ public sealed class EngineAgentBackend : IAgentBackend
                     yield return new ActivityDone(FriendlyDone(x.ToolName, x.IsError));
                     if (!x.IsError && TryDocument(x.ToolName, x.Output, out var doc))
                     {
+                        MoaiLog.Info($"gui: document card from {x.ToolName}");
                         yield return doc!;
                     }
 

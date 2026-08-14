@@ -355,6 +355,8 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
+        MoaiCode.Config.MoaiLog.Info($"gui: open office session (app={doc.App})");
+
         // 재연결: 이 문서(MoaiDocId 정확 일치)에 연결된 기존 대화가 있으면 이어간다(1:1).
         // 없으면 새 대화. MoaiDocId 는 우리가 생성한 문서에만 있어, 기존 외부 문서는 항상 새 대화.
         var docId = doc.Path is { Length: > 0 } p ? OfficeDocId.Read(p) : null;
@@ -492,6 +494,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         // 생성 문서의 MoaiDocId 를 세션에 연결(같은 문서 = 같은 대화 매칭 기반).
         _sessionDocId = OfficeDocId.Read(item.Path);
+        MoaiCode.Config.MoaiLog.Info($"gui: open generated doc (ext={System.IO.Path.GetExtension(item.Path)})");
 
         try
         {
@@ -1093,6 +1096,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void StartFreshSession()
     {
+        MoaiCode.Config.MoaiLog.Info("gui: new session");
         SaveCurrent();
         _sessionId = NewSessionId();
         _sessionKind = "chat";

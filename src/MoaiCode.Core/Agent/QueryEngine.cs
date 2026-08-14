@@ -261,6 +261,7 @@ public sealed class QueryEngine
             // 모델 스트림을 '시작'할 때 컨텍스트 초과(400)면 응급 컴팩션 후 재시도한다.
             // iterator 메서드는 try/catch 안에서 yield 할 수 없으므로, 예외가 나는 지점(첫 MoveNext)만
             // try로 감싸고 — 컨텍스트 초과 400은 토큰이 흘러나오기 전에 즉시 떨어진다 — 소비는 그 밖에서 한다.
+            _log($"model request: turn={turn} msgs={_messages.Count} tools={_tools.Count}");
             var stream = _model.StreamAsync(_messages, _tools, ct).GetAsyncEnumerator(ct);
             var hasNext = false;
             for (var attempt = 0; ; attempt++)
@@ -282,8 +283,10 @@ public sealed class QueryEngine
                 }
 
                 await stream.DisposeAsync().ConfigureAwait(false);
+                _log($"stream-start context overflow -> force-compact (attempt={attempt})");
                 if (!await ForceCompactAsync(ct).ConfigureAwait(false))
                 {
+                    _log("force-compact could not reduce further -> surfacing overflow error");
                     throw (Exception)overflow; // 더 줄일 게 없으면 원래 오류를 사용자에게 노출
                 }
 
@@ -299,6 +302,11 @@ public sealed class QueryEngine
                     switch (ev)
                     {
                         case TextDelta d:
+                            if (assistantText.Length == 0)
+                            {
+                                _log($"model streaming: first token (turn={turn})");
+                            }
+
                             assistantText.Append(d.Text);
                             yield return ev;
                             break;
@@ -309,6 +317,7 @@ public sealed class QueryEngine
                         case TurnCompleted c:
                             stopReason = c.StopReason;
                             lastUsage = c.Usage;
+                            _log($"model response: stop={c.StopReason} inTok={c.Usage.InputTokens} outTok={c.Usage.OutputTokens} cacheRd={c.Usage.CacheReadTokens} textChars={assistantText.Length} toolCalls={toolCalls.Count}");
                             break;
                     }
 
@@ -336,6 +345,7 @@ public sealed class QueryEngine
 
                         streamRetries++;
                         retried = true;
+                        _log($"stream transient drop -> retry {streamRetries}/{MaxStreamRetries} (turn={turn})");
                         await stream.DisposeAsync().ConfigureAwait(false);
                         // 이미 흘려보낸 부분 응답을 폐기(중복/불완전 tool_call 방지) 후 새 스트림으로 재요청.
                         assistantText.Clear();
@@ -453,6 +463,7 @@ public sealed class QueryEngine
                 if (tool is null)
                 {
                     var msg = $"Unknown tool: {call.Name}";
+                    _log($"tool unknown: {call.Name}");
                     _messages.Add(new ToolResultMessage(call.Id, msg, true));
                     yield return new ToolExecuted(call.Name, call.Id, msg, true);
                     continue;
@@ -460,6 +471,7 @@ public sealed class QueryEngine
 
                 if (!tool.IsReadOnly && !await _gate.AllowAsync(tool, call, ct).ConfigureAwait(false))
                 {
+                    _log($"permission denied: {call.Name}");
                     _messages.Add(new ToolResultMessage(call.Id, Reminders.PermissionDenied, true));
                     yield return new ToolExecuted(call.Name, call.Id, Reminders.PermissionDenied, true);
                     continue;
