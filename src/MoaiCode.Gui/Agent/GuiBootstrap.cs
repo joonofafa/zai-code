@@ -61,7 +61,8 @@ public static class GuiBootstrap
                 model, tools, gate, observer: null,
                 maxTurns: settings.MaxTurns,
                 workingDirectory: workspace,
-                contextWindowTokens: settings.ContextWindowTokens);
+                contextWindowTokens: settings.ContextWindowTokens,
+                log: MoaiLog.Info);   // 턴/툴/한도 등 AI 동작 진단 로그(파일 + UDP 트레이스). CLI 와 동일.
             engine.Seed(new Message[]
             {
                 new SystemMessage(SystemPromptBuilder.Build(BuildPromptContext(workspace, settings, tools))),
