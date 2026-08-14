@@ -665,6 +665,9 @@ public sealed class PptxCreateTool : ITool
             runProps.AppendChild(new D.LatinFont { Typeface = fontName });
         }
 
+        // 한글(East Asian): 런이 명시적 Latin 폰트를 가지면 테마 EA 폰트로 폴백되지 않으므로 런에 직접 지정.
+        runProps.AppendChild(new D.EastAsianFont { Typeface = "Malgun Gothic" });
+
         var para = new D.Paragraph(new D.ParagraphProperties(new D.NoBullet()) { Alignment = align });
         para.AppendChild(new D.Run(runProps, new D.Text(text)));
         return para;
@@ -687,6 +690,9 @@ public sealed class PptxCreateTool : ITool
         {
             runProps.AppendChild(new D.LatinFont { Typeface = fontName });
         }
+
+        // 한글(East Asian): 런이 명시적 Latin 폰트를 가지면 테마 EA 폰트로 폴백되지 않으므로 런에 직접 지정.
+        runProps.AppendChild(new D.EastAsianFont { Typeface = "Malgun Gothic" });
 
         var para = new D.Paragraph(new D.ParagraphProperties(new D.NoBullet()) { Alignment = D.TextAlignmentTypeValues.Center });
         para.AppendChild(new D.Run(runProps, new D.Text(text)));
@@ -914,6 +920,9 @@ public sealed class PptxCreateTool : ITool
         {
             runProps.AppendChild(new D.LatinFont { Typeface = fontName });
         }
+
+        // 한글(East Asian): 런이 명시적 Latin 폰트를 가지면 테마 EA 폰트로 폴백되지 않으므로 런에 직접 지정.
+        runProps.AppendChild(new D.EastAsianFont { Typeface = "Malgun Gothic" });
 
         var para = new D.Paragraph();
         // 본문 불릿: 줄간격 여유(120%)로 매달린 줄·과밀 완화. 불릿이 적을수록 spaceBefore(문단 앞 여백)를

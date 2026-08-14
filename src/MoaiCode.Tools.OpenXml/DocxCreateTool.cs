@@ -411,6 +411,9 @@ public sealed class DocxCreateTool : ITool
             }
 
             var rp = new RunProperties();
+            // 폰트를 런에 직접 지정(DocDefaults 와 별개로 확실히 적용): Latin=Arial, 한글 EA=Malgun Gothic.
+            // rPr 자식 순서상 rFonts 는 맨 앞에 온다.
+            rp.AppendChild(new RunFonts { Ascii = "Arial", HighAnsi = "Arial", EastAsia = "Malgun Gothic", ComplexScript = "Arial" });
             if (bold || segBold)
             {
                 rp.AppendChild(new Bold());
