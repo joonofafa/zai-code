@@ -1002,7 +1002,9 @@ public sealed class PptxCreateTool : ITool
         // 행 높이가 기본보다 작아지면 폰트도 같은 비율로 축소(하한 있음).
         var fontScale = (double)rowH / RowHeight;
 
-        var table = new D.Table(new D.TableProperties { FirstRow = true });
+        // No Style, No Grid 스타일 — 기본 격자선(스프레드시트 느낌)을 없애고, 밴딩·여백으로 깔끔하게.
+        var table = new D.Table(
+            new D.TableProperties(new D.TableStyleId("{2D5ABB26-0587-4C30-8999-92F81FD0307C}")) { FirstRow = true });
         var grid = new D.TableGrid();
         for (var c = 0; c < ncols; c++)
         {
@@ -1013,12 +1015,12 @@ public sealed class PptxCreateTool : ITool
 
         if (headers.Count > 0)
         {
-            table.AppendChild(BuildRow(headers, ncols, header: true, accent, rowH, fontScale));
+            table.AppendChild(BuildRow(headers, ncols, header: true, accent, rowH, fontScale, 0));
         }
 
-        foreach (var r in rows)
+        for (var ri = 0; ri < rows.Count; ri++)
         {
-            table.AppendChild(BuildRow(r, ncols, header: false, accent, rowH, fontScale));
+            table.AppendChild(BuildRow(rows[ri], ncols, header: false, accent, rowH, fontScale, ri));
         }
 
         var totalH = rowH * nrows;
@@ -1034,18 +1036,18 @@ public sealed class PptxCreateTool : ITool
             }));
     }
 
-    private static D.TableRow BuildRow(List<string> cells, int ncols, bool header, string accent, long rowH, double fontScale)
+    private static D.TableRow BuildRow(List<string> cells, int ncols, bool header, string accent, long rowH, double fontScale, int rowIndex)
     {
         var tr = new D.TableRow { Height = rowH };
         for (var c = 0; c < ncols; c++)
         {
-            tr.AppendChild(BuildCell(c < cells.Count ? cells[c] : string.Empty, header, accent, fontScale));
+            tr.AppendChild(BuildCell(c < cells.Count ? cells[c] : string.Empty, header, accent, fontScale, rowIndex));
         }
 
         return tr;
     }
 
-    private static D.TableCell BuildCell(string text, bool header, string accent, double fontScale)
+    private static D.TableCell BuildCell(string text, bool header, string accent, double fontScale, int rowIndex)
     {
         var baseSize = header ? 1600 : 1400;
         var size = Math.Max(900, (int)(baseSize * fontScale)); // 축소 시 하한 9pt
@@ -1061,11 +1063,24 @@ public sealed class PptxCreateTool : ITool
             new D.ListStyle(),
             new D.Paragraph(new D.ParagraphProperties(new D.NoBullet()), new D.Run(runProps, new D.Text(text))));
 
-        var cellProps = new D.TableCellProperties();
-        if (header)
+        // 여백(패딩)으로 숨통 + 세로 중앙 정렬.
+        var cellProps = new D.TableCellProperties
         {
-            cellProps.AppendChild(new D.SolidFill(new D.RgbColorModelHex { Val = accent }));
-        }
+            LeftMargin = 128016,
+            RightMargin = 128016,
+            TopMargin = 54000,
+            BottomMargin = 54000,
+            Anchor = D.TextAnchoringTypeValues.Center,
+        };
+        // 세로선·상단선 제거(NoFill), 가로 구분선만(본문 하단 light). 격자 대신 헤더강조+가로줄로 깔끔하게.
+        // tcPr 자식 순서(스키마): lnL → lnR → lnT → lnB → fill.
+        cellProps.AppendChild(new D.LeftBorder(new D.Outline(new D.NoFill())));
+        cellProps.AppendChild(new D.RightBorder(new D.Outline(new D.NoFill())));
+        cellProps.AppendChild(new D.TopBorder(new D.Outline(new D.NoFill())));
+        cellProps.AppendChild(new D.BottomBorder(header
+            ? new D.Outline(new D.NoFill())
+            : new D.Outline(new D.SolidFill(new D.RgbColorModelHex { Val = "E1E5EA" })) { Width = 6350 }));
+        cellProps.AppendChild(new D.SolidFill(new D.RgbColorModelHex { Val = header ? accent : "FFFFFF" }));
 
         return new D.TableCell(body, cellProps);
     }
