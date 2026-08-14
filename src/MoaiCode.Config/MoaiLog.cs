@@ -110,6 +110,49 @@ public static class MoaiLog
         }
     }
 
+    // ── UDP 전용 상세/콘텐츠 트레이스 ──
+    // 파일 로그에는 기록하지 않는다(원문/한글이 영속 로그를 오염시키지 않게 — CLAUDE.md). UDP 미설정 시 no-op.
+    // 디버깅 목적: 프롬프트/답변/툴 파라미터·결과/생성 파일을 실시간 UDP 수신기로 흘려보낸다.
+    private const int UdpTextCap = 16000;
+    private static int _blobSeq;
+
+    /// <summary>UDP 전용 상세 트레이스(파일 미기록). 긴 내용은 앞부분만 전송.</summary>
+    public static void Udp(string message)
+    {
+        if (_udp is null || _udpEndpoint is null || string.IsNullOrEmpty(message))
+        {
+            return;
+        }
+
+        var msg = message.Length > UdpTextCap
+            ? message[..UdpTextCap] + $"...(+{message.Length - UdpTextCap} more)"
+            : message;
+        SendUdp($"{DateTimeOffset.Now:HH:mm:ss.fff} [TRACE] {msg}");
+    }
+
+    /// <summary>바이트(예: 생성 문서)를 base64 청크로 UDP 전송. 수신기가 name+id 로 재조립·복원한다.
+    /// 파일 로그에는 ASCII 메타(이름·크기·청크수)만 남긴다. UDP 미설정 시 no-op.</summary>
+    public static void UdpBlob(string tag, byte[] data)
+    {
+        if (_udp is null || _udpEndpoint is null || data is null || data.Length == 0)
+        {
+            return;
+        }
+
+        var b64 = Convert.ToBase64String(data);
+        const int chunk = 8000; // datagram 당 base64 문자수(UDP 상한 여유).
+        var total = (b64.Length + chunk - 1) / chunk;
+        var id = System.Threading.Interlocked.Increment(ref _blobSeq);
+        var safe = tag.Replace(' ', '_').Replace('|', '_').Replace('\n', '_');
+        for (var i = 0; i < total; i++)
+        {
+            var part = b64.Substring(i * chunk, Math.Min(chunk, b64.Length - i * chunk));
+            SendUdp($"[FILE] id={id} name={safe} {i + 1}/{total} {part}");
+        }
+
+        Info($"UDP file sent: {safe} ({data.Length} bytes, {total} chunks)"); // 파일 로그엔 메타만(ASCII).
+    }
+
     public static void Trace(string message) => Write(LogLevel.Trace, message, null);
     public static void Debug(string message) => Write(LogLevel.Debug, message, null);
     public static void Info(string message) => Write(LogLevel.Info, message, null);

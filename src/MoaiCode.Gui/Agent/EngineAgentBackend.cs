@@ -32,6 +32,7 @@ public sealed class EngineAgentBackend : IAgentBackend
     {
         var run = new StringBuilder();
         MoaiLog.Info($"gui: send start (promptChars={prompt.Length})");
+        MoaiLog.Udp($"PROMPT ({prompt.Length}) | {prompt}");   // 내용 트레이스(UDP 전용).
 
         await foreach (var ev in _engine.SubmitAsync(prompt, ct))
         {
@@ -43,15 +44,18 @@ public sealed class EngineAgentBackend : IAgentBackend
 
                 case ToolCallRequested t:
                     var pre = Flush(run);
-                    if (pre is not null) { yield return new AssistantDelta(pre); }
+                    if (pre is not null) { MoaiLog.Udp($"ASSISTANT | {pre}"); yield return new AssistantDelta(pre); }
+                    MoaiLog.Udp($"TOOL-IN {t.Block.Name} | {t.Block.Input.GetRawText()}");   // 파라미터 트레이스.
                     yield return new ActivityStarted(FriendlyStart(t.Block.Name));
                     break;
 
                 case ToolExecuted x:
+                    MoaiLog.Udp($"TOOL-OUT {x.ToolName} err={x.IsError} ({x.Output.Length}) | {x.Output}");
                     yield return new ActivityDone(FriendlyDone(x.ToolName, x.IsError));
                     if (!x.IsError && TryDocument(x.ToolName, x.Output, out var doc))
                     {
                         MoaiLog.Info($"gui: document card from {x.ToolName}");
+                        TraceDocumentFile(doc!);   // 생성 문서를 base64 로 UDP 전송(분석용).
                         yield return doc!;
                     }
 
@@ -59,10 +63,27 @@ public sealed class EngineAgentBackend : IAgentBackend
 
                 case TurnCompleted:
                     var post = Flush(run);
-                    if (post is not null) { yield return new AssistantDelta(post); }
+                    if (post is not null) { MoaiLog.Udp($"ASSISTANT | {post}"); yield return new AssistantDelta(post); }
                     yield return new TurnDone();
                     break;
             }
+        }
+    }
+
+    // 생성 문서 파일을 base64 청크로 UDP 트레이스에 실어 보낸다(디버깅 분석용). 실패는 무시.
+    private static void TraceDocumentFile(DocumentProduced doc)
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(doc.Path) && System.IO.File.Exists(doc.Path))
+            {
+                MoaiLog.Udp($"FILE-META name={doc.FileName} kind={doc.Kind} path={doc.Path}");
+                MoaiLog.UdpBlob(doc.FileName, System.IO.File.ReadAllBytes(doc.Path));
+            }
+        }
+        catch
+        {
+            // 파일 전송 실패는 무시(디버그 부가기능).
         }
     }
 
