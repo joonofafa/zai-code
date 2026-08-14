@@ -206,7 +206,8 @@ public sealed class DocxCreateTool : ITool
         AppendPageSetup(main, body);
     }
 
-    // 문서 기본 서식(DocDefaults): Latin=Arial, 한글(EastAsia)=Malgun Gothic, 11pt(22 half-pt).
+    // 문서 기본 서식(DocDefaults): Latin=Arial, 11pt. 한글(EastAsia) 폰트는 여기서 강제하지 않고
+    // 실제 한글이 든 런에만 Malgun Gothic 을 지정한다(비한국어 문서에 한국어 폰트를 넣지 않기 위함).
     private static void ApplyDefaults(MainDocumentPart main)
     {
         var stylePart = main.AddNewPart<StyleDefinitionsPart>();
@@ -214,7 +215,7 @@ public sealed class DocxCreateTool : ITool
             new DocDefaults(
                 new RunPropertiesDefault(
                     new RunPropertiesBaseStyle(
-                        new RunFonts { Ascii = "Arial", HighAnsi = "Arial", EastAsia = "Malgun Gothic", ComplexScript = "Arial" },
+                        new RunFonts { Ascii = "Arial", HighAnsi = "Arial", ComplexScript = "Arial" },
                         new FontSize { Val = "22" },
                         new FontSizeComplexScript { Val = "22" }))));
     }
@@ -380,8 +381,14 @@ public sealed class DocxCreateTool : ITool
     // 캡션: 이탤릭·가운데정렬.
     private static Paragraph Caption(string text)
     {
+        var fonts = new RunFonts { Ascii = FontResolver.LatinFont, HighAnsi = FontResolver.LatinFont, ComplexScript = FontResolver.LatinFont };
+        if (FontResolver.EastAsianFor(text) is { } ea)
+        {
+            fonts.EastAsia = ea;
+        }
+
         var run = new Run();
-        run.AppendChild(new RunProperties(new Italic()));
+        run.AppendChild(new RunProperties(fonts, new Italic()));
         run.AppendChild(new Text(text) { Space = SpaceProcessingModeValues.Preserve });
         return new Paragraph(new ParagraphProperties(new Justification { Val = JustificationValues.Center }), run);
     }
@@ -411,9 +418,15 @@ public sealed class DocxCreateTool : ITool
             }
 
             var rp = new RunProperties();
-            // 폰트를 런에 직접 지정(DocDefaults 와 별개로 확실히 적용): Latin=Arial, 한글 EA=Malgun Gothic.
+            // Latin=Arial 는 항상. 텍스트 스크립트(한/일/중)에 맞는 EA 폰트는 감지 시에만 — 언어별 폰트 매칭.
             // rPr 자식 순서상 rFonts 는 맨 앞에 온다.
-            rp.AppendChild(new RunFonts { Ascii = "Arial", HighAnsi = "Arial", EastAsia = "Malgun Gothic", ComplexScript = "Arial" });
+            var fonts = new RunFonts { Ascii = FontResolver.LatinFont, HighAnsi = FontResolver.LatinFont, ComplexScript = FontResolver.LatinFont };
+            if (FontResolver.EastAsianFor(segment) is { } ea)
+            {
+                fonts.EastAsia = ea;
+            }
+
+            rp.AppendChild(fonts);
             if (bold || segBold)
             {
                 rp.AppendChild(new Bold());

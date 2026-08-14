@@ -665,8 +665,12 @@ public sealed class PptxCreateTool : ITool
             runProps.AppendChild(new D.LatinFont { Typeface = fontName });
         }
 
-        // 한글(East Asian): 런이 명시적 Latin 폰트를 가지면 테마 EA 폰트로 폴백되지 않으므로 런에 직접 지정.
-        runProps.AppendChild(new D.EastAsianFont { Typeface = "Malgun Gothic" });
+        // East Asian(한/일/중): 런이 명시적 Latin 폰트를 가지면 테마 EA 폰트로 폴백되지 않으므로,
+        // 텍스트 스크립트에 맞는 EA 폰트를 감지 시에만 런에 직접 지정(언어별 폰트 매칭·설치 검증).
+        if (FontResolver.EastAsianFor(text) is { } eaFont)
+        {
+            runProps.AppendChild(new D.EastAsianFont { Typeface = eaFont });
+        }
 
         var para = new D.Paragraph(new D.ParagraphProperties(new D.NoBullet()) { Alignment = align });
         para.AppendChild(new D.Run(runProps, new D.Text(text)));
@@ -691,8 +695,12 @@ public sealed class PptxCreateTool : ITool
             runProps.AppendChild(new D.LatinFont { Typeface = fontName });
         }
 
-        // 한글(East Asian): 런이 명시적 Latin 폰트를 가지면 테마 EA 폰트로 폴백되지 않으므로 런에 직접 지정.
-        runProps.AppendChild(new D.EastAsianFont { Typeface = "Malgun Gothic" });
+        // East Asian(한/일/중): 런이 명시적 Latin 폰트를 가지면 테마 EA 폰트로 폴백되지 않으므로,
+        // 텍스트 스크립트에 맞는 EA 폰트를 감지 시에만 런에 직접 지정(언어별 폰트 매칭·설치 검증).
+        if (FontResolver.EastAsianFor(text) is { } eaFont)
+        {
+            runProps.AppendChild(new D.EastAsianFont { Typeface = eaFont });
+        }
 
         var para = new D.Paragraph(new D.ParagraphProperties(new D.NoBullet()) { Alignment = D.TextAlignmentTypeValues.Center });
         para.AppendChild(new D.Run(runProps, new D.Text(text)));
@@ -921,8 +929,12 @@ public sealed class PptxCreateTool : ITool
             runProps.AppendChild(new D.LatinFont { Typeface = fontName });
         }
 
-        // 한글(East Asian): 런이 명시적 Latin 폰트를 가지면 테마 EA 폰트로 폴백되지 않으므로 런에 직접 지정.
-        runProps.AppendChild(new D.EastAsianFont { Typeface = "Malgun Gothic" });
+        // East Asian(한/일/중): 런이 명시적 Latin 폰트를 가지면 테마 EA 폰트로 폴백되지 않으므로,
+        // 텍스트 스크립트에 맞는 EA 폰트를 감지 시에만 런에 직접 지정(언어별 폰트 매칭·설치 검증).
+        if (FontResolver.EastAsianFor(text) is { } eaFont)
+        {
+            runProps.AppendChild(new D.EastAsianFont { Typeface = eaFont });
+        }
 
         var para = new D.Paragraph();
         // 본문 불릿: 줄간격 여유(120%)로 매달린 줄·과밀 완화. 불릿이 적을수록 spaceBefore(문단 앞 여백)를
@@ -1089,8 +1101,8 @@ public sealed class PptxCreateTool : ITool
         // EA(동아시아) 폰트를 명시 — 한글 텍스트가 Windows/PowerPoint 에서 일관되게 렌더되도록.
         // Latin 은 템플릿별 런에서 지정하고, 한글 글리프는 이 EA 폰트를 따른다.
         var fontScheme = new D.FontScheme(
-            new D.MajorFont(new D.LatinFont { Typeface = "Calibri Light" }, new D.EastAsianFont { Typeface = "Malgun Gothic" }, new D.ComplexScriptFont { Typeface = string.Empty }),
-            new D.MinorFont(new D.LatinFont { Typeface = "Calibri" }, new D.EastAsianFont { Typeface = "Malgun Gothic" }, new D.ComplexScriptFont { Typeface = string.Empty }))
+            new D.MajorFont(new D.LatinFont { Typeface = "Calibri Light" }, new D.EastAsianFont { Typeface = string.Empty }, new D.ComplexScriptFont { Typeface = string.Empty }),
+            new D.MinorFont(new D.LatinFont { Typeface = "Calibri" }, new D.EastAsianFont { Typeface = string.Empty }, new D.ComplexScriptFont { Typeface = string.Empty }))
         { Name = "Office" };
 
         var fmtScheme = new D.FormatScheme(
