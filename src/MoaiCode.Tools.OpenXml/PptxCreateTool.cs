@@ -1073,13 +1073,13 @@ public sealed class PptxCreateTool : ITool
             Anchor = D.TextAnchoringTypeValues.Center,
         };
         // 세로선·상단선 제거(NoFill), 가로 구분선만(본문 하단 light). 격자 대신 헤더강조+가로줄로 깔끔하게.
-        // tcPr 자식 순서(스키마): lnL → lnR → lnT → lnB → fill.
-        cellProps.AppendChild(new D.LeftBorder(new D.Outline(new D.NoFill())));
-        cellProps.AppendChild(new D.RightBorder(new D.Outline(new D.NoFill())));
-        cellProps.AppendChild(new D.TopBorder(new D.Outline(new D.NoFill())));
-        cellProps.AppendChild(new D.BottomBorder(header
-            ? new D.Outline(new D.NoFill())
-            : new D.Outline(new D.SolidFill(new D.RgbColorModelHex { Val = "E1E5EA" })) { Width = 6350 }));
+        // tcPr 셀 테두리는 a:lnL/lnR/lnT/lnB (= *BorderLineProperties, CT_LineProperties). 순서: L→R→T→B→fill.
+        cellProps.AppendChild(new D.LeftBorderLineProperties(new D.NoFill()));
+        cellProps.AppendChild(new D.RightBorderLineProperties(new D.NoFill()));
+        cellProps.AppendChild(new D.TopBorderLineProperties(new D.NoFill()));
+        cellProps.AppendChild(header
+            ? new D.BottomBorderLineProperties(new D.NoFill())
+            : new D.BottomBorderLineProperties(new D.SolidFill(new D.RgbColorModelHex { Val = "E1E5EA" })) { Width = 6350 });
         cellProps.AppendChild(new D.SolidFill(new D.RgbColorModelHex { Val = header ? accent : "FFFFFF" }));
 
         return new D.TableCell(body, cellProps);
