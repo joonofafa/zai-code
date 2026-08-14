@@ -27,6 +27,10 @@ public sealed record Settings
     /// <summary>파일 로그 최소 레벨(trace|debug|info|warn|error|fatal|off). 기본 info. ~/.moai/logs/moai.log 로 기록.</summary>
     public string? LogLevel { get; init; }
 
+    /// <summary>UDP 실시간 로그 트레이스 대상 "host" 또는 "host:port"(기본 5599). 디버깅용, 기본 off.
+    /// env MOAI_UDP_LOG 로도 설정 가능. ⚠️ 고객 배포본에서는 켜지 말 것.</summary>
+    public string? UdpLog { get; init; }
+
     /// <summary>로그인 호스트 (예: https://vip.bccard.ai). /usage 표시용.</summary>
     public string? Host { get; init; }
 

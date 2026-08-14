@@ -108,6 +108,7 @@ public static class SettingsLoader
                     ? ParsePermission(GetString(root, "permission", "permissionMode")) ?? baseline.Permission
                     : baseline.Permission,
                 LogLevel = GetString(root, "logLevel", "log_level") ?? baseline.LogLevel,
+                UdpLog = GetString(root, "udpLog", "udp_log") ?? baseline.UdpLog,
                 MaxTurns = GetInt(root, "maxTurns", "max_turns") ?? baseline.MaxTurns,
                 OutputStyle = GetString(root, "outputStyle", "output_style") ?? baseline.OutputStyle,
                 LintCommand = allowAutomation

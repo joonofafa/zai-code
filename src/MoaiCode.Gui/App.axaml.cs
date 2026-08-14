@@ -30,6 +30,9 @@ public partial class App : Application
 
             // 파일 로그 레벨 적용(settings.json의 logLevel, 기본 info) 후 시작 기록.
             MoaiCode.Config.MoaiLog.Configure(startupSettings.LogLevel);
+            // UDP 실시간 로그 트레이스(디버깅용, 기본 off): settings "udpLog" 또는 env MOAI_UDP_LOG.
+            MoaiCode.Config.MoaiLog.ConfigureUdp(
+                startupSettings.UdpLog ?? Environment.GetEnvironmentVariable("MOAI_UDP_LOG"));
             MoaiCode.Config.MoaiLog.Info($"MoAI Desktop started (logLevel={MoaiCode.Config.MoaiLog.MinLevel})");
 
             // 트레이 상주 — 창을 닫아도 프로세스가 종료되지 않는다(백그라운드 폴더 동기화 유지).

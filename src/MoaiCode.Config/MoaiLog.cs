@@ -1,5 +1,8 @@
 using System;
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 
 namespace MoaiCode.Config;
 
@@ -51,6 +54,62 @@ public static class MoaiLog
         }
     }
 
+    // UDP 실시간 로그 트레이스(디버깅용). 각 로그 라인을 지정 호스트:포트로 UDP 전송한다.
+    // 기본 OFF — 설정("udpLog") 또는 env(MOAI_UDP_LOG)로 명시할 때만 켜진다.
+    // ⚠️ 개발/사내 디버깅 전용. 고객 배포본에서는 절대 활성화하지 말 것(LAN 로그 유출).
+    private static UdpClient? _udp;
+    private static IPEndPoint? _udpEndpoint;
+
+    /// <summary>UDP 로그 대상 설정. "host" 또는 "host:port"(기본 포트 5599). null/빈값이면 비활성.</summary>
+    public static void ConfigureUdp(string? target)
+    {
+        _udp = null;
+        _udpEndpoint = null;
+        if (string.IsNullOrWhiteSpace(target))
+        {
+            return;
+        }
+
+        try
+        {
+            var t = target.Trim();
+            var colon = t.LastIndexOf(':');
+            var host = colon > 0 ? t[..colon] : t;
+            var port = colon > 0 && int.TryParse(t[(colon + 1)..], out var p) ? p : 5599;
+            var ip = IPAddress.TryParse(host, out var parsed)
+                ? parsed
+                : Dns.GetHostAddresses(host).FirstOrDefault() ?? throw new InvalidOperationException("host not resolvable");
+            _udpEndpoint = new IPEndPoint(ip, port);
+            _udp = new UdpClient();
+            Info($"UDP log trace enabled -> {host}:{port}");
+        }
+        catch
+        {
+            _udp = null;
+            _udpEndpoint = null; // 설정 실패는 무시(파일 로깅은 계속).
+        }
+    }
+
+    private static void SendUdp(string line)
+    {
+        var udp = _udp;
+        var ep = _udpEndpoint;
+        if (udp is null || ep is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var bytes = Encoding.UTF8.GetBytes(line + "\n");
+            udp.Send(bytes, bytes.Length, ep); // 비연결 fire-and-forget.
+        }
+        catch
+        {
+            // UDP 전송 실패는 앱/로깅에 영향 없음.
+        }
+    }
+
     public static void Trace(string message) => Write(LogLevel.Trace, message, null);
     public static void Debug(string message) => Write(LogLevel.Debug, message, null);
     public static void Info(string message) => Write(LogLevel.Info, message, null);
@@ -84,6 +143,7 @@ public static class MoaiLog
                 }
 
                 File.AppendAllText(FilePath, line + Environment.NewLine);
+                SendUdp(line);
             }
         }
         catch
