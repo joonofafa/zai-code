@@ -900,6 +900,14 @@ public sealed partial class MainViewModel : ObservableObject
                                     pending.RemoveAt(0);
                                     act.Text = d.Text;
                                     act.Done = true;
+
+                                    // 직전 완료 배지와 같은 활동이면 접어서 카운트만 증가(웹 검색 반복 등).
+                                    var idx = Items.IndexOf(act);
+                                    if (idx > 0 && Items[idx - 1] is ActivityItem prev && prev.Done && prev.Text == act.Text)
+                                    {
+                                        prev.Count += 1;
+                                        Items.RemoveAt(idx);
+                                    }
                                 }
                             });
                             break;

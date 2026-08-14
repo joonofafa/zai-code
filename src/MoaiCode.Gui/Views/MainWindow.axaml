@@ -325,7 +325,7 @@
                     </StackPanel>
                     <Ellipse Width="8" Height="8" VerticalAlignment="Center" IsVisible="{Binding Done}"
                              Fill="{Binding Done, Converter={x:Static vm:Converters.DoneToBrush}}" />
-                    <TextBlock Text="{Binding Text}" FontSize="12.5" VerticalAlignment="Center"
+                    <TextBlock Text="{Binding Display}" FontSize="12.5" VerticalAlignment="Center"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
                   </StackPanel>
                 </Border>

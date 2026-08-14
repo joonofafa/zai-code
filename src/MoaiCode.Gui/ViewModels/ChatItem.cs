@@ -27,6 +27,15 @@ public sealed partial class ActivityItem : ChatItem
 {
     [ObservableProperty] private string _text = string.Empty;
     [ObservableProperty] private bool _done;
+
+    // 같은 활동(예: 웹 검색)이 연속 반복되면 배지를 하나로 접고 횟수를 표시("웹 검색 완료 (5)").
+    [ObservableProperty] private int _count = 1;
+
+    public string Display => Count > 1 ? $"{Text} ({Count})" : Text;
+
+    partial void OnTextChanged(string value) => OnPropertyChanged(nameof(Display));
+
+    partial void OnCountChanged(int value) => OnPropertyChanged(nameof(Display));
 }
 
 /// <summary>라이브 편집 전 확인 카드(미리보기 게이트). 사용자가 [적용]/[취소] 를 누르면 Tcs 로 결과 전달.</summary>
