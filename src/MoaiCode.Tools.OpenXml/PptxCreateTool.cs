@@ -227,31 +227,32 @@ public sealed class PptxCreateTool : ITool
         int SubtitlePt,      // 부제 pt
         int BodyPt,          // 본문 pt
         string PanelHex,     // 카드/패널 배경(배경보다 살짝 대비)
-        string FooterHex);   // 푸터(페이지번호·구분선) 무채색
+        string FooterHex,    // 푸터(페이지번호·구분선) 무채색
+        string BorderHex);   // 카드 테두리(얇은 선) — 카드가 '빈 회색 박스'가 아니라 정의된 카드로 보이게
 
-    // A형: 연그레이 배경 + 좌측 accent 바 + 뚜렷한 타이포 계층(큰 제목/중간 부제/본문).
+    // A형: 연그레이 배경 + 네이비 accent + 흰 카드(얇은 테두리).
     private static readonly ThemePreset TemplateA = new(
         Name: "A", BgHex: "F7F8FA", AccentHex: "2F5496", TitleHex: "1F3864",
         SubtitleHex: "44546A", BodyHex: "333333",
         TitleFont: "Calibri Light", BodyFont: "Calibri",
         TitlePt: 30, SubtitlePt: 17, BodyPt: 15,
-        PanelHex: "FFFFFF", FooterHex: "AAB0BC");
+        PanelHex: "FFFFFF", FooterHex: "AAB0BC", BorderHex: "E2E6EC");
 
-    // B형: 흰 배경 + 큰 강조 타이포(키노트풍).
+    // B형: 흰 배경 + 큰 강조 타이포(키노트풍) + 레드 accent.
     private static readonly ThemePreset TemplateB = new(
         Name: "B", BgHex: "FFFFFF", AccentHex: "C00000", TitleHex: "C00000",
         SubtitleHex: "595959", BodyHex: "262626",
         TitleFont: "Arial", BodyFont: "Arial",
         TitlePt: 34, SubtitlePt: 18, BodyPt: 16,
-        PanelHex: "F5F5F5", FooterHex: "B3B3B3");
+        PanelHex: "FCFCFC", FooterHex: "B3B3B3", BorderHex: "EAEAEA");
 
-    // C형: 미니멀(흰 배경·검정 타이포·회색 부제·얇은 무채색 바, 여백 큰).
+    // C형: 미니멀 — 흰 배경 + 흰 카드(얇은 테두리) + 절제된 틸 accent(무채색 탈피). 여백 큰.
     private static readonly ThemePreset TemplateC = new(
-        Name: "C", BgHex: "FFFFFF", AccentHex: "222222", TitleHex: "111111",
-        SubtitleHex: "888888", BodyHex: "333333",
+        Name: "C", BgHex: "FBFBFA", AccentHex: "0E7C86", TitleHex: "14181C",
+        SubtitleHex: "7A828A", BodyHex: "353A40",
         TitleFont: "Calibri Light", BodyFont: "Calibri",
         TitlePt: 30, SubtitlePt: 16, BodyPt: 15,
-        PanelHex: "F6F6F6", FooterHex: "BBBBBB");
+        PanelHex: "FFFFFF", FooterHex: "B4BAC0", BorderHex: "E6E8E6");
 
     // D형: 다크(짙은 남색 배경·밝은 텍스트·시안 강조 포인트).
     private static readonly ThemePreset TemplateD = new(
@@ -259,7 +260,7 @@ public sealed class PptxCreateTool : ITool
         SubtitleHex: "AEB6C7", BodyHex: "E3E8F0",
         TitleFont: "Calibri Light", BodyFont: "Calibri",
         TitlePt: 32, SubtitlePt: 17, BodyPt: 15,
-        PanelHex: "2A3242", FooterHex: "5A6478");
+        PanelHex: "2A3242", FooterHex: "5A6478", BorderHex: "3A445A");
 
     private static ThemePreset ResolveTemplate(string? t) => t?.Trim().ToUpperInvariant() switch
     {
@@ -533,7 +534,7 @@ public sealed class PptxCreateTool : ITool
             {
                 var x = MarginX + i * (colW + gap);
                 // 배경 카드 + 상단 accent 칩 — '떠 있는 텍스트'가 아니라 구조를 가진 카드로 읽히게.
-                tree.AppendChild(Panel(id++, x, bodyTop, colW, cardH, p.PanelHex));
+                tree.AppendChild(Panel(id++, x, bodyTop, colW, cardH, p.PanelHex, p.BorderHex));
                 tree.AppendChild(AccentBar(id++, x + pad, bodyTop + pad, 300000, 46000, p.AccentHex));
 
                 var bullets = cols[i].Bullets ?? new List<string>();
@@ -574,7 +575,7 @@ public sealed class PptxCreateTool : ITool
             else
             {
                 const long pad = 320000;      // 카드 안쪽 여백 ≈ 0.35"
-                tree.AppendChild(Panel(id++, MarginX, bodyTop, ContentW, bodyH, p.PanelHex));
+                tree.AppendChild(Panel(id++, MarginX, bodyTop, ContentW, bodyH, p.PanelHex, p.BorderHex));
                 tree.AppendChild(AccentBar(id++, MarginX + pad, bodyTop + pad, 300000, 46000, p.AccentHex));
                 tree.AppendChild(MakeShape(id++, "Body", MarginX + pad, bodyTop + pad + 130000, ContentW - 2 * pad, bodyH - 2 * pad - 130000, paras));
             }
@@ -766,20 +767,23 @@ public sealed class PptxCreateTool : ITool
     }
 
     // 카드/패널: 살짝 둥근 모서리의 채운 사각형(본문을 담는 배경 카드). 텍스트보다 먼저 그려 뒤에 깔린다.
-    private static P.Shape Panel(uint id, long x, long y, long w, long h, string color)
+    private static P.Shape Panel(uint id, long x, long y, long w, long h, string color, string borderColor)
     {
         var geo = new D.PresetGeometry(
             new D.AdjustValueList(new D.ShapeGuide { Name = "adj", Formula = "val 4200" }))
         { Preset = D.ShapeTypeValues.RoundRectangle };
+        var spPr = new P.ShapeProperties(
+            new D.Transform2D(new D.Offset { X = x, Y = y }, new D.Extents { Cx = w, Cy = h }),
+            geo,
+            new D.SolidFill(new D.RgbColorModelHex { Val = color }));
+        // 얇은 테두리(0.75pt) — 카드가 배경과 구분되어 '정의된 카드'로 보이게. spPr 순서상 ln 은 fill 뒤.
+        spPr.AppendChild(new D.Outline(new D.SolidFill(new D.RgbColorModelHex { Val = borderColor })) { Width = 9525 });
         return new P.Shape(
             new P.NonVisualShapeProperties(
                 new P.NonVisualDrawingProperties { Id = id, Name = "Panel" },
                 new P.NonVisualShapeDrawingProperties(),
                 new P.ApplicationNonVisualDrawingProperties()),
-            new P.ShapeProperties(
-                new D.Transform2D(new D.Offset { X = x, Y = y }, new D.Extents { Cx = w, Cy = h }),
-                geo,
-                new D.SolidFill(new D.RgbColorModelHex { Val = color })),
+            spPr,
             new P.TextBody(new D.BodyProperties(), new D.ListStyle(), new D.Paragraph()));
     }
 
@@ -833,7 +837,7 @@ public sealed class PptxCreateTool : ITool
         for (var i = 0; i < n; i++)
         {
             var x = MarginX + i * (cardW + gap);
-            tree.AppendChild(Panel(id++, x, cy, cardW, cardH, p.PanelHex));
+            tree.AppendChild(Panel(id++, x, cy, cardW, cardH, p.PanelHex, p.BorderHex));
             tree.AppendChild(MakeShape(id++, "Stat", x, cy + 320000, cardW, 900000,
                 new[] { CenteredText(items[i].Value ?? string.Empty, 44, true, p.AccentHex, p.TitleFont) }));
             tree.AppendChild(MakeShape(id++, "StatLabel", x + 180000, cy + 1300000, cardW - 360000, 640000,
@@ -850,14 +854,17 @@ public sealed class PptxCreateTool : ITool
         var rows = (n + cols - 1) / cols;
         const long gap = 300000;
         const long pad = 240000;
+        const long maxCardH = 1950000; // 내용(헤딩+1~2줄) 대비 과도한 카드 높이 방지.
         var cardW = (ContentW - gap * (cols - 1)) / cols;
-        var cardH = (bodyH - gap * (rows - 1)) / rows;
+        var cardH = Math.Min(maxCardH, (bodyH - gap * (rows - 1)) / rows);
+        var gridH = cardH * rows + gap * (rows - 1);
+        var gridTop = bodyTop + Math.Max(0, (bodyH - gridH) / 2); // 그리드를 본문 영역에 세로 중앙.
         for (var i = 0; i < n; i++)
         {
             int r = i / cols, c = i % cols;
             var x = MarginX + c * (cardW + gap);
-            var y = bodyTop + r * (cardH + gap);
-            tree.AppendChild(Panel(id++, x, y, cardW, cardH, p.PanelHex));
+            var y = gridTop + r * (cardH + gap);
+            tree.AppendChild(Panel(id++, x, y, cardW, cardH, p.PanelHex, p.BorderHex));
             tree.AppendChild(AccentBar(id++, x + pad, y + pad, 300000, 46000, p.AccentHex));
             var paras = new List<D.Paragraph>();
             if (!string.IsNullOrWhiteSpace(items[i].Heading))
@@ -892,7 +899,7 @@ public sealed class PptxCreateTool : ITool
         for (var i = 0; i < n; i++)
         {
             var x = MarginX + i * (stepW + gap);
-            tree.AppendChild(Panel(id++, x, cy, stepW, stepH, p.PanelHex));
+            tree.AppendChild(Panel(id++, x, cy, stepW, stepH, p.PanelHex, p.BorderHex));
             tree.AppendChild(Circle(id++, x + (stepW - badge) / 2, cy + 230000, badge, p.AccentHex, (i + 1).ToString(), 22, "FFFFFF"));
             tree.AppendChild(MakeShape(id++, "StepLabel", x + 120000, cy + 230000 + badge + 70000, stepW - 240000, 520000,
                 new[] { CenteredText(items[i].Label ?? string.Empty, p.SubtitlePt, true, p.TitleHex, p.BodyFont) }));
