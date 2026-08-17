@@ -393,6 +393,23 @@ public sealed class QueryEngine
                 continue;
             }
 
+            // 툴 호출을 function-call 이 아니라 본문 텍스트 마크업으로 뱉는 글리치(GLM 계열):
+            //   Bash<arg_key>command</arg_key><arg_value>ls -la …</arg_value></tool_call>
+            // stop=stop 으로 끝나므로 아래 tool_calls 가드(누락/글리치)에 걸리지 않고, 예고문도
+            // 아니라서 announce 넛지에도 안 걸린다. 그대로 두면 툴이 실행되지 않은 채 최종 답변으로
+            // 나가고, 다음 턴에 모델이 '실행한 적 없는 결과'를 지어낸다(실제 사고).
+            // 마크업 텍스트는 히스토리에 남기지 않는다 — 자기 출력을 보고 같은 형식을 반복한다.
+            if (toolCalls.Count == 0
+                && LooksLikeRawToolCallMarkup(cleanText)
+                && toolCallRetries < 2)
+            {
+                toolCallRetries++;
+                _log($"tool call glitch: raw markup as text ({cleanText.Length} chars, stop={stopReason}) " +
+                     $"— discarding and retrying ({toolCallRetries}/2)");
+                _messages.Add(new UserMessage(Reminders.RawToolCallMarkup));
+                continue;
+            }
+
             blocks.AddRange(toolCalls);
             if (blocks.Count > 0)
             {
@@ -1052,6 +1069,15 @@ public sealed class QueryEngine
     private static bool IsNormalStop(string stopReason) =>
         string.Equals(stopReason, "stop", StringComparison.OrdinalIgnoreCase)
         || string.Equals(stopReason, "end_turn", StringComparison.OrdinalIgnoreCase);
+
+    // 툴 호출이 function-call 로 안 오고 본문 텍스트로 새어나온 경우인지.
+    // 여는 <tool_call> 이 잘려나가고 "Bash<arg_key>…" 부터 시작하는 사례가 있어
+    // 각 마커를 독립적으로 본다(하나만 걸려도 글리치로 간주).
+    private static bool LooksLikeRawToolCallMarkup(string text) =>
+        text.Contains("<arg_key>", StringComparison.OrdinalIgnoreCase)
+        || text.Contains("<arg_value>", StringComparison.OrdinalIgnoreCase)
+        || text.Contains("<tool_call>", StringComparison.OrdinalIgnoreCase)
+        || text.Contains("</tool_call>", StringComparison.OrdinalIgnoreCase);
 
     // "말로만 예고하고 멈춘" 응답 추정 — 끝이 한국어 의도형(~겠습니다/할게요)이거나
     // 끝부분에 영어 의도(I'll/Let me/I will) 가 있는 경우. (정밀하게: 텍스트 '끝' 기준)

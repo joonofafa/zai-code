@@ -100,6 +100,15 @@ public static class Reminders
         "already complete, briefly report the result instead.\n" +
         "</system-reminder>";
 
+    // 툴 호출을 function-call 이 아니라 본문 텍스트 마크업으로 뱉었을 때 (GLM 계열 글리치)
+    public const string RawToolCallMarkup =
+        "<system-reminder>\n" +
+        "Your last message contained raw tool-call markup (e.g. <tool_call>, <arg_key>, <arg_value>) " +
+        "as plain text instead of an actual tool call, so nothing was executed. " +
+        "Never write those tags yourself. Make the tool call through the proper tool-calling " +
+        "mechanism now. Do not claim or assume you already saw its output — you did not.\n" +
+        "</system-reminder>";
+
     // 빈 응답/계속 의도만 있을 때 (query.ts continuation nudge)
     public const string ContinuationNudge =
         "<system-reminder>\n" +
