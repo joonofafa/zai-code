@@ -1,6 +1,5 @@
 using MoaiCode.Core.Tools;
 using MoaiCode.Tools.Files;
-using MoaiCode.Tools.Knowledge;
 using MoaiCode.Tools.Media;
 using MoaiCode.Tools.Memory;
 using MoaiCode.Tools.Search;
@@ -23,13 +22,6 @@ public static class ToolRegistry
         new GrepTool(),
         new WebFetchTool(),
         new WebSearchTool(),
-        new OrgDocsTool(),
-        new OrgListTool(),
-        new OrgDocsListTool(),
-        new OrgDocsUploadTool(),
-        new OrgDocsDeleteTool(),
-        new OrgDatasListTool(),
-        new OrgDatasTool(),
         new ImageCreateTool(),
         new ImageFetchTool(),
         new MemoryTool(),

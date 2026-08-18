@@ -3,7 +3,7 @@ using MoaiCode.Localization;
 namespace MoaiCode.Cli;
 
 /// <summary>
-/// Windows 셸 통합(설치/제거): 사용자 PATH 등록 + 탐색기 우클릭 "MoAI Code로 열기".
+/// Windows 셸 통합(설치/제거): 사용자 PATH 등록 + 탐색기 우클릭 "Z.ai Code로 열기".
 /// 전부 HKCU 범위라 관리자 권한이 필요 없다. Windows 11 은 새 우클릭 메뉴를 쓰므로 이 항목은
 /// "추가 옵션 표시"(Shift+F10) 안의 클래식 메뉴에 나타난다(기본 메뉴 노출은 MSIX 패키징 필요).
 /// Windows 외 플랫폼에서는 아무 것도 하지 않고 안내만 돌려준다.
@@ -13,10 +13,10 @@ public static class WindowsIntegration
     // 레지스트리 키 이름(제거 시 동일 키를 지운다). 표시 문구와 분리해 언어를 바꿔도 제거가 되게 한다.
     private const string VerbKey = "MoaiCode";
 
-    /// <summary>설치 위치 — %LOCALAPPDATA%\Programs\MoAI Code. 다운로드 폴더를 지워도 깨지지 않게 복사한다.</summary>
+    /// <summary>설치 위치 — %LOCALAPPDATA%\Programs\Z.ai Code. 다운로드 폴더를 지워도 깨지지 않게 복사한다.</summary>
     public static string InstallDir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Programs", "MoAI Code");
+        "Programs", "Z.ai Code");
 
     /// <summary>이미 셸 통합이 설치돼 있는지(우클릭 메뉴 키 존재 여부). 로그인 후 재차 묻지 않으려고 사용.</summary>
     public static bool IsInstalled()
@@ -173,7 +173,7 @@ public static class WindowsIntegration
             "Microsoft", "WindowsApps", "wt.exe");
         return File.Exists(wt)
             ? $"\"{wt}\" -d \"%V\" \"{exePath}\""
-            : $"cmd.exe /c start \"MoAI Code\" /D \"%V\" \"{exePath}\"";
+            : $"cmd.exe /c start \"Z.ai Code\" /D \"%V\" \"{exePath}\"";
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]

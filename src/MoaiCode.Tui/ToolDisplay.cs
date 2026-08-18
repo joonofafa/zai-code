@@ -31,8 +31,6 @@ public static class ToolDisplay
 
             case "WebFetch":
                 return "WebFetch " + (Str(input, "url") ?? "");
-            case "WebSearch":
-                return "WebSearch " + Quote(Str(input, "query"));
 
             case "Agent":
                 return "Agent: " + (Str(input, "description") ?? Str(input, "prompt") ?? "");

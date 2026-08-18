@@ -27,7 +27,7 @@ public class SystemPromptBuilderTests
             ClaudeMd = "# Project\nUse tabs.",
         });
 
-        Assert.Contains("You are MoAI Code", p);
+        Assert.Contains("You are Z.ai Code", p);
         Assert.Contains("authorized security testing", p);   // cyber risk
         Assert.Contains("file_path:line_number", p);          // tone & style
         Assert.Contains("Primary working directory: /proj", p);

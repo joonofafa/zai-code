@@ -24,7 +24,7 @@ public sealed class ChunkFetchTool : ITool
         chunks in order (no ranking — the caller decides relevance). Point `path` at a directory to see an
         overview (documents + chunk counts), or at a specific file (or pass `source`) to get that
         document's chunks. Use `offset`/`limit` to page through large sets. Read-only, offline,
-        server-independent. For semantic organization search use OrgDocs instead.
+        server-independent. For semantic search use ChunkSearch instead.
         """;
 
     public bool IsReadOnly => true;

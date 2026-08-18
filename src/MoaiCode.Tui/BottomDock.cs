@@ -189,15 +189,17 @@ public sealed class BottomDock
         IReadOnlyList<string> history,
         IReadOnlyList<string> slashCommands,
         Func<string>? cycleMode,
-        bool brainstorm = false)
+        bool brainstorm = false,
+        string? initial = null)
     {
         _slash = slashCommands;
         _shell = false;
         _brainstorm = brainstorm;
         _animTick = 0;
         _animShade = BrainstormPalette[0];
-        var buf = new StringBuilder();
-        var pos = 0;
+        // initial: 턴 중에 치다 만 입력을 되살린 것 — 커서는 그 끝에 둔다.
+        var buf = new StringBuilder(initial ?? string.Empty);
+        var pos = buf.Length;
         var histIdx = history.Count;
         var savedCurrent = "";
         _lastW = Width();

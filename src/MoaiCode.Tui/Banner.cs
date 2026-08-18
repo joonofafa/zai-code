@@ -5,19 +5,20 @@ using Spectre.Console;
 namespace MoaiCode.Tui;
 
 /// <summary>
-/// 시그니처 배너. FIGlet(big) "MoAI Code"에 가로 그라데이션(인디고→블루→틸)을
+/// 시그니처 배너. FIGlet(ANSI Shadow) "Z.ai Code"에 가로 그라데이션(인디고→블루→틸)을
 /// 문자 단위 truecolor로 입힘. 세 색 모두 어두운 채도라 라이트/다크 양쪽에서 가독.
+/// 아트는 유니코드 블록/박스 문자라 콘솔이 UTF-8 이어야 한다(Windows 는 CP65001).
 /// </summary>
 public static class Banner
 {
     private static readonly string[] Art =
     {
-        @" __  __               _____    _____          _      ",
-        @"|  \/  |        /\   |_   _|  / ____|        | |     ",
-        @"| \  / | ___   /  \    | |   | |     ___   __| | ___ ",
-        @"| |\/| |/ _ \ / /\ \   | |   | |    / _ \ / _` |/ _ \",
-        @"| |  | | (_) / ____ \ _| |_  | |___| (_) | (_| |  __/",
-        @"|_|  |_|\___/_/    \_\_____|  \_____\___/ \__,_|\___|",
+        @"███████╗    █████╗ ██╗     ██████╗ ██████╗ ██████╗ ███████╗",
+        @"╚══███╔╝   ██╔══██╗██║    ██╔════╝██╔═══██╗██╔══██╗██╔════╝",
+        @"  ███╔╝    ███████║██║    ██║     ██║   ██║██║  ██║█████╗  ",
+        @" ███╔╝     ██╔══██║██║    ██║     ██║   ██║██║  ██║██╔══╝  ",
+        @"███████╗██╗██║  ██║██║    ╚██████╗╚██████╔╝██████╔╝███████╗",
+        @"╚══════╝╚═╝╚═╝  ╚═╝╚═╝     ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝",
     };
 
     // 그라데이션 정지점 (RGB): 인디고 → 블루 → 틸
@@ -113,7 +114,7 @@ public static class Banner
             {
                 // The on-disk binary is gone (replaced by a reinstall) — this process is
                 // running stale code. Surface it so the fix (relaunch) is obvious.
-                built = " · stale binary — restart moai";
+                built = " · stale binary — restart zaiCode";
             }
         }
         catch

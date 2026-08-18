@@ -22,7 +22,7 @@ public sealed class FileCredentialStore : ICredentialStore
     {
         _path = path ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".moai", "credentials.json");
+            ".zaicode", "credentials.json");
     }
 
     public string? Get(string key)

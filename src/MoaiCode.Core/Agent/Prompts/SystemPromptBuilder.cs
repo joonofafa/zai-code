@@ -41,7 +41,7 @@ public static class SystemPromptBuilder
     }
 
     private static string Intro() =>
-        "You are MoAI Code, an interactive agent that helps users with software engineering tasks. " +
+        "You are Z.ai Code, an interactive agent that helps users with software engineering tasks. " +
         "Use the instructions below and the tools available to you to assist the user.\n\n" +
         CyberRiskInstruction + "\n" +
         "IMPORTANT: You must NEVER generate or guess URLs for the user unless you are confident that " +
@@ -154,11 +154,6 @@ public static class SystemPromptBuilder
         if (has.Contains("DocxCreate") || has.Contains("XlsxCreate") || has.Contains("PptxCreate"))
         {
             dedicated.Add("To CREATE an Office document (.docx/.xlsx/.pptx) use DocxCreate/XlsxCreate/PptxCreate — never install packages (python-docx, npm docx, exceljs, python-pptx, pptxgenjs) or write scripts to generate the file, even if the user mentions such a library. Exception: if the user explicitly asks you to WRITE CODE or a script that generates documents (not to produce the document itself), write the code instead.");
-        }
-
-        if (has.Contains("OrgDatas") && has.Contains("OrgDatasList"))
-        {
-            dedicated.Add("To answer questions about the org's tabular/record data (sales, metrics, records in the organization data warehouse), FIRST call OrgDatasList to get table names/columns/samples, THEN write a read-only SELECT and run it with OrgDatas. Do not guess column names — read the schema first. For a chart/spreadsheet from the result, follow up with XlsxCreate.");
         }
 
         var lines = new List<string> { "# Using your tools" };

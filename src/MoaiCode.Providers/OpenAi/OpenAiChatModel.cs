@@ -88,7 +88,7 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl
         !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MOAI_DEBUG_SSE"));
 
     private static readonly string DebugPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".moai", "sse-debug.log");
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".zaicode", "sse-debug.log");
 
     private static void DebugLog(string line)
     {

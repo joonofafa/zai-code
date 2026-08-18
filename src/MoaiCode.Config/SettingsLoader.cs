@@ -32,7 +32,7 @@ public static class SettingsLoader
             allowModel: false);
         settings = ApplyLayer(
             settings,
-            Path.Combine(home, ".moai", "settings.json"),
+            Path.Combine(home, ".zaicode", "settings.json"),
             allowSensitive: true,
             allowAutomation: true,
             allowPermissionRules: true,
@@ -82,25 +82,16 @@ public static class SettingsLoader
 
             return baseline with
             {
-                // 모델/티어는 moai 전용 네임스페이스(게이트웨이 모델명)라 ~/.claude(Claude Code 설정)에서
+                // 모델은 moai 전용 네임스페이스(게이트웨이 모델명)라 ~/.claude(Claude Code 설정)에서
                 // 상속하지 않는다. Claude Code 의 model(예: "opus[1m]")이 새어들어와 게이트웨이 404 를
                 // 내던 문제 방지 — moai 는 ~/.moai + env(+/model) 에서만 모델을 받는다.
                 Model = allowModel ? GetString(root, "model", "model_id") ?? baseline.Model : baseline.Model,
-                ModelLow = allowModel ? GetString(root, "modelLow") ?? baseline.ModelLow : baseline.ModelLow,
-                ModelMid = allowModel ? GetString(root, "modelMid") ?? baseline.ModelMid : baseline.ModelMid,
-                ModelHigh = allowModel ? GetString(root, "modelHigh") ?? baseline.ModelHigh : baseline.ModelHigh,
                 Provider = allowSensitive ? GetString(root, "provider") ?? baseline.Provider : baseline.Provider,
                 BaseUrl = allowSensitive ? GetString(root, "baseUrl", "base_url") ?? baseline.BaseUrl : baseline.BaseUrl,
                 Language = L10n.NormalizeLanguage(GetString(root, "language", "locale", "uiLanguage", "ui_language"))
                            ?? baseline.Language,
                 ReasoningEffort = NormalizeEffort(GetString(root, "reasoningEffort", "reasoning_effort", "effort"))
                                   ?? baseline.ReasoningEffort,
-                Host = allowSensitive ? GetString(root, "host") ?? baseline.Host : baseline.Host,
-                Account = allowSensitive ? GetString(root, "account", "email") ?? baseline.Account : baseline.Account,
-                LoginAt = allowSensitive ? GetString(root, "loginAt", "login_at") ?? baseline.LoginAt : baseline.LoginAt,
-                OrgName = allowSensitive ? GetString(root, "orgName", "org_name") ?? baseline.OrgName : baseline.OrgName,
-                Name = allowSensitive ? GetString(root, "name", "userName") ?? baseline.Name : baseline.Name,
-                AvailableModels = allowModel && allowSensitive ? GetString(root, "availableModels") ?? baseline.AvailableModels : baseline.AvailableModels,
                 ProxyUrl = allowSensitive ? GetString(root, "proxyUrl", "proxy_url", "proxy") ?? baseline.ProxyUrl : baseline.ProxyUrl,
                 ProxyUser = allowSensitive ? GetString(root, "proxyUser", "proxy_user") ?? baseline.ProxyUser : baseline.ProxyUser,
                 ProxyBypass = allowSensitive ? GetString(root, "proxyBypass", "proxy_bypass", "noProxy") ?? baseline.ProxyBypass : baseline.ProxyBypass,
@@ -108,7 +99,6 @@ public static class SettingsLoader
                     ? ParsePermission(GetString(root, "permission", "permissionMode")) ?? baseline.Permission
                     : baseline.Permission,
                 LogLevel = GetString(root, "logLevel", "log_level") ?? baseline.LogLevel,
-                UdpLog = GetString(root, "udpLog", "udp_log") ?? baseline.UdpLog,
                 MaxTurns = GetInt(root, "maxTurns", "max_turns") ?? baseline.MaxTurns,
                 OutputStyle = GetString(root, "outputStyle", "output_style") ?? baseline.OutputStyle,
                 LintCommand = allowAutomation
@@ -181,16 +171,10 @@ public static class SettingsLoader
         var checkpoints = ParseBool(Environment.GetEnvironmentVariable("MOAI_CHECKPOINTS"));
         var confine = ParseBool(Environment.GetEnvironmentVariable("MOAI_CONFINE_WORKSPACE"));
         var maxTurns = ParseInt(Environment.GetEnvironmentVariable("MOAI_MAX_TURNS"));
-        var modelLow = Environment.GetEnvironmentVariable("MOAI_MODEL_LOW");
-        var modelMid = Environment.GetEnvironmentVariable("MOAI_MODEL_MID");
-        var modelHigh = Environment.GetEnvironmentVariable("MOAI_MODEL_HIGH");
 
         return baseline with
         {
             Model = model ?? baseline.Model,
-            ModelLow = modelLow ?? baseline.ModelLow,
-            ModelMid = modelMid ?? baseline.ModelMid,
-            ModelHigh = modelHigh ?? baseline.ModelHigh,
             BaseUrl = baseUrl ?? baseline.BaseUrl,
             Language = language ?? baseline.Language,
             ReasoningEffort = effort ?? baseline.ReasoningEffort,

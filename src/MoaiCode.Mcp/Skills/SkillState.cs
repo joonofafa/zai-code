@@ -10,7 +10,7 @@ namespace MoaiCode.Mcp.Skills;
 public static class SkillState
 {
     private static string DefaultPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".moai", "skills-disabled.json");
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".zaicode", "skills-disabled.json");
 
     /// <summary>비활성(꺼진) 스킬 이름 집합. 파일 없음/파싱 실패는 빈 집합(모두 활성).</summary>
     public static HashSet<string> LoadDisabled(string? path = null)

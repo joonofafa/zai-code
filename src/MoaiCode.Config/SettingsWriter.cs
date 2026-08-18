@@ -7,7 +7,7 @@ namespace MoaiCode.Config;
 public static class SettingsWriter
 {
     public static string DefaultPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".moai", "settings.json");
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".zaicode", "settings.json");
 
     public static void Set(IReadOnlyDictionary<string, string?> values, string? path = null)
     {

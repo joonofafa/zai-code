@@ -22,7 +22,7 @@ public sealed class SessionStore
     {
         _baseDir = baseDir ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".moai", "sessions");
+            ".zaicode", "sessions");
     }
 
     public string PathFor(string sessionId)

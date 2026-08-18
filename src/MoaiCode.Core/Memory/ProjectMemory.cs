@@ -18,7 +18,7 @@ public static class ProjectMemory
     public static string Dir(string cwd)
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return Path.Combine(home, ".moai", "projects", PathSlug(ProjectRoot(cwd)), "memory");
+        return Path.Combine(home, ".zaicode", "projects", PathSlug(ProjectRoot(cwd)), "memory");
     }
 
     public static string IndexPath(string cwd) => Path.Combine(Dir(cwd), "MEMORY.md");

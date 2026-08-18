@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 6개 플랫폼 전체를 self-contained 단일 파일로 크로스 게시 + SHA-256 체크섬 생성.
-#   dist/<rid>/moai[.exe]            바이너리
-#   dist/<rid>/moai[.exe].sha256     개별 해시
+#   dist/<rid>/zaiCode[.exe]            바이너리
+#   dist/<rid>/zaiCode[.exe].sha256     개별 해시
 #   dist/SHASUMS256.txt              전체 통합 체크섬(고객사 배포/검증용)
 #
 # 서명은 별도(외부 배포는 Windows EV/Azure Trusted Signing, macOS Developer ID+notarization 필요).
@@ -24,7 +24,7 @@ COMMON=(
 fail=0
 for RID in "${RIDS[@]}"; do
   OUT="dist/${RID}"
-  BIN="moai"; [[ "$RID" == win-* ]] && BIN="moai.exe"
+  BIN="zaiCode"; [[ "$RID" == win-* ]] && BIN="zaiCode.exe"
   # Cli 는 멀티타깃(net10.0;net10.0-windows) — win-* 는 Windows 타깃(Office COM 툴 포함), 나머지는 net10.0.
   TFM="net10.0"; [[ "$RID" == win-* ]] && TFM="net10.0-windows"
   echo "──── ${RID} (${TFM}) 게시 중… ────"
@@ -37,9 +37,9 @@ for RID in "${RIDS[@]}"; do
   fi
 done
 
-# 통합 체크섬 (dist/<rid>/moai[.exe] 기준 상대경로).
+# 통합 체크섬 (dist/<rid>/zaiCode[.exe] 기준 상대경로).
 echo ""
-( cd dist && find . -type f \( -name moai -o -name moai.exe \) | sort \
+( cd dist && find . -type f \( -name zaiCode -o -name zaiCode.exe \) | sort \
     | xargs sha256sum > SHASUMS256.txt )
 echo "📄 통합 체크섬: dist/SHASUMS256.txt"
 cat dist/SHASUMS256.txt

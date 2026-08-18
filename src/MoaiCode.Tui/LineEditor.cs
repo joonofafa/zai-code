@@ -95,7 +95,8 @@ public static class LineEditor
         IReadOnlyList<string> slashCommands,
         Func<string>? cycleMode = null,
         Func<string>? statusLine = null,
-        bool brainstorm = false)
+        bool brainstorm = false,
+        string? initial = null)
     {
         if (Console.IsInputRedirected)
         {
@@ -111,8 +112,9 @@ public static class LineEditor
             Console.WriteLine(statusLine!());
         }
 
-        var buf = new StringBuilder();
-        var pos = 0;
+        // initial: 턴 중에 치다 만 입력을 되살린 것 — 커서는 그 끝에 둔다.
+        var buf = new StringBuilder(initial ?? string.Empty);
+        var pos = buf.Length;
         var histIdx = history.Count;
         var savedCurrent = "";
         var r = new PromptRenderer(hasStatus, slashCommands, brainstorm);

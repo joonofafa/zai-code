@@ -35,8 +35,6 @@ public sealed class SlashRegistry
             new EffortCommand(),
             new LanguageCommand(),
             new SkillsCommand(),
-            new LoginCommand(),
-            new LogoutCommand(),
             new InstallCommand(),
             new UninstallCommand(),
             new McpCommand(),

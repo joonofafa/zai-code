@@ -87,7 +87,7 @@ public sealed class ReplApp
     {
         // 시그니처 배너: 그라데이션 ASCII (Banner.Render)
         Banner.Render();
-        AnsiConsole.MarkupLine($"[yellow]MoAI Code — Enterprise Coding Agent (V {Banner.Version()})[/]");
+        AnsiConsole.MarkupLine($"[yellow]Z.ai Code — Coding Agent (V {Banner.Version()})[/]");
         // Build identity (git SHA + build time, or a "stale binary" flag when running a replaced binary).
         AnsiConsole.MarkupLine($"[grey50]{Markup.Escape(Banner.VersionString())}[/]");
         AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(L10n.Get("repl.help"))}[/]");
@@ -128,6 +128,8 @@ public sealed class ReplApp
     private async Task RunLoopAsync(CancellationToken ct)
     {
         var quit = false;
+        // 턴 중에 치다 만(엔터 전) 입력 — 다음 프롬프트에 그대로 되살린다.
+        var pending = string.Empty;
         while (!quit && !ct.IsCancellationRequested)
         {
             string? input;
@@ -139,19 +141,22 @@ public sealed class ReplApp
                 // 하단 고정: 상태줄+입력창은 화면 맨 아래, 출력은 위 영역에서 스크롤.
                 input = _dock.ReadLine(_history, _slashNames,
                     () => { CycleMode(); return BuildStatusLine(); },
-                    _ctx.State.Brainstorming);
+                    _ctx.State.Brainstorming, pending);
             }
             else if (_useRawEditor)
             {
                 Func<string> cycle = () => { CycleMode(); return BuildStatusLine(); };
                 // 상태줄을 프롬프트 위에 출력하는 단순 모드 (wrap 중복 없음).
-                input = LineEditor.ReadLine(_history, _slashNames, cycle, BuildStatusLine, _ctx.State.Brainstorming);
+                input = LineEditor.ReadLine(
+                    _history, _slashNames, cycle, BuildStatusLine, _ctx.State.Brainstorming, pending);
             }
             else
             {
                 AnsiConsole.Markup("[green]❯ [/]");
                 input = Console.ReadLine();
             }
+
+            pending = string.Empty;   // 되살린 입력은 편집기로 넘어갔다.
 
             if (input is null)
             {
@@ -167,10 +172,10 @@ public sealed class ReplApp
 
             quit = await ProcessInputAsync(input, ct).ConfigureAwait(false);
 
-            // 타입어헤드: 턴 처리 중 사용자가 친 입력(큐)을 순차로 이어서 제출.
+            // 타입어헤드: 턴 처리 중 '엔터로 확정된' 입력만 순차로 이어서 제출한다.
+            // 치다 만 줄은 제출하지 않고(TakePartial) 아래에서 다음 프롬프트로 되살린다.
             while (!quit && _typeAhead && !ct.IsCancellationRequested)
             {
-                _turnInput.CommitPartial();
                 if (!_turnInput.TryDequeue(out var queued))
                 {
                     break;
@@ -178,6 +183,11 @@ public sealed class ReplApp
 
                 AnsiConsole.MarkupLine($"[grey58]↳ Queued[/] [green]❯[/] {Markup.Escape(queued)}");
                 quit = await ProcessInputAsync(queued, ct).ConfigureAwait(false);
+            }
+
+            if (_typeAhead)
+            {
+                pending = _turnInput.TakePartial();
             }
         }
     }
@@ -592,23 +602,8 @@ public sealed class ReplApp
         return $"{ansi}{modeTxt}\x1b[0m\x1b[38;5;249m ({toggle}) · {model}\x1b[0m";
     }
 
-    // 상태줄 모델 표기: 난이도 티어(MOAI_MODEL_LOW/MID/HIGH)가 하나라도 설정돼 있으면
-    // 티어별 모델(L/M/H), 아니면 단일 현재 모델. 미설정 티어는 기본(현재) 모델로 채운다.
-    private string ModelStatusLabel()
-    {
-        var low = Environment.GetEnvironmentVariable("MOAI_MODEL_LOW");
-        var mid = Environment.GetEnvironmentVariable("MOAI_MODEL_MID");
-        var high = Environment.GetEnvironmentVariable("MOAI_MODEL_HIGH");
-        if (string.IsNullOrWhiteSpace(low) && string.IsNullOrWhiteSpace(mid) && string.IsNullOrWhiteSpace(high))
-        {
-            return CurrentModelLabel();
-        }
-
-        var def = CurrentModelLabel();
-        static string Id(string s) { var i = s.LastIndexOf('/'); return (i >= 0 ? s[(i + 1)..] : s).Trim(); }
-        string T(string? v) => Id(string.IsNullOrWhiteSpace(v) ? def : v!);
-        return $"L:{T(low)} M:{T(mid)} H:{T(high)}";
-    }
+    // 상태줄 모델 표기: 단일 현재 모델
+    private string ModelStatusLabel() => CurrentModelLabel();
 
     // act → auto-act → plan → act 순환.
     private void CycleMode()
@@ -845,7 +840,7 @@ public sealed class ReplApp
             if (!string.IsNullOrWhiteSpace(cleanText))
             {
                 _producedOutputInTurn = true;
-                AnsiConsole.Markup("[aqua]MoAI Code[/] ");
+                AnsiConsole.Markup("[aqua]Z.ai Code[/] ");
                 AnsiConsole.Markup(Markup.Escape(cleanText));
                 AnsiConsole.WriteLine();
             }
@@ -924,7 +919,7 @@ public sealed class ReplApp
     // 완료 후: Markdig → Spectre 마크다운 렌더.
     private static Panel BuildRenderedPanel(string markdown)
         => new Panel(MarkdownRenderer.Render(markdown))
-            .Header("[aqua]MoAI Code[/]")
+            .Header("[aqua]Z.ai Code[/]")
             .Border(BoxBorder.Rounded)
             .BorderColor(Color.Grey);
 

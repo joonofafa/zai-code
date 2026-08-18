@@ -15,7 +15,7 @@ public static class SkillLoader
         {
             Path.Combine(workingDirectory, ".claude", "skills"),
             Path.Combine(home, ".claude", "skills"),
-            Path.Combine(home, ".moai", "skills"),
+            Path.Combine(home, ".zaicode", "skills"),
         };
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

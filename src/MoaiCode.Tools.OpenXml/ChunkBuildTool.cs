@@ -21,7 +21,7 @@ public sealed class ChunkBuildTool : ITool
         them into a `.moai-chunks/` sidecar next to the source (originals untouched). Server-independent.
         Unchanged files are skipped (incremental). Use `recursive: true` to include subdirectories.
         Retrieve the chunks later with ChunkFetch. This is local keyword/plain-text chunking — for
-        semantic organization search use OrgDocs.
+        semantic search use ChunkSearch over the locally stored vectors.
         """;
 
     public bool IsReadOnly => false;

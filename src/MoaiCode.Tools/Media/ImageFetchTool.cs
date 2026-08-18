@@ -15,7 +15,7 @@ using MoaiCode.Localization;
 namespace MoaiCode.Tools.Media;
 
 /// <summary>
-/// 웹의 이미지 URL 을 내려받아 로컬 파일로 저장한다(WebSearch 로 찾은 이미지 삽입용).
+/// 웹의 이미지 URL 을 내려받아 로컬 파일로 저장한다(문서에 이미지 삽입용).
 /// WebFetch 는 이미지를 바이너리로 보고 저장하지 않으므로 별도 툴로 분리.
 /// 저장된 파일은 문서 생성(DocxCreate/PptxCreate 의 image 필드)이나
 /// 열린 문서 편집(WordEdit/ExcelEdit/PowerPointEdit 의 insert_picture)으로 삽입할 수 있다.
@@ -32,7 +32,7 @@ public sealed class ImageFetchTool : ITool
 
     public string Description => """
         Downloads an image from an http(s) URL and saves it as a local file.
-        Input: url (required — a direct image URL, e.g. from WebSearch results), path (output file,
+        Input: url (required — a direct image URL), path (output file,
         relative to workspace; extension is inferred from the response if omitted).
         Use this to fetch a web image, then embed it via DocxCreate/PptxCreate (image field) or insert it
         into an open document via WordEdit/ExcelEdit/PowerPointEdit (insert_picture). Images only.

@@ -31,7 +31,7 @@ public static class MoaiLog
     public static LogLevel MinLevel { get; set; } = LogLevel.Info;
 
     public static string FilePath { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".moai", "logs", "moai.log");
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".zaicode", "logs", "zaicode.log");
 
     public static LogLevel Parse(string? value) => value?.Trim().ToLowerInvariant() switch
     {

@@ -17,8 +17,8 @@ public class LocalizationTests
     [Fact]
     public void Catalogs_return_korean_and_english_without_changing_global_state()
     {
-        Assert.Equal("설정", L10n.GetForLanguage("ko", "gui.settings.title"));
-        Assert.Equal("Settings", L10n.GetForLanguage("en-US", "gui.settings.title"));
+        Assert.Equal("(취소됨)", L10n.GetForLanguage("ko", "common.cancelled"));
+        Assert.Equal("(cancelled)", L10n.GetForLanguage("en-US", "common.cancelled"));
         Assert.Equal("Saved: TEST_API_KEY",
             L10n.GetForLanguage("en", "cli.auth.saved", "TEST_API_KEY"));
     }
@@ -26,9 +26,7 @@ public class LocalizationTests
     [Fact]
     public void New_skill_keys_localize_per_language_with_args()
     {
-        // 팀 스킬/스킬 피커 신규 문자열이 ko/en 각각으로 전환되고 자리표시가 채워지는지.
-        Assert.Contains("활성 스킬", L10n.GetForLanguage("ko", "slash.skills.synced", 3, 5));
-        Assert.Contains("active skills", L10n.GetForLanguage("en", "slash.skills.synced", 3, 5));
+        // 스킬 피커 문자열이 ko/en 각각으로 전환되고 자리표시가 채워지는지.
         Assert.Equal("skills: 2 enabled · 1 disabled (saved).",
             L10n.GetForLanguage("en", "slash.skills.toggleSaved", 2, 1));
         Assert.Contains("Space", L10n.GetForLanguage("en", "slash.skills.pickerTitle"));

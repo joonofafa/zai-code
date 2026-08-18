@@ -48,12 +48,17 @@ internal sealed class TurnInputQueue
         get { lock (_lock) { return _messages.Count; } }
     }
 
-    /// <summary>미확정 줄이 남아 있으면 확정 큐로 넘긴다(턴 종료 시 호출).</summary>
-    public void CommitPartial()
+    /// <summary>
+    /// 미확정(엔터 전) 줄을 꺼내 비운다. 턴이 끝나면 이건 제출하지 않고 다음 프롬프트의 입력
+    /// 버퍼로 되살린다 — 치던 중에 턴이 끝났다고 멋대로 전송되면 안 되기 때문.
+    /// </summary>
+    public string TakePartial()
     {
         lock (_lock)
         {
-            CommitLocked();
+            var t = _line.ToString();
+            _line.Clear();
+            return t;
         }
     }
 

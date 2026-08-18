@@ -11,11 +11,6 @@ public sealed record Settings
     public PermissionMode Permission { get; init; } = PermissionMode.Ask;
     public string? Provider { get; init; }
     public string? Model { get; init; }
-
-    // 난이도별 모델 라우팅 티어(하/중/상). 미설정 티어는 기본 모델 유지 → 아무 것도 없으면 라우팅 비활성.
-    public string? ModelLow { get; init; }
-    public string? ModelMid { get; init; }
-    public string? ModelHigh { get; init; }
     public string? BaseUrl { get; init; }
 
     /// <summary>사용자 인터페이스 언어(ko|en). 기본(base)은 영어. 한국어 사용자는 명시적으로 ko 로 설정한다(한국어권 배포본은 이 값을 포함).</summary>
@@ -26,28 +21,6 @@ public sealed record Settings
 
     /// <summary>파일 로그 최소 레벨(trace|debug|info|warn|error|fatal|off). 기본 info. ~/.moai/logs/moai.log 로 기록.</summary>
     public string? LogLevel { get; init; }
-
-    /// <summary>UDP 실시간 로그 트레이스 대상 "host" 또는 "host:port"(기본 5599). 디버깅용, 기본 off.
-    /// env MOAI_UDP_LOG 로도 설정 가능. ⚠️ 고객 배포본에서는 켜지 말 것.</summary>
-    public string? UdpLog { get; init; }
-
-    /// <summary>로그인 호스트 (예: https://vip.bccard.ai). /usage 표시용.</summary>
-    public string? Host { get; init; }
-
-    /// <summary>로그인 계정(이메일). 로그인 시 저장. /usage 표시용.</summary>
-    public string? Account { get; init; }
-
-    /// <summary>마지막 로그인 시각(ISO 8601). /usage 표시용.</summary>
-    public string? LoginAt { get; init; }
-
-    /// <summary>로그인 사용자의 소속 조직명. 로그인 시 서버에서 수신. /usage 표시용.</summary>
-    public string? OrgName { get; init; }
-
-    /// <summary>로그인 사용자 이름. 로그인 시 서버에서 수신(계정 표시용).</summary>
-    public string? Name { get; init; }
-
-    /// <summary>선택 가능한 모델 목록(쉼표구분). 로그인 시 저장 — 설정에서 모델 변경용.</summary>
-    public string? AvailableModels { get; init; }
 
     /// <summary>HTTP(S) 프록시 서버 (예: http://proxy.corp:8080). 사내망용. 비번은 credentials(PROXY_PASSWORD).</summary>
     public string? ProxyUrl { get; init; }

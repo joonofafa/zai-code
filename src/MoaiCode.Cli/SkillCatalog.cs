@@ -27,7 +27,6 @@ public static class SkillCatalog
 
         Add(SkillLoader.Discover(cwd), "user");
         Add(PluginLoader.Discover(cwd), "plugin");
-        Add(SkillLoader.LoadFromDir(TeamSkills.Dir), "team");
         Add(SkillLoader.LoadFromDir(BundledSkills.Dir), "bundled");
         return all;
     }

@@ -23,7 +23,7 @@ public static class McpConfigLoader
         // 사용자(신뢰) 설정을 먼저 → 이름 충돌 시 사용자 MCP 가 프로젝트 MCP 를 이긴다(shadowing 방지).
         var candidates = new List<string>
         {
-            Path.Combine(home, ".moai", "mcp.json"),
+            Path.Combine(home, ".zaicode", "mcp.json"),
             Path.Combine(home, ".claude", "mcp.json"),
         };
         if (includeProjectScope)

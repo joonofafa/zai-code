@@ -103,7 +103,7 @@ public sealed class CheckpointStore
         _gitPath = gitPath ?? "git";
         var root = baseDir ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".moai", "checkpoints");
+            ".zaicode", "checkpoints");
         _gitDir = Path.Combine(root, Hash(_workingDirectory));
     }
 
@@ -223,7 +223,7 @@ public sealed class CheckpointStore
         Directory.CreateDirectory(_gitDir);
         await GitAsync("init", ct).ConfigureAwait(false);
         await GitAsync("config user.email moai-code@local", ct).ConfigureAwait(false);
-        await GitAsync("config user.name MoAI Code", ct).ConfigureAwait(false);
+        await GitAsync("config user.name Z.ai Code", ct).ConfigureAwait(false);
 
         var info = Path.Combine(_gitDir, "info");
         Directory.CreateDirectory(info);

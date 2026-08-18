@@ -14,7 +14,7 @@ public static class PluginLoader
         {
             Path.Combine(workingDirectory, ".claude", "plugins"),
             Path.Combine(home, ".claude", "plugins"),
-            Path.Combine(home, ".moai", "plugins"),
+            Path.Combine(home, ".zaicode", "plugins"),
         };
 
         var result = new List<Skill>();

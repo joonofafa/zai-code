@@ -237,7 +237,7 @@ public class SlashCommandTests : IDisposable
             Assert.Equal(L10n.Get("slash.effort.changed", "high"), r.Output);
             Assert.Equal("high", Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT"));
 
-            var saved = File.ReadAllText(Path.Combine(tempHome, ".moai", "settings.json"));
+            var saved = File.ReadAllText(Path.Combine(tempHome, ".zaicode", "settings.json"));
             Assert.Contains("\"reasoningEffort\"", saved);
             Assert.Contains("\"high\"", saved);
         }

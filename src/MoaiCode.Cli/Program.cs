@@ -31,7 +31,22 @@ static async Task<int> RunHeadlessAsync(string prompt, string? model, string out
     var rt = await AppBootstrap.BuildAsync(interactive: false, verbose: false, ct);
     await using var _ = rt.Mcp;
     rt.Ctx.State.LastUserRequest = prompt;   // 위험 판정 분류기용 원문 요청
-    return await HeadlessRunner.RunAsync(rt.Ctx.Engine, prompt, ct, outputFormat);
+    return string.Equals(outputFormat, "stream-json", StringComparison.OrdinalIgnoreCase)
+        ? await StreamJsonRunner.RunOnceAsync(rt.Ctx.Engine, prompt, ct)
+        : await HeadlessRunner.RunAsync(rt.Ctx.Engine, prompt, ct, outputFormat);
+}
+
+// stdin 의 NDJSON 턴을 EOF 까지 처리하는 영속 모드 (--input-format stream-json).
+static async Task<int> RunStreamLoopAsync(string? model, CancellationToken ct)
+{
+    if (!string.IsNullOrEmpty(model))
+    {
+        Environment.SetEnvironmentVariable("MOAI_MODEL", model);
+    }
+
+    var rt = await AppBootstrap.BuildAsync(interactive: false, verbose: false, ct);
+    await using var _ = rt.Mcp;
+    return await StreamJsonRunner.RunLoopAsync(rt.Ctx.Engine, ct);
 }
 
 // run: 1회 프롬프트 헤드리스 실행
@@ -42,7 +57,7 @@ var outputFormatOpt = new Option<string>("--output-format")
     Description = "Output format: text (default) or json",
     DefaultValueFactory = _ => "text",
 };
-outputFormatOpt.AcceptOnlyFromAmong("text", "json");
+outputFormatOpt.AcceptOnlyFromAmong("text", "json", "stream-json");
 var runCmd = new Command("run", L10n.Get("cli.run.description"));
 runCmd.Arguments.Add(promptArg);
 runCmd.Options.Add(modelOpt);
@@ -52,17 +67,45 @@ runCmd.SetAction(async (ParseResult pr, CancellationToken ct) =>
 root.Subcommands.Add(runCmd);
 
 // 루트 레벨 -p/--print: `moai -p "프롬프트"` = 헤드리스 1회 실행(claude -p 패리티).
-var printOpt = new Option<string?>("--print", "-p") { Description = L10n.Get("cli.prompt.description") };
+// 값 없이 `-p` 만 주는 사용법(= stdin 으로 턴을 흘려보내는 stream-json 모드)도 허용한다.
+// ZeroOrOne 이 아니면 `-p --input-format ...` 에서 뒤 옵션을 값으로 삼켜버린다.
+var printOpt = new Option<string?>("--print", "-p")
+{
+    Description = L10n.Get("cli.prompt.description"),
+    Arity = ArgumentArity.ZeroOrOne,
+};
 var rootModelOpt = new Option<string?>("--model", "-m") { Description = L10n.Get("cli.model.description") };
 var rootOutputFormatOpt = new Option<string>("--output-format")
 {
-    Description = "Output format: text (default) or json",
+    Description = "Output format: text (default), json, or stream-json",
     DefaultValueFactory = _ => "text",
 };
-rootOutputFormatOpt.AcceptOnlyFromAmong("text", "json");
+rootOutputFormatOpt.AcceptOnlyFromAmong("text", "json", "stream-json");
+// --input-format stream-json: stdin 의 NDJSON 턴을 EOF 까지 이어서 처리(영속 프로세스).
+var rootInputFormatOpt = new Option<string>("--input-format")
+{
+    Description = "Input format: text (default) or stream-json (NDJSON turns on stdin)",
+    DefaultValueFactory = _ => "text",
+};
+rootInputFormatOpt.AcceptOnlyFromAmong("text", "stream-json");
+// claude CLI 호환을 위해 받기만 하는 옵션들 — 파싱이 깨지지 않게 한다.
+// 툴 허용은 이 CLI 에선 권한 게이트/MOAI_YES 가 담당하고, 세션 복원은 아직 없다.
+var rootVerboseOpt = new Option<bool>("--verbose") { Description = "Accepted for CLI compatibility (no-op)." };
+var rootAllowedToolsOpt = new Option<string?>("--allowedTools")
+{
+    Description = "Accepted for CLI compatibility (no-op) — use the permission gate or MOAI_YES=1.",
+};
+var rootResumeOpt = new Option<string?>("--resume")
+{
+    Description = "Accepted for CLI compatibility (no-op) — session restore is not implemented.",
+};
 root.Options.Add(printOpt);
 root.Options.Add(rootModelOpt);
 root.Options.Add(rootOutputFormatOpt);
+root.Options.Add(rootInputFormatOpt);
+root.Options.Add(rootVerboseOpt);
+root.Options.Add(rootAllowedToolsOpt);
+root.Options.Add(rootResumeOpt);
 
 // tools: 사용 가능한 툴 목록
 var toolsCmd = new Command("tools", L10n.Get("cli.tools.description"));
@@ -147,22 +190,6 @@ authCmd.Subcommands.Add(authSetCmd);
 authCmd.Subcommands.Add(authListCmd);
 root.Subcommands.Add(authCmd);
 
-// login / logout: open-moai 계정 로그인 (목표 UX — 설정 제로)
-var hostOpt = new Option<string?>("--host") { Description = L10n.Get("cli.host.description") };
-var loginCmd = new Command("login", L10n.Get("cli.login.description"));
-loginCmd.Options.Add(hostOpt);
-loginCmd.SetAction(async (ParseResult pr, CancellationToken ct) =>
-    await LoginFlow.RunAsync(pr.GetValue(hostOpt) ?? LoginFlow.ResolveDefaultHost(), ct) ? 0 : 1);
-root.Subcommands.Add(loginCmd);
-
-var logoutCmd = new Command("logout", L10n.Get("cli.logout.description"));
-logoutCmd.SetAction((ParseResult pr, CancellationToken ct) =>
-{
-    LoginFlow.Logout();
-    return Task.FromResult(0);
-});
-root.Subcommands.Add(logoutCmd);
-
 // proxy: 사내망 HTTP(S) 프록시 설정 (서버 필수, id/pw 선택)
 var proxyUrlArg = new Argument<string?>("url") { Description = L10n.Get("cli.proxy.url.description"), Arity = ArgumentArity.ZeroOrOne };
 var proxyUserOpt = new Option<string?>("--user", "-u") { Description = L10n.Get("cli.proxy.user.description") };
@@ -231,6 +258,13 @@ root.Subcommands.Add(languageCmd);
 // 기본 동작: -p/--print 가 있으면 헤드리스 1회 실행, 없으면 대화형 REPL.
 root.SetAction(async (ParseResult pr, CancellationToken ct) =>
 {
+    // --input-format stream-json: 프롬프트를 인자로 받지 않고 stdin 의 NDJSON 턴을 계속 처리한다.
+    // (브리지는 `-p --input-format stream-json --output-format stream-json` 처럼 -p 를 값 없이 준다.)
+    if (string.Equals(pr.GetValue(rootInputFormatOpt), "stream-json", StringComparison.OrdinalIgnoreCase))
+    {
+        return await RunStreamLoopAsync(pr.GetValue(rootModelOpt), ct);
+    }
+
     var printPrompt = pr.GetValue(printOpt);
     if (!string.IsNullOrEmpty(printPrompt))
     {
@@ -238,12 +272,6 @@ root.SetAction(async (ParseResult pr, CancellationToken ct) =>
     }
 
     var interactive = !Console.IsInputRedirected;
-
-    // 첫 실행/미인증 시 자동 로그인 (엔터프라이즈: 열면 바로 로그인 화면)
-    if (interactive && !LoginFlow.HasCredential())
-    {
-        await LoginFlow.RunAsync(LoginFlow.ResolveDefaultHost(), ct);
-    }
 
     var rt = await AppBootstrap.BuildAsync(
         interactive: interactive, verbose: true, ct);

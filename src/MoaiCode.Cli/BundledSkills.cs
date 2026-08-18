@@ -9,11 +9,11 @@ namespace MoaiCode.Cli;
 /// </summary>
 public static class BundledSkills
 {
-    private const string Version = "3";              // 번들 내용 갱신 시 올림 → 재추출 (v3: org-data-query·xunit-test-writer·business-report 추가)
+    private const string Version = "4";              // 번들 내용 갱신 시 올림 → 재추출 (v4: org-data-query 제거)
     private const string ResourceName = "bundled-skills.zip";
 
     public static string Dir => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".moai", "bundled-skills");
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".zaicode", "bundled-skills");
 
     public static void EnsureExtracted()
     {

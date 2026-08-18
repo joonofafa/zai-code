@@ -75,7 +75,7 @@ public static class AppBootstrap
         if (!allowProjectMcp && McpConfigLoader.HasProjectConfig(cwd))
         {
             Console.Error.WriteLine(
-                "moai: project MCP config (.mcp.json) found but not loaded (untrusted). " +
+                "zaiCode: project MCP config (.mcp.json) found but not loaded (untrusted). " +
                 "Set MOAI_ALLOW_PROJECT_MCP=1 to enable it for this project.");
         }
         var mcpConfigs = McpConfigLoader.Discover(cwd, includeProjectScope: allowProjectMcp);
@@ -106,25 +106,7 @@ public static class AppBootstrap
             }
         }
 
-        // 4) 스킬 — 우선순위 user > plugin > team > bundled. 로컬 비활성(/skills)로 끈 스킬은 제외.
-        // 팀 공유 스킬은 로그인 상태에서만 sync. 네트워크/인증 실패는 non-fatal(로컬/번들 스킬은 계속 동작).
-        var teamApiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
-        var teamBaseUrl = Environment.GetEnvironmentVariable("OPENAI_BASE_URL");
-        if (!string.IsNullOrWhiteSpace(teamApiKey) && !string.IsNullOrWhiteSpace(teamBaseUrl))
-        {
-            var sync = await TeamSkills.SyncAsync(teamBaseUrl!, teamApiKey!, ct).ConfigureAwait(false);
-            if (sync.Error is not null)
-            {
-                // 인증 거부(401/403)·서버 오류(5xx)는 사용자가 조치할 수 없는 서버측 상황이라
-                // 시작 시 빨간 에러로 놀래키지 않고 로그에만 남긴다. 사용자가 대응 가능한 것
-                // (네트워크/타임아웃 등)만 친화 메시지(빨강)로 표시.
-                if (!IsAuthError(sync.Error) && !IsServerError(sync.Error))
-                {
-                    Console.WriteLine($"\x1b[31m{L10n.Get("cli.skills.teamLoadFailed")}\x1b[0m");
-                }
-                MoaiLog.Warn($"team skills sync failed: {sync.Error}");
-            }
-        }
+        // 4) 스킬 — 우선순위 user > plugin > bundled. 로컬 비활성(/skills)로 끈 스킬은 제외.
         BundledSkills.EnsureExtracted();
 
         var disabledSkills = SkillState.LoadDisabled();
@@ -196,45 +178,6 @@ public static class AppBootstrap
         // 단일 툴 결과의 컨텍스트 유입 상한(거대 출력 → 잦은 컴팩션 방지). MOAI_MAX_TOOL_RESULT_CHARS 로 조정, 0/음수면 무제한.
         var maxToolResultChars =
             int.TryParse(Environment.GetEnvironmentVariable("MOAI_MAX_TOOL_RESULT_CHARS"), out var mtc) ? mtc : 16_000;
-        // 난이도별 모델 라우팅: 티어 모델은 env(MOAI_MODEL_LOW/MID/HIGH)로 설정. 미설정 티어는 기본 모델 유지
-        // → 아무 것도 설정 안 하면 라우팅 비활성(단일 모델 그대로). 로그로 전환/승격을 남긴다.
-        static string? TierModel(MoaiCode.Tools.Tasks.Difficulty d) => d switch
-        {
-            MoaiCode.Tools.Tasks.Difficulty.Low => Environment.GetEnvironmentVariable("MOAI_MODEL_LOW"),
-            MoaiCode.Tools.Tasks.Difficulty.High => Environment.GetEnvironmentVariable("MOAI_MODEL_HIGH"),
-            _ => Environment.GetEnvironmentVariable("MOAI_MODEL_MID"),
-        };
-        Action syncModel = () =>
-        {
-            if (model is not IModelControl ctl)
-            {
-                return;
-            }
-
-            var d = taskStore.CurrentTaskDifficulty();
-            if (d is null)
-            {
-                return; // 진행 중 태스크 없음 → 현재 모델 유지
-            }
-
-            var target = TierModel(d.Value);
-            if (!string.IsNullOrWhiteSpace(target) && !string.Equals(ctl.CurrentModel, target, StringComparison.Ordinal))
-            {
-                MoaiLog.Info($"model route: task difficulty={d} -> {target} (was {ctl.CurrentModel})");
-                ctl.CurrentModel = target!;
-            }
-        };
-        Func<bool> escalateTask = () =>
-        {
-            var next = taskStore.EscalateCurrent();
-            if (next is null)
-            {
-                return false;
-            }
-
-            MoaiLog.Info($"escalate: current task difficulty -> {next}");
-            return true;
-        };
 
         var engine = new QueryEngine(
             model, toolList, gate, observer, settings.MaxTurns,
@@ -243,9 +186,7 @@ public static class AppBootstrap
             maxToolResultChars: maxToolResultChars,
             harvestMemories: true,
             log: MoaiLog.Info,   // 턴/툴/한도 이벤트를 ~/.moai/logs/moai.log 에 기록(진단용).
-            currentPhase: taskStore.CurrentPhase,   // 페이즈 경계에서 하베스트→압축→다음 안내
-            syncModel: syncModel,       // 턴 시작 시 진행 태스크 난이도 티어로 모델 전환
-            escalateTask: escalateTask);   // 실패 루프 시 상위 티어로 승격 후 재시도
+            currentPhase: taskStore.CurrentPhase);   // 페이즈 경계에서 하베스트→압축→다음 안내
         var promptCtx = BuildPromptContext(cwd, settings, toolList);
         engine.Seed(new[] { new SystemMessage(SystemPromptBuilder.Build(promptCtx)) });
 
@@ -266,9 +207,9 @@ public static class AppBootstrap
                 SettingsWriter.Set(new Dictionary<string, string?> { ["model"] = chosen });
                 Environment.SetEnvironmentVariable("MOAI_MODEL", chosen);
             },
-            // /usage: 모델별 로컬 토큰 누적 + 로그인 계정/시각.
+            // /usage: 모델별 로컬 토큰 누적.
             new UsageStore(),
-            new AccountInfo(settings.Account, settings.Host ?? settings.BaseUrl, settings.LoginAt, settings.OrgName),
+            null,  // AccountInfo는 현재 사용하지 않음 (서버 연동 제거).
             rules,
             settings.ReasoningEffort,
             effort =>
@@ -282,29 +223,6 @@ public static class AppBootstrap
                 L10n.SetLanguage(language);
                 SettingsWriter.Set(new Dictionary<string, string?> { ["language"] = language });
                 Environment.SetEnvironmentVariable("MOAI_LANGUAGE", language);
-            },
-            // /skills sync: 팀 공유 스킬을 다시 받아 디스크에 기록하고 라이브 SkillTool 을 재적재.
-            SyncTeamSkills: async token =>
-            {
-                var key = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
-                var burl = Environment.GetEnvironmentVariable("OPENAI_BASE_URL");
-                if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(burl))
-                {
-                    return L10n.Get("slash.skills.loginRequired");
-                }
-
-                var res = await TeamSkills.SyncAsync(burl!, key!, token).ConfigureAwait(false);
-                if (res.Error is not null)
-                {
-                    return L10n.Get("slash.skills.syncFailed", res.Error);
-                }
-
-                // 로컬 비활성 필터를 유지한 채 라이브 SkillTool 재적재.
-                var dis = SkillState.LoadDisabled();
-                var reloaded = SkillCatalog.DiscoverAll(cwd)
-                    .Where(x => !dis.Contains(x.Skill.Name)).Select(x => x.Skill).ToList();
-                skillTool.Reload(reloaded);
-                return L10n.Get("slash.skills.synced", res.Written, reloaded.Count);
             },
             // /skills: 전체 스킬(이름·출처·현재 활성) 조회.
             GetSkillChoices: () =>
@@ -324,39 +242,10 @@ public static class AppBootstrap
                 skillTool.Reload(active);
                 return L10n.Get("slash.skills.toggleSaved", active.Count, dis.Count);
             },
-            // /login: 세션 도중 재로그인. 성공하면 새 키를 이 프로세스 환경에도 반영해 즉시 쓰이게 한다.
-            Login: async token =>
-            {
-                var ok = await LoginFlow.RunAsync(LoginFlow.ResolveDefaultHost(), token).ConfigureAwait(false);
-                if (!ok)
-                {
-                    return L10n.Get("slash.login.failed");
-                }
-
-                ResolveCredentials();
-                return L10n.Get("slash.login.done");
-            },
-            Logout: () =>
-            {
-                LoginFlow.Logout();
-                return L10n.Get("cli.login.loggedOut");
-            },
             // /install·/uninstall: Windows 셸 통합(PATH + 탐색기 우클릭 메뉴).
             InstallIntegration: () => WindowsIntegration.Install(L10n.Get("slash.install.menuLabel")),
             UninstallIntegration: WindowsIntegration.Uninstall,
-            PlanTree: () => MoaiCode.Tools.Tasks.PlanRender.PlainTree(taskStore.Phases()),
-            PersistTierModel: (tier, model) =>
-            {
-                var (env, key) = tier switch
-                {
-                    "low" => ("MOAI_MODEL_LOW", "modelLow"),
-                    "high" => ("MOAI_MODEL_HIGH", "modelHigh"),
-                    _ => ("MOAI_MODEL_MID", "modelMid"),
-                };
-                var v = string.IsNullOrWhiteSpace(model) ? null : model;
-                Environment.SetEnvironmentVariable(env, v);                       // 런타임 즉시 반영(syncModel 이 env 를 읽음)
-                SettingsWriter.Set(new Dictionary<string, string?> { [key] = v }); // 다음 실행에도 유지
-            });
+            PlanTree: () => MoaiCode.Tools.Tasks.PlanRender.PlainTree(taskStore.Phases()));
 
         return new AppRuntime(
             mcp, ctx, toolList, skills.Select(s => s.Name).ToList(), mcpConfigs, providerDesc, settings);
@@ -401,7 +290,7 @@ public static class AppBootstrap
             Path.Combine(cwd, "CLAUDE.md"),
             Path.Combine(cwd, "AGENTS.md"),
             Path.Combine(cwd, ".claude", "CLAUDE.md"),
-            Path.Combine(home, ".moai", "CLAUDE.md"),
+            Path.Combine(home, ".zaicode", "CLAUDE.md"),
             Path.Combine(home, ".claude", "CLAUDE.md"),
         };
 
@@ -438,17 +327,6 @@ public static class AppBootstrap
     // 비대화형에서 위험 툴 자동 승인 opt-in. MOAI_YES / MOAI_APPROVE / MOAI_AUTO_APPROVE = 1/true/yes.
     // 위험 판정 분류기 on/off. 기본 켜짐 — MOAI_RISK_CLASSIFIER=0/false/off 로 끈다.
     // 환경변수가 "1/true/on/yes"(대소문자 무시)면 참. 미설정/그 외는 거짓.
-    // 팀 스킬 sync 오류가 '인증 거부'(서버가 CLI 키로 조직 접근을 허용하지 않는, 사용자가 조치 불가한
-    // 예상된 상황)인지 판별 — TeamSkills 가 "HTTP 401/403: ..." 형태 또는 AUTHENTICATION_REQUIRED 코드를 담아 준다.
-    private static bool IsAuthError(string error) =>
-        error.Contains("HTTP 401", StringComparison.Ordinal)
-        || error.Contains("HTTP 403", StringComparison.Ordinal)
-        || error.Contains("AUTHENTICATION_REQUIRED", StringComparison.Ordinal);
-
-    // 서버측 오류(5xx) — 사용자가 조치할 수 없는 서버 상태. 시작 배너엔 표시하지 않고 로그만.
-    private static bool IsServerError(string error) =>
-        System.Text.RegularExpressions.Regex.IsMatch(error, @"HTTP 5\d\d");
-
     private static bool IsEnvTruthy(string name)
     {
         var v = Environment.GetEnvironmentVariable(name);
@@ -498,22 +376,6 @@ public static class AppBootstrap
             Environment.SetEnvironmentVariable("MOAI_MODEL", s.Model);
         }
 
-        // 난이도 티어 모델(설정 → env). env 가 이미 있으면 유지(env 우선).
-        if (!string.IsNullOrEmpty(s.ModelLow) && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MOAI_MODEL_LOW")))
-        {
-            Environment.SetEnvironmentVariable("MOAI_MODEL_LOW", s.ModelLow);
-        }
-
-        if (!string.IsNullOrEmpty(s.ModelMid) && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MOAI_MODEL_MID")))
-        {
-            Environment.SetEnvironmentVariable("MOAI_MODEL_MID", s.ModelMid);
-        }
-
-        if (!string.IsNullOrEmpty(s.ModelHigh) && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MOAI_MODEL_HIGH")))
-        {
-            Environment.SetEnvironmentVariable("MOAI_MODEL_HIGH", s.ModelHigh);
-        }
-
         if (!string.IsNullOrEmpty(s.BaseUrl)
             && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OPENAI_BASE_URL")))
         {
@@ -531,15 +393,22 @@ public static class AppBootstrap
 
     private static void ResolveCredentials()
     {
-        if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OPENAI_API_KEY")))
+        // 환경변수(launcher 스크립트 등)가 우선. 비어 있을 때만 저장소(auth set)에서 복원.
+        RestoreFromStore("OPENAI_API_KEY");
+        RestoreFromStore("GEMINI_API_KEY"); // WebSearch(Gemini) — auth set gemini 로 저장한 키
+    }
+
+    private static void RestoreFromStore(string name)
+    {
+        if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable(name)))
         {
             return;
         }
 
-        var stored = new FileCredentialStore().Get("OPENAI_API_KEY");
+        var stored = new FileCredentialStore().Get(name);
         if (!string.IsNullOrEmpty(stored))
         {
-            Environment.SetEnvironmentVariable("OPENAI_API_KEY", stored);
+            Environment.SetEnvironmentVariable(name, stored);
         }
     }
 }

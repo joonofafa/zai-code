@@ -11,26 +11,34 @@ using MoaiCode.Localization;
 namespace MoaiCode.Tools.Web;
 
 /// <summary>
-/// open-moai 경유 웹검색. 로그인 시 저장된 baseUrl(OPENAI_BASE_URL) + API 키(OPENAI_API_KEY)로
-/// POST {baseUrl}/search 를 호출한다(별도 검색 키 불필요 — B2B). 서버가 SearXNG 등 멀티엔진으로 검색.
-/// 안전장치: 30초 타임아웃, ct 준수, 프록시 자동 적용. 엔드포인트 미배포(404) 시 친절한 안내.
+/// Gemini API 의 Google Search grounding 경유 웹검색(POST /v1beta/interactions, tools=[google_search]).
+/// 키는 GEMINI_API_KEY, 모델은 GEMINI_SEARCH_MODEL(기본 gemini-3.7-flash).
+///
+/// grounding 은 랭킹된 결과 목록을 주지 않는다 — 모델이 검색해서 만든 답변과 그 답변에 달린
+/// 출처(annotations 의 url_citation)만 돌아온다. 그래서 이 툴의 출력은 '요약 답변 + 출처 URL' 이고,
+/// 원문이 필요하면 호출자가 WebFetch 로 이어서 읽는다.
 /// </summary>
 public sealed class WebSearchTool : ITool
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
+    private const string Endpoint = "https://generativelanguage.googleapis.com/v1beta/interactions";
+    // 최신(3.7)은 수요가 몰려 500 "high demand" 가 잦다. 무료 할당량은 3.x 전체가 공유하므로
+    // 한 단계 아래를 기본으로 둔다. 바꾸려면 GEMINI_SEARCH_MODEL.
+    private const string DefaultModel = "gemini-3.6-flash";
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(60);
 
     public string Name => "WebSearch";
 
     public string Description => """
-        Searches the web via the connected open-moai server and returns ranked results (title, url, snippet).
+        Searches the web via Google and returns a grounded summary with its source URLs.
 
         Usage:
-        - Provide a natural-language query. Optional: limit, language (e.g. "ko"), country (e.g. "KR").
-        - Requires being logged in to open-moai (baseUrl + API key). No separate search API key needed.
-        - Use WebFetch to read the full content of a result URL.
+        - Provide a natural-language query. The search is run by Google; the answer cites the pages it used.
+        - This returns a summary plus sources, NOT a ranked result list. To read a source in full, follow up with WebFetch.
+        - Use it for facts that may have changed since training, or to find the page you then need to read.
         """;
 
     public bool IsReadOnly => true;
+
     public bool IsConcurrencySafe => true;
 
     public JsonElement InputSchema { get; } = ToolSchema.Parse(
@@ -38,30 +46,13 @@ public sealed class WebSearchTool : ITool
         {
           "type": "object",
           "properties": {
-            "query": { "type": "string", "description": "Search query" },
-            "limit": { "type": "integer", "description": "Max results (default 10)" },
-            "language": { "type": "string", "description": "Language code, e.g. ko, en" },
-            "country": { "type": "string", "description": "Country code, e.g. KR, US" }
+            "query": { "type": "string", "description": "Search query" }
           },
           "required": ["query"]
         }
         """);
 
-    private sealed record Input(
-        [property: JsonPropertyName("query")] string? Query,
-        [property: JsonPropertyName("limit")] int? Limit,
-        [property: JsonPropertyName("language")] string? Language,
-        [property: JsonPropertyName("country")] string? Country);
-
-    private sealed record SearchResult(
-        [property: JsonPropertyName("title")] string? Title,
-        [property: JsonPropertyName("url")] string? Url,
-        [property: JsonPropertyName("snippet")] string? Snippet,
-        [property: JsonPropertyName("engine")] string? Engine);
-
-    private sealed record SearchResponse(
-        [property: JsonPropertyName("results")] List<SearchResult>? Results,
-        [property: JsonPropertyName("count")] int? Count);
+    private sealed record Input([property: JsonPropertyName("query")] string? Query);
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -73,31 +64,27 @@ public sealed class WebSearchTool : ITool
             yield break;
         }
 
-        var baseUrl = Environment.GetEnvironmentVariable("OPENAI_BASE_URL");
-        var key = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
-        if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(key))
+        var key = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
+        if (string.IsNullOrWhiteSpace(key))
         {
-            yield return new ToolOutput(
-                L10n.Get("tools.webSearch.notLoggedIn"),
-                IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.webSearch.noKey"), IsError: true);
             yield break;
         }
 
-        var url = baseUrl.TrimEnd('/') + "/search";
+        var model = Environment.GetEnvironmentVariable("GEMINI_SEARCH_MODEL");
+        if (string.IsNullOrWhiteSpace(model))
+        {
+            model = DefaultModel;
+        }
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(Timeout);
-        var tok = timeoutCts.Token;
 
         string? error = null;
-        SearchResponse? data = null;
+        string? body = null;
         try
         {
-            data = await CallAsync(url, key, inp, tok).ConfigureAwait(false);
-        }
-        catch (EndpointMissingException)
-        {
-            error = L10n.Get("tools.webSearch.endpointMissing");
+            body = await CallAsync(key!, model!, inp.Query!, timeoutCts.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
@@ -114,77 +101,122 @@ public sealed class WebSearchTool : ITool
             yield break;
         }
 
-        var results = data?.Results ?? new List<SearchResult>();
-        if (results.Count == 0)
-        {
-            yield return new ToolOutput("(no results)");
-            yield break;
-        }
-
-        var sb = new StringBuilder();
-        var i = 1;
-        foreach (var r in results)
-        {
-            // engine 을 함께 표기한다 — 어떤 검색 엔진이 준 결과인지 알아야 품질 문제를 진단/판별할 수 있다.
-            var engine = string.IsNullOrWhiteSpace(r.Engine) ? "" : $" [{r.Engine}]";
-            sb.Append(i++).Append(". ").Append(r.Title ?? r.Url ?? "(untitled)").AppendLine(engine);
-            if (!string.IsNullOrWhiteSpace(r.Url))
-            {
-                sb.Append("   ").AppendLine(r.Url);
-            }
-
-            if (!string.IsNullOrWhiteSpace(r.Snippet))
-            {
-                sb.Append("   ").AppendLine(r.Snippet!.Trim());
-            }
-
-            sb.AppendLine();
-        }
-
+        var rendered = Render(body!);
         // 검색 결과(외부 콘텐츠)는 신뢰불가 — 인젝션 경계를 앞에 붙인다.
-        yield return new ToolOutput(Reminders.UntrustedToolOutput + sb.ToString().TrimEnd());
+        yield return rendered.Length == 0
+            ? new ToolOutput("(no results)")
+            : new ToolOutput(Reminders.UntrustedToolOutput + rendered);
     }
 
-    private static async Task<SearchResponse?> CallAsync(string url, string key, Input inp, CancellationToken ct)
+    private static async Task<string> CallAsync(string key, string model, string query, CancellationToken ct)
     {
         using var handler = new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.All };
         using var client = new HttpClient(handler);
-        client.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key);
+        client.DefaultRequestHeaders.Add("x-goog-api-key", key);
 
-        // language/country 는 사용자가 명시했을 때만 보낸다. 예전엔 ko/KR 를 강제해 영어 기술 질의가
-        // 한국 소스(namu.wiki, ko.wikipedia)로 쏠렸다 → 미지정 시 서버(SearXNG)가 관련성으로 판단.
         var payload = new Dictionary<string, object>(StringComparer.Ordinal)
         {
-            ["query"] = inp.Query!,
-            ["limit"] = inp.Limit ?? 10,
+            ["model"] = model,
+            ["input"] = query,
+            ["tools"] = new object[] { new Dictionary<string, string>(StringComparer.Ordinal) { ["type"] = "google_search" } },
         };
-        if (!string.IsNullOrWhiteSpace(inp.Language))
-        {
-            payload["language"] = inp.Language;
-        }
 
-        if (!string.IsNullOrWhiteSpace(inp.Country))
-        {
-            payload["country"] = inp.Country;
-        }
-
-        using var resp = await client.PostAsJsonAsync(url, payload, ct).ConfigureAwait(false);
-        if (resp.StatusCode == HttpStatusCode.NotFound)
-        {
-            throw new EndpointMissingException();
-        }
-
+        using var resp = await client.PostAsJsonAsync(Endpoint, payload, ct).ConfigureAwait(false);
+        var text = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         if (!resp.IsSuccessStatusCode)
         {
-            var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-            throw new HttpRequestException($"HTTP {(int)resp.StatusCode}: {body.Trim()}");
+            // 본문에 사유(잘못된 키·쿼터 초과·모델명 오류)가 담겨 오므로 잘라서 그대로 노출한다.
+            throw new HttpRequestException(
+                $"HTTP {(int)resp.StatusCode}: {text[..Math.Min(text.Length, 400)]}");
         }
 
-        return await resp.Content.ReadFromJsonAsync<SearchResponse>(cancellationToken: ct).ConfigureAwait(false);
+        return text;
     }
 
-    private sealed class EndpointMissingException : Exception
+    /// <summary>
+    /// 응답에서 답변 텍스트와 출처(url_citation)를 뽑아 사람이 읽을 형태로 만든다.
+    /// 응답 스키마가 바뀌어도 죽지 않도록 이름으로 훑는 방어적 파싱을 쓴다.
+    /// </summary>
+    private static string Render(string body)
     {
+        JsonDocument doc;
+        try
+        {
+            doc = JsonDocument.Parse(body);
+        }
+        catch (JsonException)
+        {
+            return string.Empty;
+        }
+
+        using (doc)
+        {
+            var answer = new StringBuilder();
+            var sources = new List<(string Url, string Title)>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            Walk(doc.RootElement, answer, sources, seen);
+
+            var sb = new StringBuilder();
+            if (answer.Length > 0)
+            {
+                sb.AppendLine(answer.ToString().Trim());
+            }
+
+            if (sources.Count > 0)
+            {
+                sb.AppendLine().AppendLine("Sources:");
+                var i = 1;
+                foreach (var (url, title) in sources)
+                {
+                    sb.Append(i++).Append(". ").AppendLine(string.IsNullOrWhiteSpace(title) ? url : title);
+                    sb.Append("   ").AppendLine(url);
+                }
+            }
+
+            return sb.ToString().TrimEnd();
+        }
+    }
+
+    // model_output 의 text 블록과 url_citation 주석을 재귀로 모은다.
+    private static void Walk(
+        JsonElement el, StringBuilder answer, List<(string, string)> sources, HashSet<string> seen)
+    {
+        switch (el.ValueKind)
+        {
+            case JsonValueKind.Object:
+                if (el.TryGetProperty("url", out var u) && u.ValueKind == JsonValueKind.String
+                    && el.TryGetProperty("type", out var ty) && ty.ValueKind == JsonValueKind.String
+                    && ty.GetString() is "url_citation")
+                {
+                    var url = u.GetString()!;
+                    if (seen.Add(url))
+                    {
+                        sources.Add((url,
+                            el.TryGetProperty("title", out var t) && t.ValueKind == JsonValueKind.String
+                                ? t.GetString() ?? "" : ""));
+                    }
+                }
+                else if (el.TryGetProperty("type", out var bt) && bt.ValueKind == JsonValueKind.String
+                         && bt.GetString() is "text"
+                         && el.TryGetProperty("text", out var tx) && tx.ValueKind == JsonValueKind.String)
+                {
+                    answer.AppendLine(tx.GetString());
+                }
+
+                foreach (var p in el.EnumerateObject())
+                {
+                    Walk(p.Value, answer, sources, seen);
+                }
+
+                break;
+
+            case JsonValueKind.Array:
+                foreach (var item in el.EnumerateArray())
+                {
+                    Walk(item, answer, sources, seen);
+                }
+
+                break;
+        }
     }
 }

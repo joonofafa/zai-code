@@ -56,9 +56,7 @@ internal sealed class ModelCommand : ISlashCommand
         var summary = ModelPicker.Run(
             models,
             mc.CurrentModel,
-            chosen => { mc.CurrentModel = chosen; ctx.PersistModel?.Invoke(chosen); }, // 라이브 반영 + settings/env 영속
-            (tier, model) => ctx.PersistTierModel?.Invoke(tier, model),
-            tier => Environment.GetEnvironmentVariable(tier switch { "low" => "MOAI_MODEL_LOW", "high" => "MOAI_MODEL_HIGH", _ => "MOAI_MODEL_MID" }));
+            chosen => { mc.CurrentModel = chosen; ctx.PersistModel?.Invoke(chosen); }); // 라이브 반영 + settings/env 영속
         return new SlashResult(summary);
     }
 }
@@ -176,17 +174,6 @@ internal sealed class SkillsCommand : ISlashCommand
 
     public async Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
-        // /skills sync — 팀 공유 스킬을 서버에서 다시 받아 라이브로 갱신.
-        if (args.Length > 0 && string.Equals(args[0], "sync", StringComparison.OrdinalIgnoreCase))
-        {
-            if (ctx.SyncTeamSkills is null)
-            {
-                return new SlashResult(L10n.Get("slash.skills.syncUnavailable"));
-            }
-
-            return new SlashResult(await ctx.SyncTeamSkills(ct).ConfigureAwait(false));
-        }
-
         // /skills — 대화형이면 체크박스 피커로 활성/비활성 토글, 아니면 목록만 출력.
         if (ctx.GetSkillChoices is not null && ctx.SetDisabledSkills is not null && !Console.IsInputRedirected)
         {
@@ -211,34 +198,7 @@ internal sealed class SkillsCommand : ISlashCommand
     }
 }
 
-// /login: 세션 도중 재로그인. 자격증명이 만료·손상되면 REPL 을 나가지 않고 여기서 복구한다.
-internal sealed class LoginCommand : ISlashCommand
-{
-    public string Name => "login";
-    public string Description => L10n.Get("slash.login.description");
-
-    public async Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
-    {
-        if (ctx.Login is null)
-        {
-            return new SlashResult(L10n.Get("slash.login.unavailable"));
-        }
-
-        return new SlashResult(await ctx.Login(ct).ConfigureAwait(false));
-    }
-}
-
-internal sealed class LogoutCommand : ISlashCommand
-{
-    public string Name => "logout";
-    public string Description => L10n.Get("slash.logout.description");
-
-    public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
-        => Task.FromResult(new SlashResult(
-            ctx.Logout is null ? L10n.Get("slash.login.unavailable") : ctx.Logout()));
-}
-
-// /install·/uninstall: Windows 셸 통합(PATH + 탐색기 우클릭 "MoAI Code로 열기").
+// /install·/uninstall: Windows 셸 통합(PATH + 탐색기 우클릭 "Zai Code로 열기").
 internal sealed class InstallCommand : ISlashCommand
 {
     public string Name => "install";
@@ -306,16 +266,6 @@ internal sealed class BrainstormCommand : ISlashCommand
         st.BrainstormTurnsLeft = MaxTurns;
         st.BrainstormBasePlan = ctx.PlanTree?.Invoke() ?? string.Empty;
 
-        // 티어 High 모델로 스왑(설정 시). 종료 시 복원할 이전 모델 저장.
-        st.BrainstormPrevModel = null;
-        var high = Environment.GetEnvironmentVariable("MOAI_MODEL_HIGH");
-        if (ctx.Models is not null && !string.IsNullOrWhiteSpace(high)
-            && !string.Equals(ctx.Models.CurrentModel, high, StringComparison.OrdinalIgnoreCase))
-        {
-            st.BrainstormPrevModel = ctx.Models.CurrentModel;
-            ctx.Models.CurrentModel = high;
-        }
-
         // 인터뷰어 역할 리마인더 주입(세션 동안 유지).
         ctx.Engine.AddSystemReminder(MoaiCode.Core.Agent.Prompts.Reminders.Brainstorm);
 
@@ -326,19 +276,13 @@ internal sealed class BrainstormCommand : ISlashCommand
             : new SlashResult(banner + "\n" + L10n.Get("slash.brainstorm.askTopic")));
     }
 
-    // 브레인스토밍 종료: 상태 해제 + 모델 복원. ReplApp(플랜 감지/한도 도달)과 공용.
+    // 브레인스토밍 종료: 상태 해제. ReplApp(플랜 감지/한도 도달)과 공용.
     internal static void End(SlashContext ctx)
     {
         var st = ctx.State;
         st.Brainstorming = false;
         st.BrainstormTurnsLeft = 0;
         st.BrainstormBasePlan = null;
-        if (st.BrainstormPrevModel is not null && ctx.Models is not null)
-        {
-            ctx.Models.CurrentModel = st.BrainstormPrevModel;
-        }
-
-        st.BrainstormPrevModel = null;
     }
 }
 
@@ -415,7 +359,7 @@ internal sealed class PermissionsCommand : ISlashCommand
     }
 }
 
-// /usage: 로그인 계정·시간 + 모델별 로컬 토큰 사용량. Spectre 로 직접 렌더(색/정렬)하고 빈 결과 반환.
+// /usage: 모델별 로컬 토큰 사용량만 표시. Spectre 로 직접 렌더(색/정렬)하고 빈 결과 반환.
 internal sealed class UsageCommand : ISlashCommand
 {
     public string Name => "usage";
@@ -423,22 +367,6 @@ internal sealed class UsageCommand : ISlashCommand
 
     public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
-        var ac = ctx.Account;
-        var email = string.IsNullOrWhiteSpace(ac?.Email) ? L10n.Get("common.unknown") : ac!.Email!;
-        var host = string.IsNullOrWhiteSpace(ac?.Host) ? L10n.Get("common.notSet") : ac!.Host!;
-        var org = string.IsNullOrWhiteSpace(ac?.OrgName) ? null : ac!.OrgName!;
-
-        Spectre.Console.AnsiConsole.WriteLine();
-        Spectre.Console.AnsiConsole.MarkupLine(
-            $"[aqua]{Spectre.Console.Markup.Escape(L10n.Get("slash.usage.account"))}[/] [grey85]{Spectre.Console.Markup.Escape(email)}[/] [grey70]· {Spectre.Console.Markup.Escape(host)}[/]");
-        if (org is not null)
-        {
-            Spectre.Console.AnsiConsole.MarkupLine(
-                $"[grey70]{Spectre.Console.Markup.Escape(L10n.Get("slash.usage.org"))}[/][grey85]{Spectre.Console.Markup.Escape(org)}[/]");
-        }
-        Spectre.Console.AnsiConsole.MarkupLine(
-            $"[grey70]{Spectre.Console.Markup.Escape(L10n.Get("slash.usage.loginNow", FormatTime(ac?.LoginAt), DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm")))}[/]");
-
         var usage = ctx.Usage;
         var rows = usage?.All() ?? System.Array.Empty<ModelUsage>();
         var since = usage is not null ? L10n.Get("slash.usage.since", usage.Since.ToString("yyyy-MM-dd")) : "";
@@ -474,11 +402,6 @@ internal sealed class UsageCommand : ISlashCommand
 
         return Task.FromResult(new SlashResult(""));
     }
-
-    private static string FormatTime(string? iso)
-        => !string.IsNullOrWhiteSpace(iso) && DateTimeOffset.TryParse(iso, out var t)
-            ? t.ToString("yyyy-MM-dd HH:mm")
-            : L10n.Get("common.unknown");
 }
 
 internal sealed class PlanModeCommand : ISlashCommand

@@ -36,7 +36,7 @@ public sealed class UsageStore
     public UsageStore(string? path = null)
     {
         _path = path ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".moai", "usage.json");
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".zaicode", "usage.json");
         Load();
     }
 

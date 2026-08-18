@@ -332,24 +332,6 @@ public class ToolDisplayTests
     }
 }
 
-public class WebSearchToolTests
-{
-    [Fact]
-    public async Task Requires_query()
-    {
-        var tool = new MoaiCode.Tools.Web.WebSearchTool();
-        var input = JsonDocument.Parse("""{"query":""}""").RootElement;
-        var ctx = new ToolContext(Path.GetTempPath(), PermissionMode.Auto);
-        var err = false;
-        await foreach (var p in tool.ExecuteAsync(input, ctx, CancellationToken.None))
-        {
-            if (p is ToolOutput o) { err |= o.IsError; }
-        }
-
-        Assert.True(err);
-    }
-}
-
 public class BashSecurityHardeningTests
 {
     [Theory]

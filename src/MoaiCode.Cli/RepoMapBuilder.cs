@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using MoaiCode.Tools;
 
 namespace MoaiCode.Cli;
 
@@ -10,10 +11,9 @@ public static class RepoMapBuilder
         ".cs", ".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs", ".java", ".kt",
     };
 
-    private static readonly string[] SkipDirs =
-    {
-        ".git", "bin", "obj", "node_modules", "dist", "build", ".next", ".cache", "coverage",
-    };
+    // 리포맵은 시작 경로에서 동기로 만들어지므로(첫 응답이 이만큼 늦어진다) 예산을 짧게 잡는다.
+    // 초과하면 그때까지 모은 파일로 맵을 만든다 — 없는 것보다 부분 맵이 낫다.
+    private static readonly TimeSpan ScanBudget = TimeSpan.FromSeconds(3);
 
     private static readonly Regex Symbol = new(
         @"^\s*(public|private|protected|internal|export|async|static|sealed|abstract|partial|\s)*\s*(class|interface|record|struct|enum|def|function|func|fn|type)\s+[A-Za-z_][\w<>,]*",
@@ -91,46 +91,10 @@ public static class RepoMapBuilder
         }
     }
 
-    // SkipDirs를 트래버설 단계에서 가지치기 — node_modules/.git 등 대형 디렉토리로 아예 내려가지 않는다.
-    // (EnumerateFiles(AllDirectories)는 필터링 전에 전부 순회하므로 큰 레포에서 느림.)
+    // 순회는 FileWalker 에 맡긴다 — 심볼릭 링크 스킵(홈에 걸린 네트워크 마운트로 새어나가면
+    // 끝나지 않는다)·빌드 디렉토리 가지치기·시간 예산이 거기 모여 있다. 여기서 다시 구현하지 말 것.
     private static IEnumerable<string> EnumerateSourceFiles(string root)
-    {
-        var stack = new Stack<string>();
-        stack.Push(root);
-        while (stack.Count > 0)
-        {
-            var dir = stack.Pop();
-            string[] subDirs;
-            string[] files;
-            try
-            {
-                subDirs = Directory.GetDirectories(dir);
-                files = Directory.GetFiles(dir);
-            }
-            catch (IOException)
-            {
-                continue;
-            }
-            catch (UnauthorizedAccessException)
-            {
-                continue;
-            }
-
-            foreach (var sub in subDirs)
-            {
-                var name = Path.GetFileName(sub);
-                if (!SkipDirs.Contains(name, StringComparer.OrdinalIgnoreCase))
-                {
-                    stack.Push(sub);
-                }
-            }
-
-            foreach (var f in files)
-            {
-                yield return f;
-            }
-        }
-    }
+        => new FileWalker(ScanBudget).Walk(root, CancellationToken.None);
 
     private static string Relative(string root, string file)
     {

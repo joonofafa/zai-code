@@ -8,8 +8,7 @@ description: Use when producing a business report or summary document (Word or E
 Produce a clear, executive-ready report using the built-in Office tools. Never install packages (python-docx, openpyxl, etc.) or write scripts — `DocxCreate` / `XlsxCreate` already build valid files with no Office install.
 
 ## 1. Gather grounded data first
-- Numbers: query the data warehouse via `OrgDatas` (follow the org-data-query workflow — list schema first, no double-quoted identifiers).
-- Context: pull relevant org documents via `OrgDocs`.
+- Numbers: read them from the files the user provided, or ask for the source data.
 - Note the source and period for every figure; do not invent numbers.
 
 ## 2. Structure (lead with the conclusion)
