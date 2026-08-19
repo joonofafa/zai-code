@@ -25,12 +25,16 @@ public static class BracketedPaste
     public static ConsoleKeyInfo ReadKey() =>
         Pushback.Count > 0 ? Pushback.Dequeue() : Console.ReadKey(intercept: true);
 
+    /// <summary>pushback(선행 읽기 취소로 되돌린 키)에 남은 키 수 — 워처 드레인용.</summary>
+    public static int PushbackCount => Pushback.Count;
+
     /// <summary>대기 중인 키(pushback 또는 콘솔 입력)가 있는가. 폴링 불가 환경에선 Console.KeyAvailable 이 throw.</summary>
     public static bool KeyAvailable => Pushback.Count > 0 || Console.KeyAvailable;
 
     /// <summary>
     /// ESC 로 시작하는 키가 붙여넣기 시작(ESC[200~)이면 종료 마커까지 본문을 읽어 반환한다.
     /// 아니면 선행 읽은 키를 모두 pushback 하고 false.
+    /// 대기 중인 후속 입력이 없으면(단독 ESC) 시도조차 하지 않는다.
     /// </summary>
     public static bool TryReadPaste(ConsoleKeyInfo first, out string text)
     {
@@ -42,12 +46,34 @@ public static class BracketedPaste
             return false;
         }
 
-        var consumed = new List<ConsoleKeyInfo>();
+        return TryReadPasteCore(first, out text);
+    }
+
+    /// <summary>
+    /// ESC[200~ 시퀀스를 (후속 입력 대기 여부와 무관하게) 읽는다. 턴 중 워처가 bracketed paste
+    /// 본문을 통째로 모으는 용도 — 터미널이 마커를 이미 흘려보낸 뒤라 후속 키가 확실히 있기 때문.
+    /// 시퀀스가 아니면 선행 읽은 키를 pushback 하고 false 를 반환한다.
+    /// </summary>
+    public static bool TryReadPasteAssumeAvailable(ConsoleKeyInfo first, out string text)
+    {
+        text = string.Empty;
+        if (first.Key != ConsoleKey.Escape)
+        {
+            return false;
+        }
+
+        return TryReadPasteCore(first, out text);
+    }
+
+    private static bool TryReadPasteCore(ConsoleKeyInfo first, out string text)
+    {
+        text = string.Empty;
+
+        var consumed = new List<ConsoleKeyInfo> { first };
         foreach (var expect in StartTail)
         {
-            var k = ReadKey();
-            consumed.Add(k);
-            if (k.KeyChar != expect)
+            consumed.Add(ReadKey());
+            if (consumed[^1].KeyChar != expect)
             {
                 foreach (var c in consumed)
                 {

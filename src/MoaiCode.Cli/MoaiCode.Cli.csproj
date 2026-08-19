@@ -2,9 +2,10 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <AssemblyName>zaiCode</AssemblyName>
-    <!-- Z.ai Code 1.0.0 — moai-code 에서 갈라져 나온 z.ai 전용 단일 코딩 에이전트.
-         (조직 서버 연동·GUI 제거, WebSearch=Gemini grounding, stream-json 프로토콜) -->
-    <Version>1.0.0</Version>
+    <!-- Z.ai Code 1.1.0 — moai-code 에서 갈라져 나온 z.ai 전용 단일 코딩 에이전트.
+         (조직 서버 연동·GUI 제거, WebSearch=Gemini grounding, stream-json 프로토콜)
+         1.1.0: GEMINI 키 저장소 복원, 붙여넣기 홍수 수정, 큐잉 플래시 피드백, 턴 중 Shift+Tab -->
+    <Version>1.1.0</Version>
     <!-- 멀티타깃: win-* RID 는 net10.0-windows(Office COM 툴 포함), 나머지는 net10.0. -->
     <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
     <!-- 크로스 게시 대상 (Linux에서 win-x64 self-contained exe 생성 가능) -->

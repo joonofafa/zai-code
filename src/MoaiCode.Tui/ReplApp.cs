@@ -181,6 +181,13 @@ public sealed class ReplApp
                     break;
                 }
 
+                // 턴 중 Shift+Tab 으로 예약된 모드 전환 — 실제 토글만 하고 제출하진 않는다.
+                if (queued == LineEditor.CycleModeSignal)
+                {
+                    CycleMode();
+                    continue;
+                }
+
                 AnsiConsole.MarkupLine($"[grey58]↳ Queued[/] [green]❯[/] {Markup.Escape(queued)}");
                 quit = await ProcessInputAsync(queued, ct).ConfigureAwait(false);
             }
@@ -511,6 +518,7 @@ public sealed class ReplApp
                         has = await MoveNextWithSpinnerAsync(e, L10n.Get("repl.spinner.working"), tct).ConfigureAwait(false);
                         continue;
                     case StreamNotice sn:
+                        ClearSpinnerThenNewline();
                         AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(sn.Text)}[/]");
                         has = await MoveNextWithSpinnerAsync(e, L10n.Get("repl.spinner.working"), tct).ConfigureAwait(false);
                         continue;
@@ -741,7 +749,7 @@ public sealed class ReplApp
             return;
         }
 
-        Console.Write($"[{h};1H\n[1;{h - 1}r[{h - 1};1H[?25l");
+        Console.Write($"\u001b[{h};1H\n\u001b[1;{h - 1}r\u001b[{h - 1};1H\u001b[?25l");
         _barActive = true;
         DrawBar();
     }
@@ -760,7 +768,7 @@ public sealed class ReplApp
         string body;
         if (line.Length == 0)
         {
-            body = $"[38;5;244m{L10n.Get("repl.typeahead.hint")}[0m";
+            body = $"\u001b[38;5;244m{L10n.Get("repl.typeahead.hint")}\u001b[0m";
         }
         else
         {
@@ -770,11 +778,24 @@ public sealed class ReplApp
                 line = "\u2026" + line[^(max - 1)..];
             }
 
-            body = $"[38;5;252m{line}[0m";
+            body = $"\u001b[38;5;252m{line}\u001b[0m";
         }
 
         var qn = _typeAhead ? _turnInput.Count : 0;
-        lock (_barLock) { Console.Write($"7[{h};1H[48;5;236m[2K [38;5;245m(Q:{qn})[38;5;39m\u276f[39m {body}[7m [0m[K[0m8"); }
+
+        // 직전 큐잉(붙여넣기/Enter 확정) 미리보기 — 2초간 표시 후 자동 소멸. Q:n 숫자만으론
+        // 붙여넣어졌는지 알 길이 없어 피드백을 준다. 바 다음 줄에 잠깐 찍고 커서를 되돌린다.
+        var flash = _typeAhead ? _turnInput.TakeFlash() : null;
+        lock (_barLock)
+        {
+            Console.Write($"\u001b7\u001b[{h};1H\u001b[48;5;236m\u001b[2K \u001b[38;5;245m(Q:{qn})\u001b[38;5;39m\u276f\u001b[39m {body}\u001b[7m \u001b[0m\u001b[K\u001b[0m\u001b8");
+            if (flash is { Length: > 0 })
+            {
+                var maxFlash = Math.Max(1, w - 14);
+                var fp = flash.Length > maxFlash ? flash[..(maxFlash - 1)] + "\u2026" : flash;
+                Console.Write($"\u001b7\r\u001b[s\u001b[{h + 1};1H\u001b[2K  \u001b[38;5;245m\u2197 Queued\u001b[0m \u001b[32m\u276f\u001b[0m {fp}\u001b[0m\u001b8\r\u001b[u");
+            }
+        }
     }
 
     // 스크롤 영역 해제 + 입력바 행 지움. 턴 종료·권한창 표시 전에 호출.
@@ -786,7 +807,7 @@ public sealed class ReplApp
         }
 
         var h = BarHeight();
-        Console.Write($"[r[{h};1H[2K[?25h");
+        Console.Write($"\u001b[r\u001b[{h};1H\u001b[2K\u001b[?25h");
         _barActive = false;
     }
 
@@ -795,12 +816,33 @@ public sealed class ReplApp
         var spin = SpinnerFrames[frame % SpinnerFrames.Length];
         // 턴 중엔 하단 고정이 해제된 일반 터미널이라 인라인 스피너로 표시.
         // CR + 줄 전체 지우기 + dim 색으로 스피너/라벨/경과초.
-        lock (_barLock) { Console.Write($"\r[2K[38;5;39m{spin} {label} ({seconds:0}s)[0m"); }
+        lock (_barLock) { Console.Write($"\r\u001b[2K\u001b[38;5;39m{spin} {label} ({seconds:0}s)\u001b[0m"); }
+        _spinnerActive = true;
     }
 
     private void ClearSpinnerLine()
     {
-        lock (_barLock) { Console.Write("\r[2K"); }
+        lock (_barLock) { Console.Write("\r\u001b[2K"); }
+        _spinnerActive = false;
+    }
+
+    // 스피너가 현재 커서 줄에 살아 있는가. 진행 출력(툴 호출/결과/공지)은 스피너가 그린 뒤에도
+    // 같은 줄에 찍히는데, WriteLine 이 커서를 다음 줄로 넘긴 후의 \r\u001b[2K 는 '새 빈 줄'만 지우고
+    // 스피너가 있던 줄은 남겨둔다 — 그게 진행 사이 빈 줄 잔상의 원인. 출력 직전에 이 플래그를
+    // 보고 스피너 줄을 확실히 청소(ClearSpinnerThenNewline)한 뒤 찍는다.
+    private volatile bool _spinnerActive;
+
+    // 스피너가 살아 있으면 그 줄을 지우고 새 줄로 내려온다. 출력 계열 렌더의 첫 동작으로 호출.
+    private void ClearSpinnerThenNewline()
+    {
+        if (!_spinnerActive)
+        {
+            return;
+        }
+
+        ClearSpinnerLine();
+        AnsiConsole.WriteLine();
+        _spinnerActive = false;
     }
 
     private async Task<bool> StreamTextRunAsync(IAsyncEnumerator<StreamEvent> e, CancellationToken ct)
@@ -923,7 +965,7 @@ public sealed class ReplApp
             .Border(BoxBorder.Rounded)
             .BorderColor(Color.Grey);
 
-    private static void RenderToolCall(ToolCallRequested t)
+    private void RenderToolCall(ToolCallRequested t)
     {
         string d;
         if (t.Block.Name == "Bash")
@@ -947,13 +989,15 @@ public sealed class ReplApp
             }
         }
 
+        ClearSpinnerThenNewline();
         AnsiConsole.MarkupLine($"[yellow]→[/] [grey70]{Markup.Escape(d)}[/]");
     }
 
-    private static void RenderToolResult(ToolExecuted x, ToolUseBlock? call = null)
+    private void RenderToolResult(ToolExecuted x, ToolUseBlock? call = null)
     {
         // 결과는 호출(→) 아래에 한 단계 들여써서 시각적으로 묶는다.
         const string ind = "  ";
+        ClearSpinnerThenNewline();
 
         // 오류는 원인 파악을 위해 메시지를 보여주되 과하지 않게 절단.
         if (x.IsError)
@@ -1065,6 +1109,10 @@ public sealed class ReplApp
         }
 
         var stop = new CancellationTokenSource();
+        // 턴 중에도 bracketed paste 를 켜둔다 — 꺼져 있으면 터미널이 붙여넣기를 raw 키 스트림으로
+        // 흘려보내 ESC(=취소 오인)와 줄바꿈마다 Enter 커밋이 터져 홍수가 난다. LineEditor 는
+        // 프롬프트마다 자체 Enable/Disable 을 하므로 여기서는 턴 범위에서만 유지한다.
+        Console.Write(BracketedPaste.Enable);
         _ = Task.Run(async () =>
         {
             try
@@ -1077,9 +1125,53 @@ public sealed class ReplApp
                         if (!ConsolePrompt.IsPrompting && Console.KeyAvailable)
                         {
                             var k = Console.ReadKey(intercept: true);
-                            if (k.Key == ConsoleKey.Escape)
+                            if (k.Key == ConsoleKey.Tab
+                                && k.Modifiers.HasFlag(ConsoleModifiers.Shift)
+                                && _typeAhead)
                             {
-                                hit = true;
+                                // 턴 중 모드 전환: 신호만 큐잉하고 드레인 루프가 실행하게 한다.
+                                _turnInput.EnqueueModeCycle();
+                                DrawBar();
+                            }
+                            else if (k.Key == ConsoleKey.Escape)
+                            {
+                                // 붙여넣기 시작 마커(ESC[200~)면 턴 취소가 아니다 — 본문을 통째로
+                                // 한 메시지로 큐잉한다. 마커가 아니었다면 읽은 키들이 pushback 으로
+                                // 되돌려지는데, 그중 ESC 가 있으면 턴 취소, 나머지는 타입어헤드에 반영.
+                                if (BracketedPaste.TryReadPaste(k, out var pasted))
+                                {
+                                    _turnInput.FeedPaste(pasted);
+                                    DrawBar();
+                                }
+                                else
+                                {
+                                    var hasEsc = false;
+                                    while (BracketedPaste.PushbackCount > 0)
+                                    {
+                                        var pk = BracketedPaste.ReadKey();
+                                        if (pk.Key == ConsoleKey.Escape)
+                                        {
+                                            hasEsc = true;
+                                        }
+                                        else if (_typeAhead)
+                                        {
+                                            _turnInput.Feed(pk);
+                                        }
+                                    }
+
+                                    // pushback 이 비었다 = 후속 키 없는 단독 ESC(또는 시퀀스 아니었던 ESC
+                                    // 가 TryReadPaste 진입 조건에서 걸러린 케이스) = 턴 취소.
+                                    // pushback 에 ESC 가 있었어도(ESC[200~ 아닌 ESC 시퀀스) 취소로 본다.
+                                    if (hasEsc || BracketedPaste.PushbackCount == 0)
+                                    {
+                                        hit = true;
+                                    }
+
+                                    if (_typeAhead)
+                                    {
+                                        DrawBar();
+                                    }
+                                }
                             }
                             else if (_typeAhead)
                             {
@@ -1125,6 +1217,16 @@ public sealed class ReplApp
             catch
             {
                 // ignore
+            }
+
+            try
+            {
+                // 턴 범위 paste 모드 해제 — 다음 프롬프트(LineEditor)가 자체적으로 다시 켠다.
+                Console.Write(BracketedPaste.Disable);
+            }
+            catch
+            {
+                // 콘솔 출력 오류 무시
             }
         });
     }
