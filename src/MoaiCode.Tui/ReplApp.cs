@@ -814,15 +814,39 @@ public sealed class ReplApp
     private void DrawSpinner(int frame, string label, double seconds)
     {
         var spin = SpinnerFrames[frame % SpinnerFrames.Length];
-        // 턴 중엔 하단 고정이 해제된 일반 터미널이라 인라인 스피너로 표시.
-        // CR + 줄 전체 지우기 + dim 색으로 스피너/라벨/경과초.
-        lock (_barLock) { Console.Write($"\r\u001b[2K\u001b[38;5;39m{spin} {label} ({seconds:0}s)\u001b[0m"); }
+        lock (_barLock)
+        {
+            if (_barActive)
+            {
+                // 입력바 활성: 커서 위치와 무관하게 바로 위 행(h-1)에 절대좌표로 그린다.
+                // 커서가 입력바 행(h)에 흘러 있으면 인라인 스피너가 바에 매 틱 덮여 안 보였다.
+                var h = BarHeight();
+                Console.Write($"\u001b7\u001b[{h - 1};1H\u001b[2K\u001b[38;5;39m{spin} {label} ({seconds:0}s)\u001b[0m\u001b8");
+            }
+            else
+            {
+                // 턴 중엔 하단 고정이 해제된 일반 터미널이라 인라인 스피너로 표시.
+                // CR + 줄 전체 지우기 + dim 색으로 스피너/라벨/경과초.
+                Console.Write($"\r\u001b[2K\u001b[38;5;39m{spin} {label} ({seconds:0}s)\u001b[0m");
+            }
+        }
         _spinnerActive = true;
     }
 
     private void ClearSpinnerLine()
     {
-        lock (_barLock) { Console.Write("\r\u001b[2K"); }
+        lock (_barLock)
+        {
+            if (_barActive)
+            {
+                var h = BarHeight();
+                Console.Write($"\u001b7\u001b[{h - 1};1H\u001b[2K\u001b8");
+            }
+            else
+            {
+                Console.Write("\r\u001b[2K");
+            }
+        }
         _spinnerActive = false;
     }
 
