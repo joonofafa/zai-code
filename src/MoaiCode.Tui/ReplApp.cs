@@ -548,6 +548,8 @@ public sealed class ReplApp
         catch (OperationCanceledException) when (turnCts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
             // Ctrl+C로 사용자가 중단 — 프로세스는 유지하고 다음 입력으로 복귀.
+            // 바를 먼저 해제(스크롤영역 복원 + 바 행 지움)해야 '중단됨' 이 큐 힌트/입력바와 안 엉킨다.
+            DeactivateBar();
             ClearSpinnerLine();
             AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(L10n.Get("repl.aborted"))}[/]");
         }
@@ -788,6 +790,12 @@ public sealed class ReplApp
         var flash = _typeAhead ? _turnInput.TakeFlash() : null;
         lock (_barLock)
         {
+            // 락 안에서 재확인 — DeactivateBar 직후의 재도색(잔상)을 차단한다.
+            if (!_barActive)
+            {
+                return;
+            }
+
             Console.Write($"\u001b7\u001b[{h};1H\u001b[48;5;236m\u001b[2K \u001b[38;5;245m(Q:{qn})\u001b[38;5;39m\u276f\u001b[39m {body}\u001b[7m \u001b[0m\u001b[K\u001b[0m\u001b8");
             if (flash is { Length: > 0 })
             {
@@ -801,14 +809,19 @@ public sealed class ReplApp
     // 스크롤 영역 해제 + 입력바 행 지움. 턴 종료·권한창 표시 전에 호출.
     private void DeactivateBar()
     {
-        if (!_barActive)
+        // 바 해제는 DrawBar 와 같은 락으로 직렬화한다. 락 없이 해제하면 백그라운드/키 스레드의
+        // DrawBar 가 해제 직후 바를 다시 그려 잔상(큐 힌트 꼬리 등)이 화면에 남는다.
+        lock (_barLock)
         {
-            return;
-        }
+            if (!_barActive)
+            {
+                return;
+            }
 
-        var h = BarHeight();
-        Console.Write($"\u001b[r\u001b[{h};1H\u001b[2K\u001b[?25h");
-        _barActive = false;
+            var h = BarHeight();
+            Console.Write($"\u001b[r\u001b[{h};1H\u001b[2K\u001b[?25h");
+            _barActive = false;
+        }
     }
 
     private void DrawSpinner(int frame, string label, double seconds)

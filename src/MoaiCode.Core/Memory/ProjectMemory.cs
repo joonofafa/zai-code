@@ -3,10 +3,10 @@ using System.Text;
 namespace MoaiCode.Core.Memory;
 
 /// <summary>
-/// 프로젝트별 자동 메모리 저장소 — 세션 간에 유지되는 '배운 사실'을 파일로 축적한다.
-/// 위치: ~/.moai/projects/&lt;repo-root-slug&gt;/memory/ (저장소 밖 — 커밋되지 않음).
-/// 키는 **git repo 루트 기준**(`.git`을 찾을 때까지 상위로 탐색) — 같은 repo의 하위 디렉토리에서
-/// 실행해도 하나의 메모리를 공유한다. git 밖이면 cwd 자체를 키로 사용. (Claude Code와 동일 모델.)
+/// 프로젝트별 저장소 — 세션 간에 유지되는 '배운 사실'과 대화 세션을 cwd 단위로 갈라 담는다.
+/// 위치: ~/.zaicode/projects/&lt;cwd-slug&gt;/{memory,sessions}/ (저장소 밖 — 커밋되지 않음).
+/// 키는 **cwd 절대경로**를 percent-encoding 한 슬러그다(PathSlug 참조). git 탐색을 쓰지 않으므로
+/// $HOME 이 git repo 여도 홈 아래 전체가 한 슬러그로 뭉개지지 않는다.
 /// 각 사실은 frontmatter + 본문의 단일 .md 파일이고, MEMORY.md 인덱스는 매 세션 시스템 프롬프트에 주입된다.
 /// 모든 연산은 best-effort(실패해도 예외를 삼킴) — 메모리 장애가 세션을 막지 않게 한다.
 /// </summary>
@@ -14,11 +14,52 @@ public static class ProjectMemory
 {
     private const int IndexCap = 6000;
 
-    /// <summary>이 프로젝트(cwd가 속한 repo 루트)의 메모리 디렉터리 절대경로.</summary>
-    public static string Dir(string cwd)
+    /// <summary>이 프로젝트(cwd)의 메모리 디렉터리 절대경로.</summary>
+    public static string Dir(string cwd) => Path.Combine(ProjectDir(cwd), "memory");
+
+    /// <summary>이 프로젝트(cwd)의 세션 디렉터리 절대경로. /resume 가 현재 프로젝트만 보게 한다.</summary>
+    public static string SessionsDir(string cwd) => Path.Combine(ProjectDir(cwd), "sessions");
+
+    /// <summary>~/.zaicode/projects/&lt;slug&gt; — memory/ 와 sessions/ 의 공통 부모.</summary>
+    private static string ProjectDir(string cwd)
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return Path.Combine(home, ".zaicode", "projects", PathSlug(ProjectRoot(cwd)), "memory");
+        var dir = Path.Combine(home, ".zaicode", "projects", PathSlug(cwd));
+        MigrateLegacyOnce(cwd, home, dir);
+        return dir;
+    }
+
+    // 슬러그 규칙이 바뀌어 기존 메모리가 고아가 되는 것을 막는 1회성 이관.
+    // cwd 가 '옛 규칙의 프로젝트 루트' 였을 때만 옮긴다 — 하위 디렉토리/홈 붕괴 케이스까지 옮기면
+    // 남의 프로젝트 메모리를 가져오게 된다. 실패는 non-fatal(새로 시작하면 그만).
+    private static void MigrateLegacyOnce(string cwd, string home, string newDir)
+    {
+        try
+        {
+            if (Directory.Exists(newDir))
+            {
+                return;
+            }
+
+            var full = Path.GetFullPath(cwd);
+            if (!string.Equals(LegacyProjectRoot(cwd), full, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            var oldDir = Path.Combine(home, ".zaicode", "projects", LegacyPathSlug(full));
+            if (!Directory.Exists(oldDir) || string.Equals(oldDir, newDir, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(newDir)!);
+            Directory.Move(oldDir, newDir);
+        }
+        catch
+        {
+            // best-effort: 이관 실패해도 새 위치에서 새로 시작한다.
+        }
     }
 
     public static string IndexPath(string cwd) => Path.Combine(Dir(cwd), "MEMORY.md");
@@ -226,9 +267,9 @@ public static class ProjectMemory
         return s.Trim('-');
     }
 
-    // cwd가 속한 git repo 루트를 찾는다(.git 디렉터리/파일을 만날 때까지 상위로). git 밖이면 cwd 자체.
-    // 하위 디렉토리에서 실행해도 같은 repo면 동일 루트 → 메모리를 공유한다.
-    private static string ProjectRoot(string cwd)
+    // [옛 규칙 — 이관 판정 전용] cwd가 속한 git repo 루트(.git 을 만날 때까지 상위로). git 밖이면 cwd 자체.
+    // $HOME 이 repo 면 홈 아래 전부가 한 루트로 붕괴하는 문제가 있어 현재 경로 계산엔 쓰지 않는다.
+    private static string LegacyProjectRoot(string cwd)
     {
         try
         {
@@ -259,7 +300,11 @@ public static class ProjectMemory
         }
     }
 
-    // 절대경로 → 프로젝트 슬러그(영숫자 외는 대시). Claude Code의 프로젝트 키 규약과 동일한 형태.
+    // 절대경로 → 프로젝트 슬러그. URI 인코딩과 동형이라 서로 다른 경로가 절대 겹치지 않는다(단사):
+    //   '/' → '-' (구분자, 가독성)   [A-Za-z0-9_.] → 그대로   그 외 바이트 → %XX (대문자 hex)
+    // '-' 자신도 %2D 로 이스케이프되므로 '-' 는 오직 구분자만 의미한다.
+    //   예) /x/moai-code → -x-moai%2Dcode  vs  /x/moai/code → -x-moai-code
+    // 되돌릴 필요는 없다(항상 cwd 에서 새로 계산) — 유일성만 보장하면 된다.
     private static string PathSlug(string cwd)
     {
         string full;
@@ -272,6 +317,32 @@ public static class ProjectMemory
             full = cwd;
         }
 
+        var sb = new StringBuilder(full.Length + 8);
+        foreach (var b in Encoding.UTF8.GetBytes(full))
+        {
+            if (b == (byte)'/')
+            {
+                sb.Append('-');
+            }
+            else if ((b >= (byte)'A' && b <= (byte)'Z')
+                     || (b >= (byte)'a' && b <= (byte)'z')
+                     || (b >= (byte)'0' && b <= (byte)'9')
+                     || b == (byte)'_' || b == (byte)'.')
+            {
+                sb.Append((char)b);
+            }
+            else
+            {
+                sb.Append('%').Append(b.ToString("X2"));
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    // [옛 규칙 — 이관 판정 전용] 영숫자 외 전부 '-'. lossy 라 서로 다른 경로가 충돌할 수 있었다.
+    private static string LegacyPathSlug(string full)
+    {
         var sb = new StringBuilder(full.Length);
         foreach (var ch in full)
         {

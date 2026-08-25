@@ -48,6 +48,13 @@ public sealed record Settings
     public bool AutoTest { get; init; }
     public int RepoMapTokens { get; init; } = 1200;
 
+    /// <summary>세션 트랜스크립트 보존: 최근 N개만 유지(그 밖은 저장 시 삭제). 0=무제한(정리 안 함).
+    /// 기본 99는 목록 노출 상한(ListInfosAsync)과 정합 — UI 에서 접근도 안 되는 잉여 파일을 정리한다.</summary>
+    public int SessionRetainCount { get; init; } = 99;
+
+    /// <summary>세션 트랜스크립트 보존: N일 초과 파일을 저장 시 삭제. 0=사용 안 함(나이 기준 정리 없음).</summary>
+    public int SessionRetainDays { get; init; }
+
     /// <summary>비-읽기전용 툴 실행 전 workspace 체크포인트 자동 생성 (끄면 git 오버헤드 제거).</summary>
     public bool Checkpoints { get; init; } = true;
 

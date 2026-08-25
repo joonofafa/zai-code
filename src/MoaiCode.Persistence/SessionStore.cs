@@ -17,12 +17,19 @@ public sealed class SessionStore
     };
 
     private readonly string _baseDir;
+    private readonly int _retainCount;
+    private readonly int _retainDays;
+    private bool _swept;
 
-    public SessionStore(string? baseDir = null)
+    /// <param name="retainCount">최근 N개만 유지(0=무제한). <param name="retainDays">N일 초과 삭제(0=사용 안 함).
+    /// 둘 다 저장 시 적용, 현재 세션은 항상 보존. 값은 Config 에서 주입(Persistence→Config 결합 회피).</param></param>
+    public SessionStore(string? baseDir = null, int retainCount = 0, int retainDays = 0)
     {
         _baseDir = baseDir ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             ".zaicode", "sessions");
+        _retainCount = retainCount;
+        _retainDays = retainDays;
     }
 
     public string PathFor(string sessionId)
@@ -33,6 +40,7 @@ public sealed class SessionStore
     {
         Directory.CreateDirectory(_baseDir);
         FilePermissions.RestrictDirToUser(_baseDir);   // 세션 디렉토리 0700
+        SweepPermissionsOnce();                        // 옛 파일 0600 재적용(프로세스/인스턴스당 1회)
         var sb = new StringBuilder();
         foreach (var m in messages)
         {
@@ -43,6 +51,89 @@ public sealed class SessionStore
         await File.WriteAllTextAsync(path, sb.ToString(), ct).ConfigureAwait(false);
         // 트랜스크립트에 tool 출력·사용자 입력(시크릿 가능)이 담기므로 사용자 전용(0600).
         FilePermissions.RestrictFileToUser(path);
+
+        EnforceRetention(sessionId);                   // 보존 정책: 상위 N개/N일 밖 정리(현재 세션 제외)
+    }
+
+    /// <summary>
+    /// 권한 강제 코드 도입 전 저장된 세션 파일은 0664 로 남아 다시 저장될 일이 없어 영구히 그 상태다.
+    /// 첫 저장 시 1회 전수 스윕해 0600 을 재적용한다(매 저장마다 stat 회피 — 인스턴스당 1회).
+    /// </summary>
+    private void SweepPermissionsOnce()
+    {
+        if (_swept)
+        {
+            return;
+        }
+
+        _swept = true;
+        try
+        {
+            foreach (var path in Directory.EnumerateFiles(_baseDir, "*.jsonl"))
+            {
+                try
+                {
+                    FilePermissions.RestrictFileToUser(path);
+                }
+                catch
+                {
+                    // 개별 파일 실패는 무시 — 저장 경로를 막지 않는다(기존 코드 스타일).
+                }
+            }
+        }
+        catch
+        {
+            // 디렉토리 열거 실패도 non-fatal.
+        }
+    }
+
+    /// <summary>
+    /// 세션 파일이 영구 누적되지 않도록 저장 시 정리한다. retainCount 밖(최근순) 또는 retainDays 초과 파일을
+    /// 삭제하되 현재 세션은 항상 보존. 둘 다 0(미설정)이면 정리하지 않는다. 실패는 조용히 무시(non-fatal).
+    /// </summary>
+    private void EnforceRetention(string currentSessionId)
+    {
+        if (_retainCount <= 0 && _retainDays <= 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var files = Directory.GetFiles(_baseDir, "*.jsonl")
+                .Select(p => new FileInfo(p))
+                .OrderByDescending(f => f.LastWriteTimeUtc)
+                .ToList();
+
+            DateTime? cutoff = _retainDays > 0 ? DateTime.UtcNow.AddDays(-_retainDays) : null;
+
+            for (var i = 0; i < files.Count; i++)
+            {
+                var f = files[i];
+                if (string.Equals(Path.GetFileNameWithoutExtension(f.Name), currentSessionId, StringComparison.Ordinal))
+                {
+                    continue; // 현재 세션은 항상 보존
+                }
+
+                var overCount = _retainCount > 0 && i >= _retainCount;
+                var tooOld = cutoff is { } c && f.LastWriteTimeUtc < c;
+                if (overCount || tooOld)
+                {
+                    try
+                    {
+                        f.Delete();
+                    }
+                    catch
+                    {
+                        // 개별 삭제 실패는 무시.
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // 열거 실패는 non-fatal.
+        }
     }
 
     public async Task<IReadOnlyList<Message>> LoadAsync(
@@ -71,6 +162,29 @@ public sealed class SessionStore
         }
 
         return result;
+    }
+
+    /// <summary>세션 파일 삭제. 없으면 no-op(성공 취급). I/O 실패 시 false.</summary>
+    public bool Delete(string sessionId)
+    {
+        try
+        {
+            var path = PathFor(sessionId);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+
+            return true;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     public IReadOnlyList<string> ListSessions()

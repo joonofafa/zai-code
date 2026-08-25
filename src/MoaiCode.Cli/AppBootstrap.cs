@@ -192,7 +192,12 @@ public static class AppBootstrap
 
         var ctx = new SlashContext(
             engine,
-            new SessionStore(),
+            new SessionStore(
+                // 세션도 메모리와 같은 프로젝트 디렉토리에 담는다 — /resume 가 다른 작업
+                // 디렉토리의 세션까지 뒤섞어 보여주던 문제를 막는다.
+                ProjectMemory.SessionsDir(cwd),
+                retainCount: settings.SessionRetainCount,
+                retainDays: settings.SessionRetainDays),
             new HistoryStore(),
             checkpoints,
             state,

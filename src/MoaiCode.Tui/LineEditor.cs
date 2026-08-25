@@ -18,6 +18,9 @@ public static class LineEditor
     internal const string PromptText = "❯ ";
     public const string CycleModeSignal = "__cycle_mode__";
 
+    // 테스트 전용: 터미널 폭을 고정한다(가상 터미널 재현 테스트용). null 이면 실제 Console.WindowWidth.
+    internal static int? ColsForTest;
+
     // 인라인 자동완성(ghost) 색 — 연한 회색(256색 244). 입력 배경 위에서 흐릿하게 보인다.
     internal const string GhostColor = "\x1b[38;5;244m";
 
@@ -288,13 +291,13 @@ public static class LineEditor
     /// 프롬프트 블록(프롬프트 + 버퍼)을 wrap-정확하게 다시 그린다. 직전 렌더가 차지한 물리 행 수와
     /// 커서 행을 추적해 잔상 없이 갱신한다. linenoise refreshMultiLine 이식.
     /// </summary>
-    private sealed class PromptRenderer
+    internal sealed class PromptRenderer
     {
         private readonly bool _hasStatus;
         private readonly IReadOnlyList<string> _slash;
         private readonly bool _brainstorm;   // 브레인스토밍 모드: 입력 라인 배경 파랑
-        private int _oldRows = 1;   // 직전 렌더가 차지한 물리 행 수(>=1)
-        private int _oldOff;        // 직전 렌더에서 커서가 있던 표시폭 오프셋(프롬프트 시작 기준 버퍼 내)
+        private int _oldRows = 1;    // 직전 렌더가 차지한 물리 행 수(>=1, exact-fill 팬텀 포함)
+        private int _oldCurRow = 1;  // 직전 렌더에서 커서가 있던 물리 행(1-기반)
 
         public PromptRenderer(bool hasStatus, IReadOnlyList<string> slash, bool brainstorm)
         {
@@ -305,6 +308,11 @@ public static class LineEditor
 
         private static int Cols()
         {
+            if (ColsForTest is int tc)
+            {
+                return tc < 1 ? 80 : tc;
+            }
+
             int w;
             try { w = Console.WindowWidth; }
             catch { w = 80; }
@@ -316,22 +324,30 @@ public static class LineEditor
             var cols = Cols();
             var plen = DisplayWidth(PromptText);
             var blen = DisplayWidth(buf.ToString());
-            var curOff = plen + DisplayWidth(buf.ToString(0, pos)); // 커서까지의 표시폭(프롬프트 포함)
             var total = plen + blen;
+
+            // 와이드 문자(한글 등)는 행 끝 한 칸에 걸치지 못하고 다음 행으로 넘어가며 그 칸을 비운다.
+            // 표시폭 합만 나눗셈하면(옛 RowCount/ColOf) 그 빈 칸이 여러 행에 누적돼 실제 행 수와 어긋나고,
+            // 지우기가 모자라 옛 첫 줄이 남는다(첫 줄 중복 버그). 그래서 프롬프트+버퍼를 실제 셀 배치로
+            // 시뮬레이션해 커서·끝의 (행,열)을 정확히 구한다.
+            var layout = new string(' ', plen) + buf.ToString();
+            var (curRow0, curCol) = CellPos(layout, plen + pos, cols);
+            var (endRow0, endCol) = CellPos(layout, layout.Length, cols);
 
             // 인라인 자동완성(ghost): 커서가 버퍼 끝이고 프롬프트+버퍼+ghost 가 한 줄에 들어갈 때만
             // 버퍼 뒤에 연한 글자로 덧그린다(줄바꿈/커서 계산은 버퍼 기준 그대로 — 리스크 격리).
             var ghost = EffectiveGhost(buf, _slash);
             var showGhost = ghost.Length > 0 && pos == buf.Length && total + DisplayWidth(ghost) <= cols;
 
-            var rows = RowCount(total, cols);
-            var oldRpos = RowOf(plen + _oldOff, cols); // 직전 커서의 1-기반 행
+            // exact-fill: 마지막 문자가 행을 꽉 채워 다음 행 0열로 넘어간 상태(끝 열이 0).
+            var exactFill = layout.Length > 0 && endCol == 0 && endRow0 > 0;
+            var rows = exactFill ? endRow0 : endRow0 + 1; // 물리 행 수(팬텀 제외)
             var sb = new StringBuilder();
 
             // 1) 직전 블록의 마지막 행으로 내려간다.
-            if (_oldRows - oldRpos > 0)
+            if (_oldRows - _oldCurRow > 0)
             {
-                sb.Append($"\x1b[{_oldRows - oldRpos}B");
+                sb.Append($"\x1b[{_oldRows - _oldCurRow}B");
             }
 
             // 2) 마지막 행부터 위로 올라가며 각 행을 지운다(프롬프트 첫 행 바로 위까지).
@@ -385,43 +401,58 @@ public static class LineEditor
             }
 
             // 5) exact-fill 보정: 커서가 끝이고 끝이 폭을 정확히 채워 다음 행 0열로 넘어가는 경우,
-            //    deferred-wrap 모호성을 없앤다. ghost 표시 중엔 커서가 그린 끝이 아니므로 건너뛴다.
-            if (!showGhost && pos == buf.Length && buf.Length > 0 && total % cols == 0)
+            //    deferred-wrap 모호성을 없앤다(팬텀 행 강제). ghost 표시 중엔 커서가 그린 끝이 아니므로 건너뛴다.
+            if (!showGhost && pos == buf.Length && exactFill)
             {
                 sb.Append("\r\n");
-                rows++;
+                rows++;              // 팬텀 행 포함
+                curRow0 = rows - 1;  // 커서는 팬텀 행(맨 아래)
+                curCol = 0;
             }
 
             // 6) 커서를 목표 행으로 올린다.
-            var curRpos = RowOf(curOff, cols);
+            var curRpos = curRow0 + 1; // 1-기반
             if (rows - curRpos > 0)
             {
                 sb.Append($"\x1b[{rows - curRpos}A");
             }
 
             // 7) 목표 열로 이동.
-            var col = ColOf(curOff, cols);
             sb.Append('\r');
-            if (col > 0)
+            if (curCol > 0)
             {
-                sb.Append($"\x1b[{col}C");
+                sb.Append($"\x1b[{curCol}C");
             }
 
             Console.Write(sb.ToString());
             _oldRows = rows;
-            _oldOff = curOff - plen; // 버퍼 내 오프셋으로 보관(다음 oldRpos 계산은 plen 다시 더함)
+            _oldCurRow = curRow0 + 1;
+        }
+
+        // 프롬프트+버퍼(layout)를 실제 셀 배치로 시뮬레이션해 endIndex 위치의 (0-기반 행, 열)을 구한다.
+        // 와이드 문자가 행 마지막 한 칸에 걸치면 그 칸을 비우고 다음 행으로 넘긴다(no-straddle). 순수 함수.
+        internal static (int row, int col) CellPos(string layout, int endIndex, int cols)
+        {
+            if (cols < 1) cols = 1;
+            int row = 0, col = 0;
+            for (var i = 0; i < endIndex && i < layout.Length; i++)
+            {
+                var w = CharWidth(layout[i]);
+                if (w == 2 && col == cols - 1) { row++; col = 0; } // 와이드 문자는 마지막 한 칸에 안 들어감
+                col += w;
+                if (col >= cols) { row++; col = 0; }               // 행을 꽉 채우면 다음 행 0열로
+            }
+
+            return (row, col);
         }
 
         /// <summary>입력 종료: 커서를 블록 마지막 행 아래로 옮겨 이후 출력이 프롬프트 밑에 오게 한다.</summary>
         public void Finish()
         {
-            var cols = Cols();
-            var plen = DisplayWidth(PromptText);
-            var oldRpos = RowOf(plen + _oldOff, cols);
             var sb = new StringBuilder();
-            if (_oldRows - oldRpos > 0)
+            if (_oldRows - _oldCurRow > 0)
             {
-                sb.Append($"\x1b[{_oldRows - oldRpos}B");
+                sb.Append($"\x1b[{_oldRows - _oldCurRow}B");
             }
             sb.Append("\r\n");
             Console.Write(sb.ToString());

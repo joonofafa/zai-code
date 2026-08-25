@@ -114,6 +114,9 @@ public static class SettingsLoader
                     ? GetBool(root, "autoTest", "auto_test") ?? baseline.AutoTest
                     : baseline.AutoTest,
                 RepoMapTokens = GetInt(root, "repoMapTokens", "repo_map_tokens") ?? baseline.RepoMapTokens,
+                // 세션 보존 임계값은 settings.json 전용(env 미노출 — 런타임 설정 방침).
+                SessionRetainCount = GetInt(root, "sessionRetainCount", "session_retain_count") ?? baseline.SessionRetainCount,
+                SessionRetainDays = GetInt(root, "sessionRetainDays", "session_retain_days") ?? baseline.SessionRetainDays,
                 Checkpoints = GetBool(root, "checkpoints", "autoCheckpoint", "auto_checkpoint")
                               ?? baseline.Checkpoints,
                 ConfineToWorkspace = GetBool(root, "confineToWorkspace", "confine_to_workspace", "confine")

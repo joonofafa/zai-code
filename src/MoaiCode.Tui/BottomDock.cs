@@ -102,7 +102,19 @@ public sealed class BottomDock
         }
         else if (reserved != _reserved)
         {
-            // 편집 중 입력 줄 수 변화 → 스크롤 영역만 재설정.
+            // 편집 중 입력 줄 수 변화 → 스크롤 영역 재설정.
+            // 박스가 줄면(reserved 감소) 위로 비워진 행이 스크롤 영역에 옛 입력(첫 줄 '❯…' 등)으로
+            // 남아 '첫 줄 중복'으로 보인다 → 그 행들을 명시적으로 지운다. (한글처럼 잘 wrap 되는 입력에서 두드러짐)
+            if (reserved < _reserved)
+            {
+                var oldTop = h - _reserved + 1;
+                var newTop = h - reserved + 1;
+                for (var row = oldTop; row < newTop; row++)
+                {
+                    sb.Append($"\x1b[{row};1H\x1b[2K");
+                }
+            }
+
             sb.Append($"\x1b[1;{scrollBottom}r");
             _reserved = reserved;
         }
@@ -147,9 +159,11 @@ public sealed class BottomDock
         sb.Append($"\x1b[{statusRow};1H\x1b[2K").Append(statusOverride ?? _status());
 
         // 커서를 편집 위치로(절대 좌표) + 커서 표시(입력 차례). 처리 중엔 숨겨져 있다가 여기서 다시 보임.
-        var curOff = plen + LineEditor.DisplayWidth(buf.ToString(0, pos));
-        var curRow = inputRow0 + (curOff / w);
-        var curCol = (curOff % w) + 1;
+        // 커서 (행,열)도 그리기와 같은 규칙(SplitByCells, 와이드문자 straddle 반영)으로 계산한다.
+        // naive 나눗셈(curOff/w)은 straddle 로 비는 칸을 무시해 커서가 어긋난다.
+        var cursorRows = SplitByCells(LineEditor.PromptText + buf.ToString(0, pos), w);
+        var curRow = inputRow0 + (cursorRows.Count - 1);
+        var curCol = LineEditor.DisplayWidth(cursorRows[^1]) + 1;
         sb.Append($"\x1b[{curRow};{curCol}H").Append("\x1b[?25h");
 
         Console.Write(sb.ToString());

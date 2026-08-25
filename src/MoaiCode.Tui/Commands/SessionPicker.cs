@@ -31,16 +31,31 @@ internal static class SessionPicker
             return new SlashResult(sb.ToString().TrimEnd());
         }
 
-        var labels = infos.Select(s => Label(s, countWidth)).ToList();
+        // infos 는 Del 삭제로 변형되므로 가변 사본으로 다룬다(SelectList 내부 목록과 같은 index 를 지워 정합 유지).
+        var rows = infos.ToList();
+        var labels = rows.Select(s => Label(s, countWidth)).ToList();
         // 번호를 2자리(01.~99.)로 줄맞춤 — 목록은 최대 99개.
-        var numberWidth = Math.Max(2, infos.Count.ToString().Length);
-        var pick = SelectList.Prompt(L10n.Get("session.pickTitle"), labels, numberWidth: numberWidth);
+        var numberWidth = Math.Max(2, rows.Count.ToString().Length);
+        var pick = SelectList.Prompt(
+            L10n.Get("session.pickTitle"), labels, numberWidth: numberWidth,
+            onDelete: i =>
+            {
+                var ok = ctx.Sessions.Delete(rows[i].Id);
+                if (ok)
+                {
+                    rows.RemoveAt(i);
+                }
+
+                return ok;
+            });
         if (pick < 0)
         {
-            return new SlashResult(L10n.Get("common.cancelled"));
+            // rows 는 진입 시 비어 있지 않았다(위에서 early-return). 지금 비었다면 Del 로 전부 지운 것 —
+            // Esc 취소와 구분해 "모두 삭제됨"으로 알린다.
+            return new SlashResult(L10n.Get(rows.Count == 0 ? "session.allDeleted" : "common.cancelled"));
         }
 
-        return await ResumeAsync(ctx, infos[pick].Id, ct).ConfigureAwait(false);
+        return await ResumeAsync(ctx, rows[pick].Id, ct).ConfigureAwait(false);
     }
 
     public static async Task<SlashResult> ResumeAsync(SlashContext ctx, string id, CancellationToken ct)

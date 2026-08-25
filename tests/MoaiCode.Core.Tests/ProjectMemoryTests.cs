@@ -67,38 +67,40 @@ public class ProjectMemoryTests
     }
 
     [Fact]
-    public void Keying_IsRepoRoot_SubdirectoriesShareOneStore()
+    public void Keying_IsCwd_SubdirectoriesGetTheirOwnStore()
     {
-        // 임시 repo(가짜 .git) 루트 + 중첩 하위 디렉토리 구성.
-        var repoRoot = Path.Combine(Path.GetTempPath(), "moai-repo-" + Guid.NewGuid().ToString("N"));
+        // 예전엔 .git 을 상위로 찾아 repo 루트로 접었다. 그러면 $HOME 이 repo 일 때 홈 아래 전부가
+        // 한 칸으로 붕괴하므로, 이제 cwd 절대경로 자체를 키로 쓴다 → 하위 디렉토리는 별도 스코프.
+        var repoRoot = Path.Combine(Path.GetTempPath(), "zc-repo-" + Guid.NewGuid().ToString("N"));
         var nested = Path.Combine(repoRoot, "src", "deep");
         Directory.CreateDirectory(nested);
         Directory.CreateDirectory(Path.Combine(repoRoot, ".git"));
-        var memDir = ProjectMemory.Dir(repoRoot);
+        var rootMem = ProjectMemory.Dir(repoRoot);
+        var nestedMem = ProjectMemory.Dir(nested);
         try
         {
-            // repo 루트와 하위 디렉토리가 같은 메모리 디렉터리로 해석돼야 한다.
-            Assert.Equal(ProjectMemory.Dir(repoRoot), ProjectMemory.Dir(nested));
+            Assert.NotEqual(rootMem, nestedMem);
 
-            // 하위 디렉토리에서 저장 → repo 루트에서 조회 가능(공유 확인).
-            ProjectMemory.Save(nested, "shared-note", "from subdir", "project", "hello");
-            Assert.Contains("shared-note", ProjectMemory.LoadIndex(repoRoot) ?? "");
+            // 하위에서 저장한 것은 하위에서만 보인다.
+            ProjectMemory.Save(nested, "deep-note", "from subdir", "project", "hello");
+            Assert.Contains("deep-note", ProjectMemory.LoadIndex(nested) ?? "");
+            Assert.DoesNotContain("deep-note", ProjectMemory.LoadIndex(repoRoot) ?? "");
         }
         finally
         {
-            try
+            foreach (var d in new[] { Path.GetDirectoryName(rootMem), Path.GetDirectoryName(nestedMem), repoRoot })
             {
-                var projectDir = Path.GetDirectoryName(memDir);
-                if (projectDir is not null)
+                try
                 {
-                    Directory.Delete(projectDir, recursive: true);
+                    if (d is not null && Directory.Exists(d))
+                    {
+                        Directory.Delete(d, recursive: true);
+                    }
                 }
-
-                Directory.Delete(repoRoot, recursive: true);
-            }
-            catch
-            {
-                // best-effort cleanup
+                catch (IOException)
+                {
+                    // best-effort cleanup
+                }
             }
         }
     }

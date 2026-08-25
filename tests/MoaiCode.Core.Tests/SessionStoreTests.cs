@@ -138,4 +138,105 @@ public class SessionStoreTests : IDisposable
         var infos = await _store.ListInfosAsync();
         Assert.Equal(99, infos.Count); // 최대 99개만 노출
     }
+
+    [Fact]
+    public async Task Delete_removes_session_file_and_from_listing()
+    {
+        await _store.SaveAsync("s1", new List<Message> { new UserMessage("keep") });
+        await _store.SaveAsync("s2", new List<Message> { new UserMessage("remove me") });
+        Assert.True(File.Exists(_store.PathFor("s2")));
+
+        var ok = _store.Delete("s2");
+
+        Assert.True(ok);
+        Assert.False(File.Exists(_store.PathFor("s2")));
+        var ids = (await _store.ListInfosAsync()).Select(i => i.Id).ToList();
+        Assert.Contains("s1", ids);
+        Assert.DoesNotContain("s2", ids);
+    }
+
+    [Fact]
+    public void Delete_missing_session_is_noop_success()
+    {
+        Assert.True(_store.Delete("does-not-exist"));
+    }
+
+    [Fact]
+    public async Task Retention_off_by_default_keeps_all_sessions()
+    {
+        // 생성자 기본 retainCount=0·retainDays=0 → 정리 안 함.
+        for (var i = 0; i < 5; i++)
+        {
+            await _store.SaveAsync($"s{i}", new List<Message> { new UserMessage($"q{i}") });
+        }
+
+        Assert.Equal(5, _store.ListSessions().Count);
+    }
+
+    [Fact]
+    public async Task Retention_count_deletes_sessions_beyond_limit_keeping_current()
+    {
+        Directory.CreateDirectory(_dir);
+        // 오래된 더미 세션 5개 — 서로 다른 수정시각(오래된→최근)으로 정렬 안정성 확보.
+        var baseTime = DateTime.UtcNow.AddDays(-10);
+        for (var i = 0; i < 5; i++)
+        {
+            var p = Path.Combine(_dir, $"old{i}.jsonl");
+            await File.WriteAllTextAsync(p, "{}");
+            File.SetLastWriteTimeUtc(p, baseTime.AddMinutes(i));
+        }
+
+        var store = new SessionStore(_dir, retainCount: 3);
+        await store.SaveAsync("current", new List<Message> { new UserMessage("now") });
+
+        var remaining = store.ListSessions().ToHashSet();
+        Assert.Equal(3, remaining.Count);         // current(최신) + old4 + old3
+        Assert.Contains("current", remaining);    // 현재 세션은 항상 보존
+        Assert.Contains("old4", remaining);       // 가장 최근 더미
+        Assert.DoesNotContain("old0", remaining); // 가장 오래된 더미는 삭제
+    }
+
+    [Fact]
+    public async Task Retention_days_deletes_files_older_than_cutoff_keeping_current()
+    {
+        Directory.CreateDirectory(_dir);
+        var ancient = Path.Combine(_dir, "ancient.jsonl");
+        await File.WriteAllTextAsync(ancient, "{}");
+        File.SetLastWriteTimeUtc(ancient, DateTime.UtcNow.AddDays(-100));
+
+        var recent = Path.Combine(_dir, "recent.jsonl");
+        await File.WriteAllTextAsync(recent, "{}");
+        File.SetLastWriteTimeUtc(recent, DateTime.UtcNow.AddDays(-1));
+
+        var store = new SessionStore(_dir, retainDays: 30);
+        await store.SaveAsync("current", new List<Message> { new UserMessage("now") });
+
+        var remaining = store.ListSessions().ToHashSet();
+        Assert.DoesNotContain("ancient", remaining); // 100일 > 30일 → 삭제
+        Assert.Contains("recent", remaining);        // 1일 < 30일 → 유지
+        Assert.Contains("current", remaining);
+    }
+
+    [Fact]
+    public async Task Sweep_reapplies_owner_only_permissions_to_preexisting_files()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return; // Unix 권한 전용 — Windows 에서는 no-op 이라 단언 생략.
+        }
+
+        Directory.CreateDirectory(_dir);
+        var stale = Path.Combine(_dir, "stale.jsonl");
+        await File.WriteAllTextAsync(stale, "{}");
+        File.SetUnixFileMode(stale, // 0644 — 권한 강제 이전 파일 흉내
+            UnixFileMode.UserRead | UnixFileMode.UserWrite |
+            UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+
+        var store = new SessionStore(_dir);
+        await store.SaveAsync("current", new List<Message> { new UserMessage("now") });
+
+        var groupOther = UnixFileMode.GroupRead | UnixFileMode.GroupWrite
+            | UnixFileMode.OtherRead | UnixFileMode.OtherWrite;
+        Assert.Equal(UnixFileMode.None, File.GetUnixFileMode(stale) & groupOther); // 그룹/타인 비트 제거
+    }
 }
