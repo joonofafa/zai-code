@@ -519,5 +519,15 @@
   "tools.bashSecurity.apkChange": "apk 시스템 패키지 변경",
   "tools.bashSecurity.brewChange": "brew 패키지 변경",
   "tools.bashSecurity.snapChange": "snap 패키지 변경",
+  "tools.bash.startedBackground": "백그라운드 셸 {0} 시작됨. 새 출력은 BashOutput(shell_id: {0}), 종료는 KillShell 을 사용하세요.",
+  "tools.bashOutput.notFound": "해당 백그라운드 셸 없음: {0}",
+  "tools.bashOutput.badFilter": "잘못된 filter 정규식: {0}",
+  "tools.bashOutput.noNewOutput": "(새 출력 없음)",
+  "tools.bashOutput.truncated": "(버퍼 상한 초과로 앞부분 출력 일부가 버려졌습니다)",
+  "tools.bashOutput.statusRunning": "[{0}] 상태: 실행 중",
+  "tools.bashOutput.statusCompleted": "[{0}] 상태: 완료 (exit code {1})",
+  "tools.bashOutput.statusKilled": "[{0}] 상태: 종료됨(killed)",
+  "tools.killShell.killed": "백그라운드 셸 {0} 종료됨(자식 프로세스 포함).",
+  "tools.killShell.alreadyDone": "셸이 실행 중이 아님 — {0}",
   "tools.bashSecurity.winPkgChange": "Windows 패키지 관리자 변경"
 }

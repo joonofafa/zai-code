@@ -1177,6 +1177,7 @@ public sealed class ReplApp
         {
             "Read" or "Write" or "Edit" => Path.GetFileName(GetStr(call.Input, "path") ?? ""),
             "Bash" => Clip(GetStr(call.Input, "command"), 40),
+            "BashOutput" or "KillShell" => GetStr(call.Input, "shell_id"),
             "Grep" or "Glob" => GetStr(call.Input, "pattern"),
             "Agent" => GetStr(call.Input, "description"),
             "Skill" => GetStr(call.Input, "name"),

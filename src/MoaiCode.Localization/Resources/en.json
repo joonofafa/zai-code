@@ -519,5 +519,15 @@
   "tools.bashSecurity.apkChange": "apk system package change",
   "tools.bashSecurity.brewChange": "brew package change",
   "tools.bashSecurity.snapChange": "snap package change",
+  "tools.bash.startedBackground": "Started background shell {0}. Use BashOutput (shell_id: {0}) to read new output and KillShell to stop it.",
+  "tools.bashOutput.notFound": "No such background shell: {0}",
+  "tools.bashOutput.badFilter": "Invalid filter regex: {0}",
+  "tools.bashOutput.noNewOutput": "(no new output)",
+  "tools.bashOutput.truncated": "(some earlier output was discarded — buffer limit exceeded)",
+  "tools.bashOutput.statusRunning": "[{0}] status: running",
+  "tools.bashOutput.statusCompleted": "[{0}] status: completed (exit code {1})",
+  "tools.bashOutput.statusKilled": "[{0}] status: killed",
+  "tools.killShell.killed": "Killed background shell {0} (including child processes).",
+  "tools.killShell.alreadyDone": "Shell is not running — {0}",
   "tools.bashSecurity.winPkgChange": "Windows package manager change"
 }

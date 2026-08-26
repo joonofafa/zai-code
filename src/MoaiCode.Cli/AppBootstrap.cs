@@ -50,7 +50,8 @@ public static class AppBootstrap
 
         var model = ProviderFactory.CreateDefault(out var providerDesc);
 
-        var toolList = new List<ITool>(ToolRegistry.BuiltIn) { new BashTool() };
+        // Bash + 백그라운드 셸(run_in_background) 조회/종료 — CLI 전용(GUI 는 Bash 자체를 제외).
+        var toolList = new List<ITool>(ToolRegistry.BuiltIn) { new BashTool(), new BashOutputTool(), new KillShellTool() };
 
         // 닫힌 Office 문서 생성/검증(Open XML) — 전 플랫폼.
         toolList.Add(new MoaiCode.Tools.OpenXml.DocxCreateTool());

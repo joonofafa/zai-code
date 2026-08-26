@@ -24,6 +24,12 @@ public sealed class BashTool : ITool
     // 세션 동안 작업 디렉터리를 유지한다 (description의 "persists between commands" 보장).
     // 직전 명령이 cd로 옮긴 위치를 다음 명령에서도 이어 쓴다. 엔진이 툴을 순차 실행하므로 경합 없음.
     private string? _currentDir;
+    private readonly BackgroundShellRegistry _background;
+
+    public BashTool(BackgroundShellRegistry? background = null)
+    {
+        _background = background ?? BackgroundShellRegistry.Shared;
+    }
 
     public string Name => "Bash";
 
@@ -43,6 +49,8 @@ public sealed class BashTool : ITool
         Reserve Bash for system commands and terminal operations that require shell execution. This runs ANY shell command available on this machine, including network and remote tools — ssh, scp, rsync, curl, git, and database clients (psql, mysql, redis-cli, etc.). If the user asks for something the shell can do (e.g. "ssh into host X and run a query"), DO IT with Bash; do NOT claim you lack the capability. The shell is your capability.
 
         Very high-risk commands (rm -rf on root/home, dd to block devices, mkfs, fork bombs, remote-script piping) are blocked.
+
+        Long-running commands (servers, watchers, `tail -f`, log monitors, long builds): set `run_in_background: true`. The tool returns a shell id immediately instead of blocking; read new output later with BashOutput and stop it with KillShell. Background shells do not carry `cd` over to the next command and are terminated when the session exits.
         """;
 
     public bool IsReadOnly => false;
@@ -54,7 +62,8 @@ public sealed class BashTool : ITool
           "type": "object",
           "properties": {
             "command": { "type": "string", "description": "Shell command to execute" },
-            "timeout_ms": { "type": "integer", "description": "Timeout in milliseconds (default 120000)" }
+            "timeout_ms": { "type": "integer", "description": "Timeout in milliseconds (default 120000). Ignored when run_in_background is true" },
+            "run_in_background": { "type": "boolean", "description": "Start the command detached and return a shell id immediately; poll with BashOutput, stop with KillShell" }
           },
           "required": ["command"]
         }
@@ -62,7 +71,8 @@ public sealed class BashTool : ITool
 
     private sealed record Input(
         [property: JsonPropertyName("command")] string? Command,
-        [property: JsonPropertyName("timeout_ms")] int? TimeoutMs);
+        [property: JsonPropertyName("timeout_ms")] int? TimeoutMs,
+        [property: JsonPropertyName("run_in_background")] bool? RunInBackground);
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -92,16 +102,24 @@ public sealed class BashTool : ITool
             yield break;
         }
 
+        // 유지된 cwd를 우선 사용하되, 그 폴더가 사라졌으면(삭제/이동) ENOENT 방지를 위해 폴백.
+        _currentDir ??= context.WorkingDirectory;
+        var workDir = ResolveWorkDir(_currentDir);
+
+        // 3) 백그라운드: 보안·권한 게이트는 위에서 동일하게 통과한 뒤, 프로세스를 띄우고 즉시 id 만 돌려준다.
+        if (inp.RunInBackground == true)
+        {
+            var bg = _background.Start(command, workDir);
+            yield return new ToolOutput(L10n.Get("tools.bash.startedBackground", bg.Id));
+            yield break;
+        }
+
         var (shell, args) = ResolveShell(command);
         // 모델이 제어하는 값이라 상한을 건다(무한/과대 타임아웃으로 턴이 멈추는 것 방지).
         var timeout = Math.Clamp(inp.TimeoutMs ?? DefaultTimeoutMs, 1_000, MaxTimeoutMs);
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(timeout);
-
-        // 유지된 cwd를 우선 사용하되, 그 폴더가 사라졌으면(삭제/이동) ENOENT 방지를 위해 폴백.
-        _currentDir ??= context.WorkingDirectory;
-        var workDir = ResolveWorkDir(_currentDir);
 
         BufferedCommandResult result;
         var timedOut = false;

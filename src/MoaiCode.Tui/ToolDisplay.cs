@@ -15,7 +15,12 @@ public static class ToolDisplay
         {
             case "Bash":
                 var cmd = Str(input, "command");
-                return string.IsNullOrWhiteSpace(cmd) ? L10n.Get("tool.emptyCommand") : "$ " + cmd.Trim();
+                var bg = input.TryGetProperty("run_in_background", out var b) && b.ValueKind == JsonValueKind.True ? " &" : "";
+                return string.IsNullOrWhiteSpace(cmd) ? L10n.Get("tool.emptyCommand") : "$ " + cmd.Trim() + bg;
+            case "BashOutput":
+                return "BashOutput " + (Str(input, "shell_id") ?? "");
+            case "KillShell":
+                return "KillShell " + (Str(input, "shell_id") ?? "");
 
             case "Read":
                 return "Read " + (Str(input, "path") ?? "");
