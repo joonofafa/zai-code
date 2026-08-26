@@ -767,23 +767,27 @@ public sealed class ReplApp
         var h = BarHeight();
         var w = BarWidth();
         var line = _typeAhead ? _turnInput.CurrentLine : string.Empty;
+
+        // 가용폭 = w − prefix 폭 − 커서칸(" ") − 좌우 여백 1+1. prefix " (Q:N)❯ " 는 N 자리에
+        // 따라 폭이 달라지므로 실측한다. 본문(힌트·입력줄)을 이 폭 안으로 클램프해야 바가 한 행을
+        // 넘지 않는데, 넘으면 wrap 돼 넘친 꼬리가 스크롤 영역으로 올라가 잔상으로 남는다.
+        var qn = _typeAhead ? _turnInput.Count : 0;
+        var avail = Math.Max(1, w - LineEditor.DisplayWidth($" (Q:{qn})❯ ") - 2);
+
         string body;
         if (line.Length == 0)
         {
-            body = $"\u001b[38;5;244m{L10n.Get("repl.typeahead.hint")}\u001b[0m";
+            // 힌트는 앞쪽 유지 + 뒤 … — 안내문이므로 시작이 보이는 게 중요하다.
+            var hint = ClampToWidth(L10n.Get("repl.typeahead.hint"), avail, tailEllipsis: true);
+            body = $"\u001b[38;5;244m{hint}\u001b[0m";
         }
         else
         {
-            var max = Math.Max(1, w - 5);
-            if (line.Length > max)
-            {
-                line = "\u2026" + line[^(max - 1)..];
-            }
-
-            body = $"\u001b[38;5;252m{line}\u001b[0m";
+            // 입력줄은 뒤쪽(최근 입력) 유지 + 앞 …. 표시폭(와이드문자 2셀) 기준으로 잘라야
+            // 한글이 섞였을 때 문자 수로 자르는 것보다 실제 폭이 넓어 wrap 되는 일이 없다.
+            var clamped = ClampToWidth(line, avail, tailEllipsis: false);
+            body = $"\u001b[38;5;252m{clamped}\u001b[0m";
         }
-
-        var qn = _typeAhead ? _turnInput.Count : 0;
 
         // 직전 큐잉(붙여넣기/Enter 확정) 미리보기 — 2초간 표시 후 자동 소멸. Q:n 숫자만으론
         // 붙여넣어졌는지 알 길이 없어 피드백을 준다. 바 다음 줄에 잠깐 찍고 커서를 되돌린다.
@@ -804,6 +808,68 @@ public sealed class ReplApp
                 Console.Write($"\u001b7\r\u001b[s\u001b[{h + 1};1H\u001b[2K  \u001b[38;5;245m\u2197 Queued\u001b[0m \u001b[32m\u276f\u001b[0m {fp}\u001b[0m\u001b8\r\u001b[u");
             }
         }
+    }
+
+    /// <summary>문자열을 표시폭(maxCells, 와이드문자=2셀) 안으로 자른다. 넘치면 …(1셀) 삽입.
+    /// tailEllipsis=true 면 앞쪽 유지+뒤 …(힌트용), false 면 뒤쪽 유지+앞 …(입력줄용).
+    /// maxCells &lt; 1 이면 빈 문자열(… 도 못 들어가는 폭)을 반환한다.</summary>
+    internal static string ClampToWidth(string s, int maxCells, bool tailEllipsis)
+    {
+        if (string.IsNullOrEmpty(s))
+        {
+            return string.Empty;
+        }
+
+        if (maxCells < 1)
+        {
+            return string.Empty;
+        }
+
+        if (LineEditor.DisplayWidth(s) <= maxCells)
+        {
+            return s;
+        }
+
+        const string ellipsis = "\u2026";
+        var budget = maxCells - 1; // … 1셀 제외
+        if (tailEllipsis)
+        {
+            var cells = 0;
+            var end = 0;
+            while (end < s.Length)
+            {
+                var cw = LineEditor.CharWidth(s[end]);
+                if (cells + cw > budget)
+                {
+                    break;
+                }
+
+                cells += cw;
+                end++;
+            }
+
+            return s[..end] + ellipsis;
+        }
+
+        // 뒤에서부터 셀 예산 안으로 소비한 뒤 앞에 … 붙인다. 와이드문자가 경계에서 걸리면
+        // (budget - used) 칸이 남는데 … 가 그 공간을 메워 총폭 ≤ maxCells 를 유지한다.
+        var used = 0;
+        var start = s.Length;
+        var sb = new System.Text.StringBuilder();
+        while (start > 0)
+        {
+            var cw = LineEditor.CharWidth(s[start - 1]);
+            if (used + cw > budget)
+            {
+                break;
+            }
+
+            used += cw;
+            start--;
+            sb.Insert(0, s[start]);
+        }
+
+        return ellipsis + sb.ToString();
     }
 
     // 스크롤 영역 해제 + 입력바 행 지움. 턴 종료·권한창 표시 전에 호출.
