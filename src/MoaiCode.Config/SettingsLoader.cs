@@ -155,11 +155,11 @@ public static class SettingsLoader
     public static Settings ApplyEnv(Settings baseline)
     {
         var model = Environment.GetEnvironmentVariable("MOAI_MODEL")
-                    ?? Environment.GetEnvironmentVariable("OPENAI_MODEL");
-        var baseUrl = Environment.GetEnvironmentVariable("OPENAI_BASE_URL");
+                    ?? Environment.GetEnvironmentVariable("ZAI_MODEL");
+        var baseUrl = Environment.GetEnvironmentVariable("ZAI_BASE_URL");
         var language = L10n.NormalizeLanguage(Environment.GetEnvironmentVariable("MOAI_LANGUAGE"));
         var effort = NormalizeEffort(Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT")
-                                     ?? Environment.GetEnvironmentVariable("OPENAI_REASONING_EFFORT")
+                                     ?? Environment.GetEnvironmentVariable("ZAI_REASONING_EFFORT")
                                      ?? Environment.GetEnvironmentVariable("MOAI_EFFORT"));
         var proxy = Environment.GetEnvironmentVariable("MOAI_PROXY")
                     ?? Environment.GetEnvironmentVariable("HTTPS_PROXY")

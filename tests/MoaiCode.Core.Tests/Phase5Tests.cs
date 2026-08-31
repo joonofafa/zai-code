@@ -119,12 +119,12 @@ public class SettingsLoaderTests
     public void Env_reasoning_effort_overrides_and_invalid_value_is_ignored()
     {
         var prevA = Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT");
-        var prevB = Environment.GetEnvironmentVariable("OPENAI_REASONING_EFFORT");
+        var prevB = Environment.GetEnvironmentVariable("ZAI_REASONING_EFFORT");
         var prevC = Environment.GetEnvironmentVariable("MOAI_EFFORT");
         try
         {
             Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", "LOW");
-            Environment.SetEnvironmentVariable("OPENAI_REASONING_EFFORT", null);
+            Environment.SetEnvironmentVariable("ZAI_REASONING_EFFORT", null);
             Environment.SetEnvironmentVariable("MOAI_EFFORT", null);
             Assert.Equal("low", SettingsLoader.ApplyEnv(Settings.Default).ReasoningEffort);
 
@@ -132,17 +132,17 @@ public class SettingsLoaderTests
             Assert.Null(SettingsLoader.ApplyEnv(Settings.Default).ReasoningEffort);
 
             Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", null);
-            Environment.SetEnvironmentVariable("OPENAI_REASONING_EFFORT", "medium");
+            Environment.SetEnvironmentVariable("ZAI_REASONING_EFFORT", "medium");
             Assert.Equal("medium", SettingsLoader.ApplyEnv(Settings.Default).ReasoningEffort);
 
-            Environment.SetEnvironmentVariable("OPENAI_REASONING_EFFORT", null);
+            Environment.SetEnvironmentVariable("ZAI_REASONING_EFFORT", null);
             Environment.SetEnvironmentVariable("MOAI_EFFORT", "high");
             Assert.Equal("high", SettingsLoader.ApplyEnv(Settings.Default).ReasoningEffort);
         }
         finally
         {
             Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", prevA);
-            Environment.SetEnvironmentVariable("OPENAI_REASONING_EFFORT", prevB);
+            Environment.SetEnvironmentVariable("ZAI_REASONING_EFFORT", prevB);
             Environment.SetEnvironmentVariable("MOAI_EFFORT", prevC);
         }
     }
@@ -199,11 +199,11 @@ public class CredentialStoreTests : IDisposable
     public void Set_then_get_roundtrips()
     {
         var store = new FileCredentialStore(_path);
-        Assert.Null(store.Get("OPENAI_API_KEY"));
+        Assert.Null(store.Get("ZAI_API_KEY"));
 
-        store.Set("OPENAI_API_KEY", "sk-test");
-        Assert.Equal("sk-test", new FileCredentialStore(_path).Get("OPENAI_API_KEY"));
-        Assert.Contains("OPENAI_API_KEY", new FileCredentialStore(_path).Keys());
+        store.Set("ZAI_API_KEY", "zai-test");
+        Assert.Equal("zai-test", new FileCredentialStore(_path).Get("ZAI_API_KEY"));
+        Assert.Contains("ZAI_API_KEY", new FileCredentialStore(_path).Keys());
     }
 }
 

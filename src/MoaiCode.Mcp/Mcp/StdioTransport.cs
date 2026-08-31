@@ -58,7 +58,8 @@ public sealed class StdioTransport : IMcpTransport
     {
         var k = key.ToUpperInvariant();
         return k.StartsWith("MOAI_", StringComparison.Ordinal)          // moai 내부(로그인 호스트 등)
-            || k.StartsWith("OPENAI_", StringComparison.Ordinal)        // OPENAI_API_KEY / OPENAI_BASE_URL
+            || k.StartsWith("ZAI_", StringComparison.Ordinal)            // ZAI_API_KEY / ZAI_BASE_URL
+            || k.StartsWith("OPENAI_", StringComparison.Ordinal)         // legacy credentials
             || k.StartsWith("ANTHROPIC", StringComparison.Ordinal)
             || k.Contains("API_KEY", StringComparison.Ordinal)
             || k.Contains("SECRET", StringComparison.Ordinal)

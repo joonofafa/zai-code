@@ -134,12 +134,45 @@ public static class PermissionRule
                 return string.Equals(command.Trim(), patInner[1..].Trim(), StringComparison.Ordinal);
             }
 
-            // 그 외: 복합 명령이면 첫 세그먼트가 명령 전체를 대표하지 못하므로 매치 금지.
+            // 그 외: 단일 명령이면 그대로 비교한다. 복합 명령은 첫 세그먼트가 전체를 대표하지
+            // 못하므로 여기서 매치시키지 않는다 — 세그먼트별 판정은 MatchesSegment 로 호출자가 한다.
             return !HasShellOperators(command) && SegmentMatches(command, patTokens);
         }
 
         // 거부 매치: 어떤 세그먼트든 걸리면 막는다(foo && curl evil).
         return SplitSegments(command).Any(seg => SegmentMatches(seg, patTokens));
+    }
+
+    /// <summary>
+    /// allow 패턴이 '세그먼트 하나'를 덮는지. 복합 명령을 세그먼트별로 검사할 때 쓴다
+    /// (모든 세그먼트가 덮여야 허용 — 판정은 호출자가 모아서 한다).
+    /// </summary>
+    public static bool MatchesSegment(string pattern, string toolName, string segment)
+    {
+        var (patTool, patInner) = ParsePattern(pattern);
+        if (!string.Equals(patTool, toolName, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (patInner is null)
+        {
+            return true;   // 툴 이름만 지정한 규칙 — 모든 호출 허용
+        }
+
+        if (!string.Equals(toolName, "Bash", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        // 정확 일치 규칙(=cmd)은 명령 전체를 대상으로 한 것이라 세그먼트에 적용하지 않는다.
+        if (patInner.StartsWith("=", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var patTokens = Tokenize(patInner);
+        return patTokens.Count > 0 && SegmentMatches(segment.Trim(), patTokens);
     }
 
     private static bool SegmentMatches(string segment, IReadOnlyList<string> patTokens)
@@ -217,6 +250,23 @@ public static class PermissionRule
 
         return false;
     }
+
+    /// <summary>
+    /// 복합 명령을 세그먼트로 쪼갠다(;, |, &amp;, 개행, 괄호, 백틱 기준). 세그먼트 각각을 따로
+    /// 판정하려는 호출자(규칙 평가·안전 조회 판정)가 쓴다.
+    /// </summary>
+    public static IEnumerable<string> Segments(string command) => SplitSegments(command);
+
+    /// <summary>
+    /// 세그먼트 분해를 믿어도 되는 명령인가. 명령치환($(...), 백틱)이나 리다이렉션(&gt;, &lt;)이 있으면
+    /// 눈에 보이는 세그먼트가 실제 실행을 대표하지 못하므로 세그먼트 단위 허용을 적용하면 안 된다.
+    /// </summary>
+    public static bool SegmentsAreTrustworthy(string command) =>
+        !command.Contains("$(", StringComparison.Ordinal)
+        && !command.Contains("${", StringComparison.Ordinal)
+        && command.IndexOfAny(UntrustedOperators) < 0;
+
+    private static readonly char[] UntrustedOperators = { '`', '>', '<' };
 
     private static IEnumerable<string> SplitSegments(string command)
     {

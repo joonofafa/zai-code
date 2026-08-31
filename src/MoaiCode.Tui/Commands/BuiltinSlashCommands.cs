@@ -69,7 +69,7 @@ internal sealed class EffortCommand : ISlashCommand
     public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
         var current = (Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT")
-                       ?? Environment.GetEnvironmentVariable("OPENAI_REASONING_EFFORT")
+                       ?? Environment.GetEnvironmentVariable("ZAI_REASONING_EFFORT")
                        ?? Environment.GetEnvironmentVariable("MOAI_EFFORT")
                        ?? ctx.ReasoningEffort)
             ?.Trim().ToLowerInvariant();

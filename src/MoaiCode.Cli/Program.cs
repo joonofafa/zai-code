@@ -44,9 +44,9 @@ static async Task<int> RunStreamLoopAsync(string? model, CancellationToken ct)
         Environment.SetEnvironmentVariable("MOAI_MODEL", model);
     }
 
-    var rt = await AppBootstrap.BuildAsync(interactive: false, verbose: false, ct);
+    var rt = await AppBootstrap.BuildAsync(interactive: false, verbose: false, streamJsonPermissions: true, ct);
     await using var _ = rt.Mcp;
-    return await StreamJsonRunner.RunLoopAsync(rt.Ctx.Engine, ct);
+    return await StreamJsonRunner.RunLoopAsync(rt.Ctx.Engine, rt.PermissionGate, ct);
 }
 
 // run: 1회 프롬프트 헤드리스 실행

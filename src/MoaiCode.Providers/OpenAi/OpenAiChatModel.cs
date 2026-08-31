@@ -115,7 +115,6 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl
         {
             ["model"] = _model,
             ["stream"] = true,
-            ["stream_options"] = new JsonObject { ["include_usage"] = true },
             // max_tokens 미전송 시 일부 게이트웨이(open-moai 등)가 1024 로 캡핑 → 응답이 중간에 잘려
             // 모델이 작업을 끝내기 전에 멈춘다. 넉넉히 보낸다(env MOAI_MAX_TOKENS, 기본 8192).
             ["max_tokens"] = MaxOutputTokens(),
@@ -132,10 +131,16 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl
         if (toolsArr is not null)
         {
             body["tools"] = toolsArr;
+            // Z.ai 는 tool call 델타를 받으려면 별도 플래그가 필요하다.
+            if (SupportsToolStreaming(_model))
+            {
+                body["tool_stream"] = true;
+            }
         }
 
         using var req = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/chat/completions");
         req.Headers.TryAddWithoutValidation("Authorization", $"Bearer {_apiKey}");
+        req.Headers.TryAddWithoutValidation("Accept-Language", "en-US,en");
         req.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
 
         HttpResponseMessage resp;
@@ -502,15 +507,29 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl
         return 16384;   // 큰 단일 파일(예: 게임 index.html) Write 가 중간에 잘려 'path' 누락되던 문제 완화
     }
 
-    private static string? ResolveReasoningEffort()
+    private string? ResolveReasoningEffort()
     {
         var effort = (Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT")
-                      ?? Environment.GetEnvironmentVariable("OPENAI_REASONING_EFFORT")
+                      ?? Environment.GetEnvironmentVariable("ZAI_REASONING_EFFORT")
                       ?? Environment.GetEnvironmentVariable("MOAI_EFFORT"))
             ?.Trim().ToLowerInvariant();
 
-        return effort is "low" or "medium" or "high" ? effort : null;
+        if (effort is not ("low" or "medium" or "high"))
+        {
+            return null;
+        }
+
+        // Z.ai의 GLM-5.3 계열은 medium을 허용하지 않고 low/high/max만 받는다.
+        // UI의 공통 medium 선택은 의미를 유지하도록 high로 보정한다.
+        return effort == "medium" && modelStartsWith53 ? "high" : effort;
     }
+
+    private bool modelStartsWith53 => _model.StartsWith("glm-5.3", StringComparison.OrdinalIgnoreCase);
+
+    private static bool SupportsToolStreaming(string model) =>
+        model.StartsWith("glm-5", StringComparison.OrdinalIgnoreCase)
+        || model.StartsWith("glm-4.7", StringComparison.OrdinalIgnoreCase)
+        || model.StartsWith("glm-4.6", StringComparison.OrdinalIgnoreCase);
 
     private sealed class ToolCallBuilder
     {

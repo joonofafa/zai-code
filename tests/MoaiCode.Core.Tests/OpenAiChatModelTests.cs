@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using MoaiCode.Core.Agent;
 using MoaiCode.Core.Messages;
 using MoaiCode.Core.Tools;
@@ -61,14 +62,15 @@ public class OpenAiChatModelTests
         return events;
     }
 
-    private static async Task<string?> CaptureRequestBodyAsync(string sse)
+    private static async Task<string?> CaptureRequestBodyAsync(
+        string sse, IReadOnlyList<ITool>? tools = null, string modelName = "gpt-test")
     {
         var handler = new CaptureRequestHandler(sse);
         var http = new HttpClient(handler);
-        var model = new OpenAiChatModel(http, "http://test/v1", "key", "gpt-test");
+        var model = new OpenAiChatModel(http, "http://test/v1", "key", modelName);
         var history = new List<Message> { new UserMessage("hi") };
 
-        await foreach (var _ in model.StreamAsync(history, Array.Empty<ITool>(), default))
+        await foreach (var _ in model.StreamAsync(history, tools ?? Array.Empty<ITool>(), default))
         {
         }
 
@@ -219,5 +221,53 @@ public class OpenAiChatModelTests
         {
             Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", prev);
         }
+    }
+
+    [Fact]
+    public async Task Uses_zai_tool_streaming_payload_for_glm53()
+    {
+        var body = await CaptureRequestBodyAsync(
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}]}\n\n" +
+            "data: [DONE]\n\n",
+            new[] { new FakeTool() },
+            "glm-5.3");
+
+        using var doc = JsonDocument.Parse(body!);
+        var root = doc.RootElement;
+        Assert.True(root.GetProperty("tool_stream").GetBoolean());
+        Assert.False(root.TryGetProperty("stream_options", out _));
+    }
+
+    [Fact]
+    public async Task Maps_medium_effort_to_high_for_glm53()
+    {
+        var previous = Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT");
+        try
+        {
+            Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", "medium");
+            var body = await CaptureRequestBodyAsync(
+                "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}]}\n\n" +
+                "data: [DONE]\n\n",
+                modelName: "glm-5.3");
+
+            Assert.Contains("\"reasoning_effort\":\"high\"", body, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", previous);
+        }
+    }
+
+    private sealed class FakeTool : ITool
+    {
+        public string Name => "fake_tool";
+        public string Description => "A fake tool for request serialization tests.";
+        public JsonElement InputSchema => JsonDocument.Parse(
+            "{\"type\":\"object\",\"properties\":{}}").RootElement.Clone();
+        public bool IsReadOnly => true;
+        public bool IsConcurrencySafe => true;
+        public IAsyncEnumerable<ToolProgress> ExecuteAsync(
+            JsonElement input, ToolContext context, CancellationToken ct)
+            => throw new NotSupportedException();
     }
 }

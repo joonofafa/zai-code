@@ -29,7 +29,8 @@ public sealed record AppRuntime(
     IReadOnlyList<string> SkillNames,
     IReadOnlyList<McpServerConfig> McpConfigs,
     string ProviderDesc,
-    Settings Settings);
+    Settings Settings,
+    StreamJsonPermissionGate? PermissionGate = null);
 
 /// <summary>프로바이더/툴/MCP/스킬/엔진을 조립 (TS의 cli 부트스트랩 대응).</summary>
 public static class AppBootstrap
@@ -37,6 +38,14 @@ public static class AppBootstrap
 
 
     public static async Task<AppRuntime> BuildAsync(bool interactive, bool verbose, CancellationToken ct)
+        => await BuildAsync(interactive, verbose, streamJsonPermissions: false, ct).ConfigureAwait(false);
+
+    /// <param name="streamJsonPermissions">
+    /// stream-json 영속 모드(true)면 확인 게이트를 만들어 confirmer 로 연결하고 결과에도 실어 준다.
+    /// 확인 필요 판정이 permission_request 이벤트로 나가고 permission_response 로 돌아온다.
+    /// </param>
+    public static async Task<AppRuntime> BuildAsync(
+        bool interactive, bool verbose, bool streamJsonPermissions, CancellationToken ct)
     {
         var cwd = Directory.GetCurrentDirectory();
 
@@ -146,6 +155,25 @@ public static class AppBootstrap
         var rules = PermissionRules.LoadDefault(settings);
         void PersistAllow(string pattern) => rules.AddAllow(pattern);
 
+        // 확인 프롬프트(원격 실행/파괴적 명령/워크스페이스 밖 쓰기). 대화형이면 터미널 다이얼로그,
+        // stream-json 영속 모드면 permission_request 이벤트 왕복, 그 외 비대화형이면 거부.
+        // "항상 허용"은 명령 prefix 스코프(Bash(ssh moai-ec2))로만 저장되므로 무차별 통과가 되지 않는다.
+        StreamJsonPermissionGate? streamGate = null;
+        IPermissionGate? confirmer;
+        if (interactive)
+        {
+            confirmer = new SpectrePermissionGate(persistAllow: PersistAllow);
+        }
+        else if (streamJsonPermissions)
+        {
+            streamGate = new StreamJsonPermissionGate(StreamJsonRunner.Emit, PersistAllow);
+            confirmer = streamGate;
+        }
+        else
+        {
+            confirmer = null;
+        }
+
         var headlessApprove = HeadlessAutoApprove();
         IPermissionGate baseGate = settings.Permission switch
         {
@@ -153,18 +181,14 @@ public static class AppBootstrap
             PermissionMode.Deny => new DenyAllGate(),
             _ => interactive
                 ? new SpectrePermissionGate(persistAllow: PersistAllow)
-                : (headlessApprove ? new AutoApproveGate() : new DenyAllGate()),
+                : (headlessApprove
+                    ? new AutoApproveGate()
+                    : streamGate is not null ? streamGate : new DenyAllGate()),
         };
         if (!interactive && settings.Permission == PermissionMode.Ask && !headlessApprove)
         {
             Console.Error.WriteLine(L10n.Get("permission.headlessDenied"));
         }
-        // 확인 프롬프트(원격 실행/파괴적 명령/워크스페이스 밖 쓰기). 대화형에서만; 비대화형이면 거부.
-        // "항상 허용"은 명령 prefix 스코프(Bash(ssh moai-ec2))로만 저장되므로 무차별 통과가 되지 않는다.
-        var confirmer = interactive
-            ? new SpectrePermissionGate(persistAllow: PersistAllow)
-            : (IPermissionGate?)null;
-
         // 규칙이 모르는 위험을 맥락으로 판정. 자동 승인이 일어나는 경로에서만 호출된다.
         // MOAI_RISK_CLASSIFIER=0 으로 끌 수 있다(오프라인/지연 민감 환경).
         var classifier = RiskClassifierEnabled() ? new LlmRiskClassifier(model) : null;
@@ -254,7 +278,7 @@ public static class AppBootstrap
             PlanTree: () => MoaiCode.Tools.Tasks.PlanRender.PlainTree(taskStore.Phases()));
 
         return new AppRuntime(
-            mcp, ctx, toolList, skills.Select(s => s.Name).ToList(), mcpConfigs, providerDesc, settings);
+            mcp, ctx, toolList, skills.Select(s => s.Name).ToList(), mcpConfigs, providerDesc, settings, streamGate);
     }
 
     private static PromptContext BuildPromptContext(string cwd, Settings settings, IReadOnlyList<ITool> tools)
@@ -266,7 +290,7 @@ public static class AppBootstrap
 
         var model = settings.Model
             ?? Environment.GetEnvironmentVariable("MOAI_MODEL")
-            ?? Environment.GetEnvironmentVariable("OPENAI_MODEL");
+            ?? Environment.GetEnvironmentVariable("ZAI_MODEL");
         var modelDescription = string.IsNullOrEmpty(model)
             ? null
             : $"You are powered by the model {model}.";
@@ -377,20 +401,21 @@ public static class AppBootstrap
     {
         if (!string.IsNullOrEmpty(s.Model)
             && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MOAI_MODEL"))
-            && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OPENAI_MODEL")))
+            && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ZAI_MODEL")))
         {
             Environment.SetEnvironmentVariable("MOAI_MODEL", s.Model);
         }
 
         if (!string.IsNullOrEmpty(s.BaseUrl)
-            && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OPENAI_BASE_URL")))
+            && IsZaiBaseUrl(s.BaseUrl)
+            && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ZAI_BASE_URL")))
         {
-            Environment.SetEnvironmentVariable("OPENAI_BASE_URL", s.BaseUrl);
+            Environment.SetEnvironmentVariable("ZAI_BASE_URL", s.BaseUrl);
         }
 
         if (!string.IsNullOrEmpty(s.ReasoningEffort)
             && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT"))
-            && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OPENAI_REASONING_EFFORT"))
+            && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ZAI_REASONING_EFFORT"))
             && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MOAI_EFFORT")))
         {
             Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", s.ReasoningEffort);
@@ -400,9 +425,16 @@ public static class AppBootstrap
     private static void ResolveCredentials()
     {
         // 환경변수(launcher 스크립트 등)가 우선. 비어 있을 때만 저장소(auth set)에서 복원.
-        RestoreFromStore("OPENAI_API_KEY");
+        RestoreFromStore("ZAI_API_KEY");
         RestoreFromStore("GEMINI_API_KEY"); // WebSearch(Gemini) — auth set gemini 로 저장한 키
     }
+
+    private static bool IsZaiBaseUrl(string value)
+        => Uri.TryCreate(value, UriKind.Absolute, out var uri)
+           && uri.Scheme == Uri.UriSchemeHttps
+           && uri.Host.Equals("api.z.ai", StringComparison.OrdinalIgnoreCase)
+           && uri.AbsolutePath.TrimEnd('/').Equals(
+               "/api/coding/paas/v4", StringComparison.OrdinalIgnoreCase);
 
     private static void RestoreFromStore(string name)
     {

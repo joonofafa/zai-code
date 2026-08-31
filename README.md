@@ -66,12 +66,12 @@ dotnet run --project src/MoaiCode.Cli -- run "이 저장소를 요약해줘"
 dotnet run --project src/MoaiCode.Gui
 ```
 
-API 키가 없으면 `EchoChatModel`로 폴백합니다. OpenAI 호환 엔드포인트를 직접 사용할 때는 다음처럼 지정합니다.
+API 키가 없으면 `EchoChatModel`로 폴백합니다. Z.ai API를 직접 호출할 때는 다음처럼 지정합니다.
 
 ```bash
-export OPENAI_API_KEY=sk-...
-export OPENAI_BASE_URL=https://api.openai.com/v1
-export MOAI_MODEL=gpt-4o-mini
+export ZAI_API_KEY=...
+export ZAI_BASE_URL=https://api.z.ai/api/coding/paas/v4
+export MOAI_MODEL=glm-5.3
 dotnet run --project src/MoaiCode.Cli
 ```
 
@@ -85,7 +85,7 @@ moai run "프롬프트" --model gpt-4o-mini
 moai tools
 moai skills
 moai mcp list
-moai auth set openai sk-...
+moai auth set zai ...
 moai auth list
 moai login
 moai logout

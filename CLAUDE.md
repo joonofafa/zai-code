@@ -37,7 +37,7 @@ dotnet run --project src/MoaiCode.Cli -- run "이 저장소 요약"   # 헤드�
 ```
 
 - 빌드가 hang 하면 VBCSCompiler 데드락 — `-p:UseSharedCompilation=false -nodeReuse:false` 로 우회.
-- API 키가 없으면 `EchoChatModel` 로 폴백(오프라인 개발 가능). 실제 모델은 `OPENAI_API_KEY` + `OPENAI_BASE_URL` (+ `MOAI_MODEL`) 환경변수.
+- API 키가 없으면 `EchoChatModel` 로 폴백(오프라인 개발 가능). 실제 모델은 Z.ai 직접 API를 사용하며 `ZAI_API_KEY` + 선택적 `ZAI_BASE_URL` (+ `MOAI_MODEL`) 환경변수로 설정한다. 기본 endpoint는 `https://api.z.ai/api/coding/paas/v4`.
 
 ## 멀티타깃 & 플랫폼 (자주 걸리는 부분)
 
@@ -76,7 +76,7 @@ dotnet run --project src/MoaiCode.Cli -- run "이 저장소 요약"   # 헤드�
 ```text
 src/
   MoaiCode.Core           에이전트 루프(QueryEngine), Messages, Security(권한·위험분류), Memory
-  MoaiCode.Providers      OpenAI 호환 SSE(OpenAi/), RetryingChatModel, EchoChatModel 폴백, ProviderFactory
+  MoaiCode.Providers      Z.ai Chat Completions SSE, RetryingChatModel, EchoChatModel 폴백, ProviderFactory
   MoaiCode.Tools          툴 원장(ToolRegistry.BuiltIn): Files·Search·Web·Media·Tasks·Agent + PathSafety
   MoaiCode.Tools.Bash     BashTool + 명령 보안 정책(위험 분류)
   MoaiCode.Tools.OpenXml  Docx/Pptx/Xlsx 생성·편집·검사, ChunkBuild/Fetch/Search, 이미지 삽입

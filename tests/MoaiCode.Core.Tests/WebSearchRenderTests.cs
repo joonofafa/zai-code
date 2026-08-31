@@ -5,8 +5,8 @@ using Xunit;
 
 namespace MoaiCode.Core.Tests;
 
-// WebSearch(Gemini Google Search grounding): 응답에서 답변 텍스트와 출처(url_citation)를 뽑아내는지.
-// grounding 응답은 결과 목록이 아니라 steps 안에 답변/주석이 섞여 오므로 파싱이 깨지기 쉽다.
+// WebSearch(z.ai 내장 web_search): 응답 최상위 web_search 배열을 결과 목록으로 렌더한다.
+// 스키마가 바뀌거나 필드가 비어도 죽지 않아야 한다(검색이 세션을 막으면 안 된다).
 public sealed class WebSearchRenderTests
 {
     private static async Task<(string Text, bool Error)> RunAsync(object input)
@@ -31,69 +31,43 @@ public sealed class WebSearchRenderTests
     }
 
     [Fact]
-    public async Task Reports_missing_key_without_calling_out()
+    public void Renders_title_url_date_and_snippet()
     {
-        var prev = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
-        Environment.SetEnvironmentVariable("GEMINI_API_KEY", null);
-        try
-        {
-            var (text, err) = await RunAsync(new { query = "hello" });
-            Assert.True(err);
-            Assert.Contains("GEMINI_API_KEY", text);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("GEMINI_API_KEY", prev);
-        }
-    }
-
-    [Fact]
-    public void Render_extracts_answer_text_and_deduplicated_sources()
-    {
-        // 문서에 나온 steps 형태: thought → google_search_call → google_search_result → model_output.
         const string Body = """
         {
-          "steps": [
-            { "type": "thought", "content": [ { "type": "text", "text": "IGNORED_THOUGHT" } ] },
-            { "type": "google_search_call", "queries": ["euro 2024 winner"] },
-            { "type": "google_search_result", "search_suggestions": "<div>widget</div>" },
-            {
-              "type": "model_output",
-              "content": [
-                {
-                  "type": "text",
-                  "text": "Spain won Euro 2024.",
-                  "annotations": [
-                    { "type": "url_citation", "url": "https://uefa.com/a", "title": "UEFA" },
-                    { "type": "url_citation", "url": "https://uefa.com/a", "title": "UEFA dup" },
-                    { "type": "url_citation", "url": "https://bbc.com/b", "title": "BBC" }
-                  ]
-                }
-              ]
-            }
+          "choices": [{"message": {"content": ""}}],
+          "web_search": [
+            {"title": "Option.Arity Property", "link": "https://learn.microsoft.com/x",
+             "content": "Gets or sets the arity.", "publish_date": "2026-01-02"},
+            {"title": "두 번째", "link": "https://example.com/2", "content": "본문"}
           ]
         }
         """;
+        var outText = WebSearchTool.Render(Body);
 
-        var render = typeof(WebSearchTool).GetMethod(
-            "Render", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
-        var outText = (string)render.Invoke(null, new object[] { Body })!;
-
-        Assert.Contains("Spain won Euro 2024.", outText);
-        Assert.Contains("https://uefa.com/a", outText);
-        Assert.Contains("https://bbc.com/b", outText);
-        // 같은 URL 이 두 번 인용돼도 출처 목록엔 한 번만.
-        Assert.Equal(1, outText.Split("https://uefa.com/a").Length - 1);
-        // 렌더는 답변 뒤에 출처를 붙인다.
-        Assert.Contains("Sources:", outText);
+        Assert.Contains("1. Option.Arity Property", outText);
+        Assert.Contains("https://learn.microsoft.com/x", outText);
+        Assert.Contains("[2026-01-02] Gets or sets the arity.", outText);
+        Assert.Contains("2. 두 번째", outText);
     }
 
     [Fact]
-    public void Render_survives_unexpected_shape()
+    public void Skips_entries_without_title_or_link()
     {
-        var render = typeof(WebSearchTool).GetMethod(
-            "Render", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
-        Assert.Equal("", (string)render.Invoke(null, new object[] { "not json at all" })!);
-        Assert.Equal("", (string)render.Invoke(null, new object[] { """{"steps":[]}""" })!);
+        const string Body = """
+        {"web_search": [{"content": "제목도 링크도 없음"}, {"title": "쓸모 있음", "link": "https://a/b"}]}
+        """;
+        var outText = WebSearchTool.Render(Body);
+        Assert.DoesNotContain("제목도 링크도 없음", outText);
+        Assert.Contains("1. 쓸모 있음", outText);   // 번호는 실제 출력된 것만 센다
     }
+
+    [Theory]
+    // 검색 결과가 없거나 응답 형태가 예상과 다르면 빈 문자열 → 호출부가 "(no results)" 로 처리한다.
+    [InlineData("""{"web_search": []}""")]
+    [InlineData("""{"choices": [{"message": {"content": "답변만 있고 검색 결과 없음"}}]}""")]
+    [InlineData("""{"web_search": "배열이 아님"}""")]
+    [InlineData("not json at all")]
+    public void Returns_empty_for_missing_or_odd_shapes(string body)
+        => Assert.Equal("", WebSearchTool.Render(body));
 }

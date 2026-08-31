@@ -10,6 +10,8 @@ public class McpSecurityTests
     [Theory]
     [InlineData("OPENAI_API_KEY")]
     [InlineData("OPENAI_BASE_URL")]
+    [InlineData("ZAI_API_KEY")]
+    [InlineData("ZAI_BASE_URL")]
     [InlineData("MOAI_LOGIN_HOST")]
     [InlineData("PROXY_PASSWORD")]
     [InlineData("ANTHROPIC_API_KEY")]

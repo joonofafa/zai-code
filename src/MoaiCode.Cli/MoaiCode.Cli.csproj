@@ -18,6 +18,10 @@
     <PackageReference Include="System.CommandLine" />
   </ItemGroup>
   <ItemGroup>
+    <!-- stream-json 내부 라우팅(TryRoutePermissionResponse) 검증용. -->
+    <InternalsVisibleTo Include="MoaiCode.Core.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- 기본 번들 스킬(awesome-claude-skills 큐레이션). 첫 실행 시 ~/.moai/bundled-skills 로 추출. -->
     <EmbeddedResource Include="Resources/bundled-skills.zip" LogicalName="bundled-skills.zip" />
   </ItemGroup>

@@ -156,12 +156,12 @@ public class SlashCommandTests : IDisposable
     public async Task Effort_without_argument_reports_current_value()
     {
         var prevA = Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT");
-        var prevB = Environment.GetEnvironmentVariable("OPENAI_REASONING_EFFORT");
+        var prevB = Environment.GetEnvironmentVariable("ZAI_REASONING_EFFORT");
         var prevC = Environment.GetEnvironmentVariable("MOAI_EFFORT");
         try
         {
             Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", "high");
-            Environment.SetEnvironmentVariable("OPENAI_REASONING_EFFORT", null);
+            Environment.SetEnvironmentVariable("ZAI_REASONING_EFFORT", null);
             Environment.SetEnvironmentVariable("MOAI_EFFORT", null);
 
             var r = await Run("effort");
@@ -170,7 +170,7 @@ public class SlashCommandTests : IDisposable
         finally
         {
             Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", prevA);
-            Environment.SetEnvironmentVariable("OPENAI_REASONING_EFFORT", prevB);
+            Environment.SetEnvironmentVariable("ZAI_REASONING_EFFORT", prevB);
             Environment.SetEnvironmentVariable("MOAI_EFFORT", prevC);
         }
     }
@@ -179,12 +179,12 @@ public class SlashCommandTests : IDisposable
     public async Task Effort_without_argument_reports_unset_when_empty()
     {
         var prevA = Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT");
-        var prevB = Environment.GetEnvironmentVariable("OPENAI_REASONING_EFFORT");
+        var prevB = Environment.GetEnvironmentVariable("ZAI_REASONING_EFFORT");
         var prevC = Environment.GetEnvironmentVariable("MOAI_EFFORT");
         try
         {
             Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", null);
-            Environment.SetEnvironmentVariable("OPENAI_REASONING_EFFORT", null);
+            Environment.SetEnvironmentVariable("ZAI_REASONING_EFFORT", null);
             Environment.SetEnvironmentVariable("MOAI_EFFORT", null);
 
             var r = await Run("effort");
@@ -193,7 +193,7 @@ public class SlashCommandTests : IDisposable
         finally
         {
             Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", prevA);
-            Environment.SetEnvironmentVariable("OPENAI_REASONING_EFFORT", prevB);
+            Environment.SetEnvironmentVariable("ZAI_REASONING_EFFORT", prevB);
             Environment.SetEnvironmentVariable("MOAI_EFFORT", prevC);
         }
     }
@@ -209,7 +209,7 @@ public class SlashCommandTests : IDisposable
     public async Task Effort_valid_argument_persists_to_settings_and_env()
     {
         var prevA = Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT");
-        var prevB = Environment.GetEnvironmentVariable("OPENAI_REASONING_EFFORT");
+        var prevB = Environment.GetEnvironmentVariable("ZAI_REASONING_EFFORT");
         var prevC = Environment.GetEnvironmentVariable("MOAI_EFFORT");
         var tempHome = Path.Combine(Path.GetTempPath(), "occs-home-" + Guid.NewGuid().ToString("n"));
         var prevHome = Environment.GetEnvironmentVariable("HOME");
@@ -218,7 +218,7 @@ public class SlashCommandTests : IDisposable
         try
         {
             Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", null);
-            Environment.SetEnvironmentVariable("OPENAI_REASONING_EFFORT", null);
+            Environment.SetEnvironmentVariable("ZAI_REASONING_EFFORT", null);
             Environment.SetEnvironmentVariable("MOAI_EFFORT", null);
             Environment.SetEnvironmentVariable("HOME", tempHome);
 
@@ -244,7 +244,7 @@ public class SlashCommandTests : IDisposable
         finally
         {
             Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", prevA);
-            Environment.SetEnvironmentVariable("OPENAI_REASONING_EFFORT", prevB);
+            Environment.SetEnvironmentVariable("ZAI_REASONING_EFFORT", prevB);
             Environment.SetEnvironmentVariable("MOAI_EFFORT", prevC);
             Environment.SetEnvironmentVariable("HOME", prevHome);
             try

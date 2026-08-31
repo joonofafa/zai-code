@@ -17,7 +17,7 @@ namespace MoaiCode.Tools.Media;
 
 /// <summary>
 /// 텍스트 프롬프트로 이미지를 생성해 PNG 로 저장한다.
-/// 서버 계약: POST {baseUrl}/images/generations (OpenAI images 호환, Bearer).
+/// Z.ai API 계약: POST https://api.z.ai/api/paas/v4/images/generations (Bearer).
 /// 저장된 PNG 는 DocxCreate/PptxCreate 의 image 필드로 문서에 삽입할 수 있다.
 /// </summary>
 public sealed class ImageCreateTool : ITool
@@ -80,9 +80,10 @@ public sealed class ImageCreateTool : ITool
             yield break;
         }
 
-        var baseUrl = Environment.GetEnvironmentVariable("OPENAI_BASE_URL");
-        var key = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
-        if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(key))
+        var baseUrl = Environment.GetEnvironmentVariable("ZAI_IMAGE_BASE_URL")
+                      ?? "https://api.z.ai/api/paas/v4";
+        var key = Environment.GetEnvironmentVariable("ZAI_API_KEY");
+        if (string.IsNullOrWhiteSpace(key))
         {
             yield return new ToolOutput(
                 L10n.Get("tools.imageCreate.notLoggedIn"), IsError: true);
