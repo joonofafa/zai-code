@@ -34,9 +34,37 @@ public sealed class TerminalInput : IDisposable
 
     public TerminalInput(Stream? stdin = null)
     {
-        _stdin = stdin ?? Console.OpenStandardInput();
+        _stdin = stdin ?? OpenRawStdin();
         _reader = new Thread(ReadLoop) { IsBackground = true, Name = "moai-input" };
         _reader.Start();
+    }
+
+    /// <summary>
+    /// 터미널 입력을 '가공 없이' 읽는 스트림. 유닉스에서 <see cref="Console.OpenStandardInput"/> 은
+    /// stdin 이 터미널이면 .NET 내부 줄편집기(StdInReader)를 태우는 스트림을 돌려준다 — 문자를 스스로
+    /// 에코하고 Enter 까지 모아 두므로, raw 모드로 한 키씩 처리하는 이 리더에는 바이트가 제때 오지 않는다
+    /// (Tab 자동완성·Shift+Tab 모드전환이 먹지 않고, 한글 백스페이스가 어긋나고, 에코가 입력창 밖에
+    /// 찍히던 원인). 그래서 fd 0 을 직접 연다. 윈도우는 그런 가공이 없어 기존 경로를 그대로 쓴다.
+    /// </summary>
+    private static Stream OpenRawStdin()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return Console.OpenStandardInput();
+        }
+
+        try
+        {
+            // ownsHandle:false — fd 0 은 프로세스 공용이라 이 스트림이 닫아서는 안 된다.
+            // bufferSize:1 — FileStream 자체 버퍼링을 끄고 read(2) 결과를 즉시 넘긴다.
+            return new FileStream(
+                new Microsoft.Win32.SafeHandles.SafeFileHandle((IntPtr)0, ownsHandle: false),
+                FileAccess.Read, bufferSize: 1, isAsync: false);
+        }
+        catch
+        {
+            return Console.OpenStandardInput();   // 열 수 없으면 기존 경로로 폴백
+        }
     }
 
     private void ReadLoop()
