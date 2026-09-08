@@ -9,6 +9,33 @@ namespace MoaiCode.Core.Tests;
 
 public class McpTests
 {
+    // env 값의 ${VAR} 치환 — mcp.json 에 API 키를 평문으로 두지 않기 위한 기능.
+    // 변수명은 이 테스트 전용으로 유일하게 잡는다(프로세스 전역이라 다른 테스트와 겹치면 깨진다).
+    [Fact]
+    public void ExpandEnv_substitutes_defined_variables()
+    {
+        const string name = "MOAI_TEST_MCP_EXPAND_1";
+        Environment.SetEnvironmentVariable(name, "secret-value");
+        try
+        {
+            Assert.Equal("secret-value", McpConfigLoader.ExpandEnv("${" + name + "}"));
+            Assert.Equal("Bearer secret-value!", McpConfigLoader.ExpandEnv("Bearer ${" + name + "}!"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(name, null);
+        }
+    }
+
+    [Fact]
+    public void ExpandEnv_leaves_plain_text_and_blanks_unknown_names()
+    {
+        Assert.Equal("plain-key", McpConfigLoader.ExpandEnv("plain-key"));
+        Assert.Equal("", McpConfigLoader.ExpandEnv("${MOAI_TEST_MCP_UNDEFINED_2}"));
+        // 닫는 중괄호가 없으면 치환 대상이 아니다 — 원문 그대로 둔다.
+        Assert.Equal("${unterminated", McpConfigLoader.ExpandEnv("${unterminated"));
+    }
+
     /// <summary>인메모리 MCP 서버 — JSON-RPC 요청에 즉시 응답.</summary>
     private sealed class FakeMcpServer : IMcpTransport
     {

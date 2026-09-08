@@ -1,5 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <InternalsVisibleTo Include="MoaiCode.Core.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\MoaiCode.Core\MoaiCode.Core.csproj" />
     <ProjectReference Include="..\MoaiCode.Localization\MoaiCode.Localization.csproj" />
   </ItemGroup>

@@ -107,7 +107,7 @@ public static class McpConfigLoader
                 {
                     if (kv.Value.ValueKind == JsonValueKind.String)
                     {
-                        env[kv.Name] = kv.Value.GetString()!;
+                        env[kv.Name] = ExpandEnv(kv.Value.GetString()!);
                     }
                 }
             }
@@ -116,5 +116,33 @@ public static class McpConfigLoader
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// env 값의 <c>${VAR}</c> 를 현재 프로세스 환경변수로 치환한다. 설정 파일에 API 키를
+    /// 평문으로 적지 않고 런처가 주입한 값을 참조하기 위한 것. 정의되지 않은 이름은 빈 문자열이 된다
+    /// (원문을 남기면 키인 줄 알고 그대로 서버에 넘어가 인증 오류가 더 헷갈려진다).
+    /// </summary>
+    internal static string ExpandEnv(string value)
+    {
+        if (value.IndexOf("${", StringComparison.Ordinal) < 0) return value;
+
+        var sb = new System.Text.StringBuilder(value.Length);
+        for (var i = 0; i < value.Length; i++)
+        {
+            if (value[i] == '$' && i + 1 < value.Length && value[i + 1] == '{')
+            {
+                var end = value.IndexOf('}', i + 2);
+                if (end > i + 2)
+                {
+                    var name = value[(i + 2)..end];
+                    sb.Append(Environment.GetEnvironmentVariable(name) ?? string.Empty);
+                    i = end;
+                    continue;
+                }
+            }
+            sb.Append(value[i]);
+        }
+        return sb.ToString();
     }
 }
