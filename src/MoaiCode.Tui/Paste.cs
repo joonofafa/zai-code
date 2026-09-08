@@ -2,129 +2,20 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using MoaiCode.Localization;
+using MoaiCode.Tui.Input;
 
 namespace MoaiCode.Tui;
 
 /// <summary>
-/// bracketed paste (DEC 2004) 처리. 켜두면 터미널이 붙여넣기를 ESC[200~ … ESC[201~ 로 감싸 보내므로
-/// 붙여넣은 개행을 Enter(제출)와 구분할 수 있다. 켜지 않으면 터미널이 붙여넣기를 평범한 키 입력으로
-/// 흘려보내고, CRLF 가 Enter 두 번으로 들어와 줄마다 전송돼 버린다.
+/// 입력 가용성 조회의 얇은 파사드. 붙여넣기(bracketed paste) 파싱·감지는 이제 raw 바이트 리더
+/// (TerminalInput + VtParser)가, VT 기능 켬/끔은 TerminalSession 이 담당한다.
+/// (예전엔 이 클래스가 ESC[200~ 를 키 레벨에서 스캔했으나 입력 층 재작성으로 제거됨.)
 /// </summary>
 public static class BracketedPaste
 {
-    public const string Enable = "\u001b[?2004h";
-    public const string Disable = "\u001b[?2004l";
-
-    private const string StartTail = "[200~";  // ESC 다음
-    private const string EndTail = "[201~";    // ESC 다음
-    private const int MaxPasteChars = 4_000_000; // 종료 마커가 안 오는 터미널에서 무한 대기 방지
-
-    // 시퀀스가 아니었을 때 되돌려 놓기 위한 pushback 큐(선행 읽기 취소용).
-    private static readonly Queue<ConsoleKeyInfo> Pushback = new();
-
-    public static ConsoleKeyInfo ReadKey() =>
-        Pushback.Count > 0 ? Pushback.Dequeue() : Console.ReadKey(intercept: true);
-
-    /// <summary>pushback(선행 읽기 취소로 되돌린 키)에 남은 키 수 — 워처 드레인용.</summary>
-    public static int PushbackCount => Pushback.Count;
-
-    /// <summary>대기 중인 키(pushback 또는 콘솔 입력)가 있는가. 폴링 불가 환경에선 Console.KeyAvailable 이 throw.</summary>
-    public static bool KeyAvailable => Pushback.Count > 0 || Console.KeyAvailable;
-
-    /// <summary>
-    /// ESC 로 시작하는 키가 붙여넣기 시작(ESC[200~)이면 종료 마커까지 본문을 읽어 반환한다.
-    /// 아니면 선행 읽은 키를 모두 pushback 하고 false.
-    /// 대기 중인 후속 입력이 없으면(단독 ESC) 시도조차 하지 않는다.
-    /// </summary>
-    public static bool TryReadPaste(ConsoleKeyInfo first, out string text)
-    {
-        text = string.Empty;
-
-        // 단독 ESC(사용자가 Esc 를 누른 경우)에 블로킹하지 않도록, 뒤따르는 입력이 있을 때만 시도.
-        if (first.Key != ConsoleKey.Escape || (Pushback.Count == 0 && !Console.KeyAvailable))
-        {
-            return false;
-        }
-
-        return TryReadPasteCore(first, out text);
-    }
-
-    /// <summary>
-    /// ESC[200~ 시퀀스를 (후속 입력 대기 여부와 무관하게) 읽는다. 턴 중 워처가 bracketed paste
-    /// 본문을 통째로 모으는 용도 — 터미널이 마커를 이미 흘려보낸 뒤라 후속 키가 확실히 있기 때문.
-    /// 시퀀스가 아니면 선행 읽은 키를 pushback 하고 false 를 반환한다.
-    /// </summary>
-    public static bool TryReadPasteAssumeAvailable(ConsoleKeyInfo first, out string text)
-    {
-        text = string.Empty;
-        if (first.Key != ConsoleKey.Escape)
-        {
-            return false;
-        }
-
-        return TryReadPasteCore(first, out text);
-    }
-
-    private static bool TryReadPasteCore(ConsoleKeyInfo first, out string text)
-    {
-        text = string.Empty;
-
-        var consumed = new List<ConsoleKeyInfo> { first };
-        foreach (var expect in StartTail)
-        {
-            consumed.Add(ReadKey());
-            if (consumed[^1].KeyChar != expect)
-            {
-                foreach (var c in consumed)
-                {
-                    Pushback.Enqueue(c);
-                }
-
-                return false;
-            }
-        }
-
-        var sb = new StringBuilder();
-        while (sb.Length < MaxPasteChars)
-        {
-            var k = ReadKey();
-
-            if (k.Key == ConsoleKey.Escape)
-            {
-                // ESC[201~ 이면 종료. 아니면 읽은 만큼 본문으로 취급.
-                var seq = new List<ConsoleKeyInfo>();
-                var matched = true;
-                foreach (var expect in EndTail)
-                {
-                    var e = ReadKey();
-                    seq.Add(e);
-                    if (e.KeyChar != expect)
-                    {
-                        matched = false;
-                        break;
-                    }
-                }
-
-                if (matched)
-                {
-                    break;
-                }
-
-                sb.Append('\u001b');
-                foreach (var s in seq)
-                {
-                    sb.Append(s.KeyChar);
-                }
-
-                continue;
-            }
-
-            sb.Append(k.KeyChar);
-        }
-
-        text = sb.ToString();
-        return true;
-    }
+    /// <summary>대기 중인 입력이 있는가. 세션(raw 리더)이 있으면 그 큐, 없으면 Console 폴백.</summary>
+    public static bool KeyAvailable
+        => TerminalInput.Shared is { } input ? input.Available : Console.KeyAvailable;
 }
 
 /// <summary>

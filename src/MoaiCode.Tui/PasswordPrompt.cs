@@ -16,7 +16,7 @@ public static class PasswordPrompt
         var sb = new StringBuilder();
         while (true)
         {
-            var k = Console.ReadKey(intercept: true);
+            var k = (Input.TerminalInput.Shared is { } __ti ? __ti.ReadKey() : Console.ReadKey(intercept: true));
             if (k.Key == ConsoleKey.Enter || k.KeyChar == '\r' || k.KeyChar == '\n')
             {
                 Console.WriteLine();

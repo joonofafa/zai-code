@@ -41,7 +41,7 @@ public static class MultiSelectList
 
             while (true)
             {
-                var key = Console.ReadKey(intercept: true);
+                var key = (Input.TerminalInput.Shared is { } __ti ? __ti.ReadKey() : Console.ReadKey(intercept: true));
                 if (key.Key == ConsoleKey.Enter || key.KeyChar == '\r' || key.KeyChar == '\n')
                 {
                     var result = new List<int>();

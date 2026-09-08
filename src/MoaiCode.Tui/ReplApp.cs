@@ -46,6 +46,9 @@ public sealed class ReplApp
 
     // 타입어헤드: 턴 처리 중 친 입력을 모아 턴 종료 후 순차 제출. MOAI_TYPEAHEAD=0/false/off 로 끔(기본 on).
     private readonly TurnInputQueue _turnInput = new();
+
+    // 턴 종료 시 남은 미확정 드래프트 — 다음 프롬프트의 편집 가능한 초기 버퍼로 시드(한 번 쓰고 비움).
+    private string? _pendingInput;
     private readonly bool _typeAhead =
         Environment.GetEnvironmentVariable("MOAI_TYPEAHEAD") is not ("0" or "false" or "off");
 
@@ -90,7 +93,7 @@ public sealed class ReplApp
         AnsiConsole.MarkupLine($"[yellow]Z.ai Code — Coding Agent (V {Banner.Version()})[/]");
         // Build identity (git SHA + build time, or a "stale binary" flag when running a replaced binary).
         AnsiConsole.MarkupLine($"[grey50]{Markup.Escape(Banner.VersionString())}[/]");
-        AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(L10n.Get("repl.help"))}[/]");
+        AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]{Markup.Escape(L10n.Get("repl.help"))}[/]");
         // 배너~프롬프트 사이 공백 2줄.
         AnsiConsole.WriteLine();
         AnsiConsole.WriteLine();
@@ -99,6 +102,10 @@ public sealed class ReplApp
         {
             Console.CancelKeyPress += OnCancelKeyPress;
         }
+
+        // 대화형 입력 세션: 콘솔을 raw/VT 로 두고 원시 바이트 리더를 띄운다(붙여넣기·특수키를 자체
+        // VT 파서로 해석). 비대화형/리다이렉트에선 세션 없이 Console 폴백. dispose 시 콘솔 모드 복원.
+        Input.TerminalSession? session = _interactive && !Console.IsInputRedirected ? new Input.TerminalSession() : null;
 
         // 슬래시 자동완성 후보 + 명령 히스토리(↑/↓) 시드.
         _slashNames = _slash.Commands.Select(c => c.Name).OrderBy(n => n, StringComparer.Ordinal).ToList();
@@ -118,6 +125,7 @@ public sealed class ReplApp
         finally
         {
             _dock?.Teardown();   // 스크롤 영역 원복 (하단 고정 모드였다면)
+            session?.Dispose();  // 콘솔 raw/VT 모드 복원 + 리더 정리
             if (_interactive)
             {
                 Console.CancelKeyPress -= OnCancelKeyPress;
@@ -128,35 +136,34 @@ public sealed class ReplApp
     private async Task RunLoopAsync(CancellationToken ct)
     {
         var quit = false;
-        // 턴 중에 치다 만(엔터 전) 입력 — 다음 프롬프트에 그대로 되살린다.
-        var pending = string.Empty;
         while (!quit && !ct.IsCancellationRequested)
         {
             string? input;
             // 브레인스토밍: 이번 입력에 AI 추천 답을 희미한 ghost 로 띄운다(Tab 채택, 타이핑 시 사라짐).
             LineEditor.SeedGhost = _ctx.State.Brainstorming ? _brainstormSuggestion : null;
 
+            // 지난 턴에 입력 중이던 미확정 드래프트가 있으면 편집 가능한 초기 버퍼로 올린다(한 번 소비).
+            var seed = _pendingInput;
+            _pendingInput = null;
+
             if (_dock is not null)
             {
                 // 하단 고정: 상태줄+입력창은 화면 맨 아래, 출력은 위 영역에서 스크롤.
                 input = _dock.ReadLine(_history, _slashNames,
                     () => { CycleMode(); return BuildStatusLine(); },
-                    _ctx.State.Brainstorming, pending);
+                    _ctx.State.Brainstorming, seed);
             }
             else if (_useRawEditor)
             {
                 Func<string> cycle = () => { CycleMode(); return BuildStatusLine(); };
                 // 상태줄을 프롬프트 위에 출력하는 단순 모드 (wrap 중복 없음).
-                input = LineEditor.ReadLine(
-                    _history, _slashNames, cycle, BuildStatusLine, _ctx.State.Brainstorming, pending);
+                input = LineEditor.ReadLine(_history, _slashNames, cycle, BuildStatusLine, _ctx.State.Brainstorming, seed);
             }
             else
             {
                 AnsiConsole.Markup("[green]❯ [/]");
                 input = Console.ReadLine();
             }
-
-            pending = string.Empty;   // 되살린 입력은 편집기로 넘어갔다.
 
             if (input is null)
             {
@@ -172,8 +179,8 @@ public sealed class ReplApp
 
             quit = await ProcessInputAsync(input, ct).ConfigureAwait(false);
 
-            // 타입어헤드: 턴 처리 중 '엔터로 확정된' 입력만 순차로 이어서 제출한다.
-            // 치다 만 줄은 제출하지 않고(TakePartial) 아래에서 다음 프롬프트로 되살린다.
+            // 타입어헤드: 턴 처리 중 사용자가 Enter 로 확정한 입력(큐)만 순차로 이어서 제출.
+            // 미확정 드래프트(입력 중이던 줄)는 큐에 넣지 않는다 — 자동 제출 금지.
             while (!quit && _typeAhead && !ct.IsCancellationRequested)
             {
                 if (!_turnInput.TryDequeue(out var queued))
@@ -181,20 +188,29 @@ public sealed class ReplApp
                     break;
                 }
 
-                // 턴 중 Shift+Tab 으로 예약된 모드 전환 — 실제 토글만 하고 제출하진 않는다.
-                if (queued == LineEditor.CycleModeSignal)
+                // 고정 composer: 모델 턴 큐 메시지는 입력창을 유지한 채 echo, 슬래시 큐는 해제 후 일반 처리.
+                if (_dock is not null && !queued.TrimStart().StartsWith('/'))
                 {
-                    CycleMode();
-                    continue;
+                    _dock.KeepComposerForTurn(queued);
+                }
+                else
+                {
+                    _dock?.Teardown();
+                    AnsiConsole.MarkupLine($"[grey58]↳ Queued[/] [green]❯[/] {Markup.Escape(queued)}");
                 }
 
-                AnsiConsole.MarkupLine($"[grey58]↳ Queued[/] [green]❯[/] {Markup.Escape(queued)}");
                 quit = await ProcessInputAsync(queued, ct).ConfigureAwait(false);
             }
 
-            if (_typeAhead)
+            // 확정 큐를 다 비운 뒤 남은 미확정 드래프트는 다음 프롬프트의 편집 가능한 초기 버퍼로 올린다
+            // (그냥 제출되지 않고, 사용자가 이어서 편집/제출하도록). 큐가 있었다면 위에서 이미 처리됐다.
+            if (!quit && _typeAhead)
             {
-                pending = _turnInput.TakePartial();
+                var draft = _turnInput.TakePartial();
+                if (draft.Length > 0)
+                {
+                    _pendingInput = draft;
+                }
             }
         }
     }
@@ -275,7 +291,7 @@ public sealed class ReplApp
 
         if (!string.IsNullOrEmpty(result.Output))
         {
-            AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(result.Output)}[/]");
+            AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]{Markup.Escape(result.Output)}[/]");
         }
 
         // 프롬프트형 커맨드(/init, /review)는 결과 프롬프트로 에이전트 턴을 실행.
@@ -294,7 +310,7 @@ public sealed class ReplApp
     {
         if (command.Length == 0)
         {
-            AnsiConsole.MarkupLine("[grey70]Usage: ! <shell command>[/]");
+            AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]Usage: ! <shell command>[/]");
             return;
         }
 
@@ -376,7 +392,7 @@ public sealed class ReplApp
         }
         catch (Exception ex)
         {
-            AnsiConsole.MarkupLine($"[red]! failed:[/] [grey70]{Markup.Escape(ex.Message)}[/]");
+            AnsiConsole.MarkupLine($"[red]! failed:[/] [{TuiTheme.Dim}]{Markup.Escape(ex.Message)}[/]");
             return;
         }
 
@@ -406,7 +422,7 @@ public sealed class ReplApp
         };
         foreach (var (key, desc) in rows)
         {
-            AnsiConsole.MarkupLine($"  [white]{Markup.Escape(key).PadRight(26)}[/][grey70]{Markup.Escape(desc)}[/]");
+            AnsiConsole.MarkupLine($"  [white]{Markup.Escape(key).PadRight(26)}[/][{TuiTheme.Dim}]{Markup.Escape(desc)}[/]");
         }
 
         AnsiConsole.MarkupLine("[grey58]Type /help for the full command list.[/]");
@@ -483,9 +499,13 @@ public sealed class ReplApp
         // 입력 충돌(과거 desync/hang)을 피한다. 키가 실제로 있을 때만(non-blocking) 읽는다.
         using var escStop = StartEscWatcher(turnCts);
 
-        // 상시 하단 입력바 예약(대화형 + 타입어헤드 + 터미널일 때만).
-        _barWanted = _interactive && _typeAhead && !Console.IsOutputRedirected;
-        ActivateBar();
+        // 고정 composer(_dock)가 있으면 그것이 턴 내내 하단에 유지되므로 별도 1줄 바를 쓰지 않는다.
+        // composer 가 없을 때(LineEditor 폴백 등)만 옛 입력바를 예약한다.
+        _barWanted = _interactive && _typeAhead && !Console.IsOutputRedirected && _dock is null;
+        if (_dock is null)
+        {
+            ActivateBar();
+        }
 
         try
         {
@@ -518,7 +538,6 @@ public sealed class ReplApp
                         has = await MoveNextWithSpinnerAsync(e, L10n.Get("repl.spinner.working"), tct).ConfigureAwait(false);
                         continue;
                     case StreamNotice sn:
-                        ClearSpinnerThenNewline();
                         AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(sn.Text)}[/]");
                         has = await MoveNextWithSpinnerAsync(e, L10n.Get("repl.spinner.working"), tct).ConfigureAwait(false);
                         continue;
@@ -542,7 +561,7 @@ public sealed class ReplApp
             // 턴이 정상 종료됐는데 화면에 아무것도 안 나왔으면(빈 응답) 사용자에게 알린다.
             if (!_producedOutputInTurn)
             {
-                AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(L10n.Get("repl.emptyResponse"))}[/]");
+                AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]{Markup.Escape(L10n.Get("repl.emptyResponse"))}[/]");
             }
         }
         catch (OperationCanceledException) when (turnCts.IsCancellationRequested && !ct.IsCancellationRequested)
@@ -550,6 +569,7 @@ public sealed class ReplApp
             // Ctrl+C로 사용자가 중단 — 프로세스는 유지하고 다음 입력으로 복귀.
             // 바를 먼저 해제(스크롤영역 복원 + 바 행 지움)해야 '중단됨' 이 큐 힌트/입력바와 안 엉킨다.
             DeactivateBar();
+            _dock?.EndTurnMode();
             ClearSpinnerLine();
             AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(L10n.Get("repl.aborted"))}[/]");
         }
@@ -565,6 +585,7 @@ public sealed class ReplApp
         finally
         {
             DeactivateBar();
+            _dock?.EndTurnMode();   // 고정 composer: 턴 모드 해제(다음 ReadLine 이 정상 렌더)
             _barWanted = false;
             _activeTurnCts = null;
         }
@@ -590,7 +611,7 @@ public sealed class ReplApp
                 BrainstormCommand.End(_ctx);
                 _brainstormSuggestion = null;
                 AnsiConsole.WriteLine();
-                AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(L10n.Get("slash.brainstorm.planReady"))}[/]");
+                AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]{Markup.Escape(L10n.Get("slash.brainstorm.planReady"))}[/]");
             }
         }
     }
@@ -603,6 +624,7 @@ public sealed class ReplApp
         {
             AgentMode.Plan => ("repl.mode.plan", "\x1b[33m"),       // yellow
             AgentMode.AutoAct => ("repl.mode.autoAct", "\x1b[38;5;39m"), // deepskyblue
+            AgentMode.Analysis => ("repl.mode.analysis", "\x1b[36m"),    // cyan (정보/질문)
             _ => ("repl.mode.act", "\x1b[32m"),                     // green
         };
 
@@ -612,16 +634,32 @@ public sealed class ReplApp
         return $"{ansi}{modeTxt}\x1b[0m\x1b[38;5;249m ({toggle}) · {model}\x1b[0m";
     }
 
-    // 상태줄 모델 표기: 단일 현재 모델
-    private string ModelStatusLabel() => CurrentModelLabel();
+    // 상태줄 모델 표기: 난이도 티어(MOAI_MODEL_LOW/MID/HIGH)가 하나라도 설정돼 있으면
+    // 티어별 모델(L/M/H), 아니면 단일 현재 모델. 미설정 티어는 기본(현재) 모델로 채운다.
+    private string ModelStatusLabel()
+    {
+        var low = Environment.GetEnvironmentVariable("MOAI_MODEL_LOW");
+        var mid = Environment.GetEnvironmentVariable("MOAI_MODEL_MID");
+        var high = Environment.GetEnvironmentVariable("MOAI_MODEL_HIGH");
+        if (string.IsNullOrWhiteSpace(low) && string.IsNullOrWhiteSpace(mid) && string.IsNullOrWhiteSpace(high))
+        {
+            return CurrentModelLabel();
+        }
 
-    // act → auto-act → plan → act 순환.
+        var def = CurrentModelLabel();
+        static string Id(string s) { var i = s.LastIndexOf('/'); return (i >= 0 ? s[(i + 1)..] : s).Trim(); }
+        string T(string? v) => Id(string.IsNullOrWhiteSpace(v) ? def : v!);
+        return $"L:{T(low)} M:{T(mid)} H:{T(high)}";
+    }
+
+    // act → auto-act → plan → analysis → act 순환.
     private void CycleMode()
     {
         _ctx.State.Mode = _ctx.State.Mode switch
         {
             AgentMode.Act => AgentMode.AutoAct,
             AgentMode.AutoAct => AgentMode.Plan,
+            AgentMode.Plan => AgentMode.Analysis,
             _ => AgentMode.Act,
         };
 
@@ -629,6 +667,7 @@ public sealed class ReplApp
         {
             AgentMode.Plan => Reminders.PlanMode,
             AgentMode.AutoAct => Reminders.AutoActMode,
+            AgentMode.Analysis => Reminders.AnalysisMode,
             _ => Reminders.ActMode,
         });
     }
@@ -766,110 +805,47 @@ public sealed class ReplApp
 
         var h = BarHeight();
         var w = BarWidth();
-        var line = _typeAhead ? _turnInput.CurrentLine : string.Empty;
-
-        // 가용폭 = w − prefix 폭 − 커서칸(" ") − 좌우 여백 1+1. prefix " (Q:N)❯ " 는 N 자리에
-        // 따라 폭이 달라지므로 실측한다. 본문(힌트·입력줄)을 이 폭 안으로 클램프해야 바가 한 행을
-        // 넘지 않는데, 넘으면 wrap 돼 넘친 꼬리가 스크롤 영역으로 올라가 잔상으로 남는다.
         var qn = _typeAhead ? _turnInput.Count : 0;
-        var avail = Math.Max(1, w - LineEditor.DisplayWidth($" (Q:{qn})❯ ") - 2);
+        var line = _typeAhead ? _turnInput.CurrentLine : string.Empty;
+        var isHint = line.Length == 0;
 
-        string body;
-        if (line.Length == 0)
-        {
-            // 힌트는 앞쪽 유지 + 뒤 … — 안내문이므로 시작이 보이는 게 중요하다.
-            var hint = ClampToWidth(L10n.Get("repl.typeahead.hint"), avail, tailEllipsis: true);
-            body = $"\u001b[38;5;244m{hint}\u001b[0m";
-        }
-        else
-        {
-            // 입력줄은 뒤쪽(최근 입력) 유지 + 앞 …. 표시폭(와이드문자 2셀) 기준으로 잘라야
-            // 한글이 섞였을 때 문자 수로 자르는 것보다 실제 폭이 넓어 wrap 되는 일이 없다.
-            var clamped = ClampToWidth(line, avail, tailEllipsis: false);
-            body = $"\u001b[38;5;252m{clamped}\u001b[0m";
-        }
+        // 바 한 줄이 터미널 폭(w)을 넘어 wrap 되면 넘친 부분이 위 출력 영역으로 스크롤돼 잔상이 남는다.
+        // 프리픽스 " (Q:N)❯ " 표시폭 + 뒤 커서블록/여유 2칸을 뺀 가용폭으로 본문을 잘라(와이드문자 반영) wrap 을 막는다.
+        var prefix = $" (Q:{qn})\u276f ";
+        var avail = Math.Max(1, w - LineEditor.DisplayWidth(prefix) - 2);
+        var text = ClampToWidth(isHint ? L10n.Get("repl.typeahead.hint") : line, avail, keepEnd: !isHint);
+        var body = $"{(isHint ? "\u001b[38;5;244m" : "\u001b[38;5;252m")}{text}\u001b[0m";
 
-        // 직전 큐잉(붙여넣기/Enter 확정) 미리보기 — 2초간 표시 후 자동 소멸. Q:n 숫자만으론
-        // 붙여넣어졌는지 알 길이 없어 피드백을 준다. 바 다음 줄에 잠깐 찍고 커서를 되돌린다.
-        var flash = _typeAhead ? _turnInput.TakeFlash() : null;
-        lock (_barLock)
-        {
-            // 락 안에서 재확인 — DeactivateBar 직후의 재도색(잔상)을 차단한다.
-            if (!_barActive)
-            {
-                return;
-            }
-
-            Console.Write($"\u001b7\u001b[{h};1H\u001b[48;5;236m\u001b[2K \u001b[38;5;245m(Q:{qn})\u001b[38;5;39m\u276f\u001b[39m {body}\u001b[7m \u001b[0m\u001b[K\u001b[0m\u001b8");
-            if (flash is { Length: > 0 })
-            {
-                var maxFlash = Math.Max(1, w - 14);
-                var fp = flash.Length > maxFlash ? flash[..(maxFlash - 1)] + "\u2026" : flash;
-                Console.Write($"\u001b7\r\u001b[s\u001b[{h + 1};1H\u001b[2K  \u001b[38;5;245m\u2197 Queued\u001b[0m \u001b[32m\u276f\u001b[0m {fp}\u001b[0m\u001b8\r\u001b[u");
-            }
-        }
+        lock (_barLock) { if (!_barActive) { return; } Console.Write($"\u001b7\u001b[{h};1H\u001b[48;5;236m\u001b[2K \u001b[38;5;245m(Q:{qn})\u001b[38;5;39m\u276f\u001b[39m {body}\u001b[7m \u001b[K\u001b[0m\u001b8"); }
     }
 
-    /// <summary>문자열을 표시폭(maxCells, 와이드문자=2셀) 안으로 자른다. 넘치면 …(1셀) 삽입.
-    /// tailEllipsis=true 면 앞쪽 유지+뒤 …(힌트용), false 면 뒤쪽 유지+앞 …(입력줄용).
-    /// maxCells &lt; 1 이면 빈 문자열(… 도 못 들어가는 폭)을 반환한다.</summary>
-    internal static string ClampToWidth(string s, int maxCells, bool tailEllipsis)
+    // 표시폭(와이드문자 2칸) 기준으로 maxCells 이내로 자른다. keepEnd=true 면 뒤쪽(최근 입력)을 남기고
+    // 앞에 …, 아니면 앞쪽을 남기고 뒤에 …. 이스케이프 없는 평문 대상.
+    internal static string ClampToWidth(string s, int maxCells, bool keepEnd)
     {
-        if (string.IsNullOrEmpty(s))
+        if (maxCells < 1) maxCells = 1;
+        if (LineEditor.DisplayWidth(s) <= maxCells) return s;
+        var budget = Math.Max(0, maxCells - 1); // … 한 칸 확보
+        if (keepEnd)
         {
-            return string.Empty;
-        }
-
-        if (maxCells < 1)
-        {
-            return string.Empty;
-        }
-
-        if (LineEditor.DisplayWidth(s) <= maxCells)
-        {
-            return s;
-        }
-
-        const string ellipsis = "\u2026";
-        var budget = maxCells - 1; // … 1셀 제외
-        if (tailEllipsis)
-        {
-            var cells = 0;
-            var end = 0;
-            while (end < s.Length)
+            var acc = 0; var start = s.Length;
+            for (var i = s.Length - 1; i >= 0; i--)
             {
-                var cw = LineEditor.CharWidth(s[end]);
-                if (cells + cw > budget)
-                {
-                    break;
-                }
-
-                cells += cw;
-                end++;
+                var cw = LineEditor.CharWidth(s[i]);
+                if (acc + cw > budget) break;
+                acc += cw; start = i;
             }
-
-            return s[..end] + ellipsis;
+            return "\u2026" + s[start..];
         }
 
-        // 뒤에서부터 셀 예산 안으로 소비한 뒤 앞에 … 붙인다. 와이드문자가 경계에서 걸리면
-        // (budget - used) 칸이 남는데 … 가 그 공간을 메워 총폭 ≤ maxCells 를 유지한다.
-        var used = 0;
-        var start = s.Length;
-        var sb = new System.Text.StringBuilder();
-        while (start > 0)
+        var accEnd = 0; var end = 0;
+        for (var i = 0; i < s.Length; i++)
         {
-            var cw = LineEditor.CharWidth(s[start - 1]);
-            if (used + cw > budget)
-            {
-                break;
-            }
-
-            used += cw;
-            start--;
-            sb.Insert(0, s[start]);
+            var cw = LineEditor.CharWidth(s[i]);
+            if (accEnd + cw > budget) break;
+            accEnd += cw; end = i + 1;
         }
-
-        return ellipsis + sb.ToString();
+        return s[..end] + "\u2026";
     }
 
     // 스크롤 영역 해제 + 입력바 행 지움. 턴 종료·권한창 표시 전에 호출.
@@ -879,37 +855,41 @@ public sealed class ReplApp
         // DrawBar 가 해제 직후 바를 다시 그려 잔상(큐 힌트 꼬리 등)이 화면에 남는다.
         lock (_barLock)
         {
-            if (!_barActive)
-            {
-                return;
-            }
+        if (!_barActive)
+        {
+            return;
+        }
 
-            var h = BarHeight();
-            Console.Write($"\u001b[r\u001b[{h};1H\u001b[2K\u001b[?25h");
-            _barActive = false;
+        var h = BarHeight();
+        Console.Write($"\u001b[r\u001b[{h};1H\u001b[2K\u001b[?25h");
+        _barActive = false;
         }
     }
 
     private void DrawSpinner(int frame, string label, double seconds)
     {
         var spin = SpinnerFrames[frame % SpinnerFrames.Length];
+        // 턴 중엔 하단 고정이 해제된 일반 터미널이라 인라인 스피너로 표시.
+        // CR + 줄 전체 지우기 + dim 색으로 스피너/라벨/경과초.
         lock (_barLock)
         {
             if (_barActive)
             {
                 // 입력바 활성: 커서 위치와 무관하게 바로 위 행(h-1)에 절대좌표로 그린다.
-                // 커서가 입력바 행(h)에 흘러 있으면 인라인 스피너가 바에 매 틱 덮여 안 보였다.
                 var h = BarHeight();
                 Console.Write($"\u001b7\u001b[{h - 1};1H\u001b[2K\u001b[38;5;39m{spin} {label} ({seconds:0}s)\u001b[0m\u001b8");
             }
+            else if (_dock is { InTurn: true })
+            {
+                // 고정 composer: 스피너를 입력창 바로 위 고정 행에 절대좌표로 그린다(파킹 커서 옆 아님).
+                var row = _dock.ActivityRow;
+                Console.Write($"\u001b7\u001b[{row};1H\u001b[2K\u001b[38;5;39m{spin} {label} ({seconds:0}s)\u001b[0m\u001b8");
+            }
             else
             {
-                // 턴 중엔 하단 고정이 해제된 일반 터미널이라 인라인 스피너로 표시.
-                // CR + 줄 전체 지우기 + dim 색으로 스피너/라벨/경과초.
                 Console.Write($"\r\u001b[2K\u001b[38;5;39m{spin} {label} ({seconds:0}s)\u001b[0m");
             }
         }
-        _spinnerActive = true;
     }
 
     private void ClearSpinnerLine()
@@ -921,31 +901,15 @@ public sealed class ReplApp
                 var h = BarHeight();
                 Console.Write($"\u001b7\u001b[{h - 1};1H\u001b[2K\u001b8");
             }
+            else if (_dock is { InTurn: true })
+            {
+                Console.Write($"\u001b7\u001b[{_dock.ActivityRow};1H\u001b[2K\u001b8");
+            }
             else
             {
                 Console.Write("\r\u001b[2K");
             }
         }
-        _spinnerActive = false;
-    }
-
-    // 스피너가 현재 커서 줄에 살아 있는가. 진행 출력(툴 호출/결과/공지)은 스피너가 그린 뒤에도
-    // 같은 줄에 찍히는데, WriteLine 이 커서를 다음 줄로 넘긴 후의 \r\u001b[2K 는 '새 빈 줄'만 지우고
-    // 스피너가 있던 줄은 남겨둔다 — 그게 진행 사이 빈 줄 잔상의 원인. 출력 직전에 이 플래그를
-    // 보고 스피너 줄을 확실히 청소(ClearSpinnerThenNewline)한 뒤 찍는다.
-    private volatile bool _spinnerActive;
-
-    // 스피너가 살아 있으면 그 줄을 지우고 새 줄로 내려온다. 출력 계열 렌더의 첫 동작으로 호출.
-    private void ClearSpinnerThenNewline()
-    {
-        if (!_spinnerActive)
-        {
-            return;
-        }
-
-        ClearSpinnerLine();
-        AnsiConsole.WriteLine();
-        _spinnerActive = false;
     }
 
     private async Task<bool> StreamTextRunAsync(IAsyncEnumerator<StreamEvent> e, CancellationToken ct)
@@ -1068,7 +1032,7 @@ public sealed class ReplApp
             .Border(BoxBorder.Rounded)
             .BorderColor(Color.Grey);
 
-    private void RenderToolCall(ToolCallRequested t)
+    private static void RenderToolCall(ToolCallRequested t)
     {
         string d;
         if (t.Block.Name == "Bash")
@@ -1092,22 +1056,20 @@ public sealed class ReplApp
             }
         }
 
-        ClearSpinnerThenNewline();
-        AnsiConsole.MarkupLine($"[yellow]→[/] [grey70]{Markup.Escape(d)}[/]");
+        AnsiConsole.MarkupLine($"[yellow]→[/] [{TuiTheme.Dim}]{Markup.Escape(d)}[/]");
     }
 
-    private void RenderToolResult(ToolExecuted x, ToolUseBlock? call = null)
+    private static void RenderToolResult(ToolExecuted x, ToolUseBlock? call = null)
     {
         // 결과는 호출(→) 아래에 한 단계 들여써서 시각적으로 묶는다.
         const string ind = "  ";
-        ClearSpinnerThenNewline();
 
         // 오류는 원인 파악을 위해 메시지를 보여주되 과하지 않게 절단.
         if (x.IsError)
         {
             var err = x.Output.Length > 200 ? x.Output[..200] + "…" : x.Output;
             AnsiConsole.MarkupLine(
-                $"{ind}[red]✗ {Markup.Escape(x.ToolName)}[/] [grey70]{Markup.Escape(err.ReplaceLineEndings(" "))}[/]");
+                $"{ind}[red]✗ {Markup.Escape(x.ToolName)}[/] [{TuiTheme.Dim}]{Markup.Escape(err.ReplaceLineEndings(" "))}[/]");
             return;
         }
 
@@ -1115,7 +1077,7 @@ public sealed class ReplApp
         if (call is not null && call.Name is "Edit" or "Write")
         {
             var path = GetStr(call.Input, "path") ?? "";
-            AnsiConsole.MarkupLine($"{ind}[green]✓ {Markup.Escape(x.ToolName)}[/] [grey70]{Markup.Escape(path)}[/]");
+            AnsiConsole.MarkupLine($"{ind}[green]✓ {Markup.Escape(x.ToolName)}[/] [{TuiTheme.Dim}]{Markup.Escape(path)}[/]");
             if (call.Name == "Edit")
             {
                 DiffRenderer.Render(GetStr(call.Input, "old_string") ?? "", GetStr(call.Input, "new_string") ?? "");
@@ -1143,7 +1105,7 @@ public sealed class ReplApp
                 var t = line.TrimStart();
                 var color = t.StartsWith("[x]") || t.StartsWith("x ") ? "green"
                     : t.StartsWith("[>]") || t.StartsWith("> ") ? "aqua"
-                    : t.StartsWith("[ ]") || t.StartsWith("- ") ? "grey70"
+                    : t.StartsWith("[ ]") || t.StartsWith("- ") ? TuiTheme.Dim
                     : "grey85";
                 AnsiConsole.MarkupLine($"{ind}{ind}[{color}]{Markup.Escape(line)}[/]");
             }
@@ -1162,10 +1124,10 @@ public sealed class ReplApp
         }
 
         AnsiConsole.MarkupLine(
-            $"{ind}[green]✓ {Markup.Escape(x.ToolName)}[/] [grey70]({lineCount} lines · {output.Length} chars)[/]");
+            $"{ind}[green]✓ {Markup.Escape(x.ToolName)}[/] [{TuiTheme.Dim}]({lineCount} lines · {output.Length} chars)[/]");
         if (firstLine.Length > 0)
         {
-            AnsiConsole.MarkupLine($"{ind}{ind}[grey70]{Markup.Escape(firstLine)}[/]");
+            AnsiConsole.MarkupLine($"{ind}{ind}[{TuiTheme.Dim}]{Markup.Escape(firstLine)}[/]");
         }
     }
 
@@ -1213,10 +1175,6 @@ public sealed class ReplApp
         }
 
         var stop = new CancellationTokenSource();
-        // 턴 중에도 bracketed paste 를 켜둔다 — 꺼져 있으면 터미널이 붙여넣기를 raw 키 스트림으로
-        // 흘려보내 ESC(=취소 오인)와 줄바꿈마다 Enter 커밋이 터져 홍수가 난다. LineEditor 는
-        // 프롬프트마다 자체 Enable/Disable 을 하므로 여기서는 턴 범위에서만 유지한다.
-        Console.Write(BracketedPaste.Enable);
         _ = Task.Run(async () =>
         {
             try
@@ -1226,68 +1184,45 @@ public sealed class ReplApp
                     var hit = false;
                     try
                     {
-                        if (!ConsolePrompt.IsPrompting && Console.KeyAvailable)
+                        // 턴 중에는 공용 리더(raw+VtParser)가 stdin 을 소유한다 — 여기서 이벤트를 소비한다.
+                        // 세션 밖(비-raw 폴백)에서는 Console 로 폴백.
+                        var shared = Input.TerminalInput.Shared;
+                        if (!ConsolePrompt.IsPrompting)
                         {
-                            var k = Console.ReadKey(intercept: true);
-                            if (k.Key == ConsoleKey.Tab
-                                && k.Modifiers.HasFlag(ConsoleModifiers.Shift)
-                                && _typeAhead)
+                            Input.InputEvent? ev = shared is not null
+                                ? shared.TryReadEvent(0)
+                                : (Console.KeyAvailable ? new Input.KeyEvent(Console.ReadKey(intercept: true)) : null);
+
+                            // ESC/Ctrl+C 는 어느 경로든 턴 취소.
+                            if (ev is Input.CancelEvent || (ev is Input.KeyEvent esc && esc.Key.Key == ConsoleKey.Escape))
                             {
-                                // 턴 중 모드 전환: 신호만 큐잉하고 드레인 루프가 실행하게 한다.
-                                _turnInput.EnqueueModeCycle();
+                                hit = true;
+                            }
+                            else if (_dock is { InTurn: true })
+                            {
+                                // 고정 composer: 턴 중에도 같은 입력창에서 라이브 편집. Enter 면 큐에 넣어
+                                // 턴 종료 후 순차 제출(입력창은 그대로 유지).
+                                if (ev is not null && _dock.HandleEvent(ev) is
+                                        BottomDock.ComposerOutcome.Submit or BottomDock.ComposerOutcome.SubmitShell)
+                                {
+                                    var queued = _dock.CurrentText;
+                                    _dock.ClearDraft();
+                                    _turnInput.EnqueueMessage(queued);
+                                    DrawBar();   // 하단 큐 카운트 갱신(바가 있을 때만 실동작)
+                                }
+                            }
+                            else if (ev is Input.KeyEvent ke && _typeAhead)
+                            {
+                                // 옛 경로(바): 다른 키는 큐에 모은다(턴 종료 후 순차 제출).
+                                _turnInput.Feed(ke.Key);
                                 DrawBar();
                             }
-                            else if (k.Key == ConsoleKey.Escape)
-                            {
-                                // 붙여넣기 시작 마커(ESC[200~)면 턴 취소가 아니다 — 본문을 통째로
-                                // 한 메시지로 큐잉한다. 마커가 아니었다면 읽은 키들이 pushback 으로
-                                // 되돌려지는데, 그중 ESC 가 있으면 턴 취소, 나머지는 타입어헤드에 반영.
-                                if (BracketedPaste.TryReadPaste(k, out var pasted))
-                                {
-                                    _turnInput.FeedPaste(pasted);
-                                    DrawBar();
-                                }
-                                else
-                                {
-                                    var hasEsc = false;
-                                    while (BracketedPaste.PushbackCount > 0)
-                                    {
-                                        var pk = BracketedPaste.ReadKey();
-                                        if (pk.Key == ConsoleKey.Escape)
-                                        {
-                                            hasEsc = true;
-                                        }
-                                        else if (_typeAhead)
-                                        {
-                                            _turnInput.Feed(pk);
-                                        }
-                                    }
-
-                                    // pushback 이 비었다 = 후속 키 없는 단독 ESC(또는 시퀀스 아니었던 ESC
-                                    // 가 TryReadPaste 진입 조건에서 걸러린 케이스) = 턴 취소.
-                                    // pushback 에 ESC 가 있었어도(ESC[200~ 아닌 ESC 시퀀스) 취소로 본다.
-                                    if (hasEsc || BracketedPaste.PushbackCount == 0)
-                                    {
-                                        hit = true;
-                                    }
-
-                                    if (_typeAhead)
-                                    {
-                                        DrawBar();
-                                    }
-                                }
-                            }
-                            else if (_typeAhead)
-                            {
-                                // 타입어헤드: 다른 키는 버리지 않고 큐에 모은다(턴 종료 후 순차 제출).
-                                _turnInput.Feed(k);
-                                DrawBar();   // 키 입력 즉시 하단 바 갱신
-                            }
+                            // Paste/Mouse/Focus 는 (composer 가 소비하지 않는 한) 턴 중 무시
                         }
                     }
                     catch
                     {
-                        // KeyAvailable/ReadKey 일시 오류 무시
+                        // 입력 폴링 일시 오류 무시
                     }
 
                     if (hit)
@@ -1321,16 +1256,6 @@ public sealed class ReplApp
             catch
             {
                 // ignore
-            }
-
-            try
-            {
-                // 턴 범위 paste 모드 해제 — 다음 프롬프트(LineEditor)가 자체적으로 다시 켠다.
-                Console.Write(BracketedPaste.Disable);
-            }
-            catch
-            {
-                // 콘솔 출력 오류 무시
             }
         });
     }

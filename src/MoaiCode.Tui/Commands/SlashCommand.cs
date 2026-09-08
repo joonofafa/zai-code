@@ -6,7 +6,7 @@ using MoaiCode.Persistence;
 namespace MoaiCode.Tui.Commands;
 
 // 순환 순서: Act → AutoAct → Plan. AutoAct 는 권한 자동 승인(자율 실행).
-public enum AgentMode { Act, AutoAct, Plan }
+public enum AgentMode { Act, AutoAct, Plan, Analysis }
 
 public sealed class AgentRuntimeState
 {

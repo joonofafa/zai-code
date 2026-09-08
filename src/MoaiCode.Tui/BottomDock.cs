@@ -22,12 +22,29 @@ public sealed class BottomDock
     private bool _shell;   // '!' 셸 모드: 입력창 빨강 배경 + '❯'/'!' 미표시. 버퍼엔 '!'를 넣지 않는다.
     private int _lastW, _lastH;   // 마지막으로 그린 터미널 크기(리사이즈 감지용)
 
+    // 입력 상태(영구): 프롬프트 편집과 턴 중 편집이 같은 버퍼·히스토리를 공유해 입력창이 항상 동일하게
+    // 유지되도록 필드로 둔다(예전엔 ReadLine 지역변수였음).
+    private readonly StringBuilder _buf = new();
+    private int _pos;
+    private IReadOnlyList<string> _hist = Array.Empty<string>();
+    private int _histIdx;
+    private string _savedCurrent = "";
+    private Func<string>? _cycleMode;
+
+    /// <summary>HandleEvent 한 번의 결과 — ReadLine/턴 루프가 반환/큐잉을 결정한다.</summary>
+    public enum ComposerOutcome { None, Submit, SubmitShell, Quit, Keymap }
+
     private const int ResizePollMs = 40;   // 키 대기 중 리사이즈 폴링 주기
 
     // 브레인스토밍 모드: 입력창 배경을 어두운 파랑으로 강조하고 숨쉬듯 펄스(어두운→덜 어두운→어두운).
     // 40ms 폴에 편승해 프레임마다 음영을 바꿔 입력행만 다시 그린다(별도 스레드 없음).
     private bool _brainstorm;
     private int _animTick;
+    // 턴 모드: 모델이 응답하는 동안에도 composer 를 하단에 그대로 유지한다. composer 는 스크롤 영역 아래에
+    // 있어 위 영역 스트리밍 출력에 안 씻긴다. 이 모드에선 Draw 가 (1) 스크롤 영역을 재설정하지 않고
+    // (2) 실제 커서 대신 저장/복원(7/8)으로 그려 출력 커서(영역 하단)를 보존하며 (3) 가짜 캐럿 블록을 쓴다.
+    private bool _turnMode;
+    private readonly object _drawLock = new();
     private int _animShade = BrainstormPalette[0];
     private static readonly int[] BrainstormPalette = { 17, 18, 19, 20, 19, 18 }; // 256색 파랑 음영(숨쉬기)
     private const int AnimTicksPerFrame = 3;   // 40ms*3 ≈ 120ms/프레임
@@ -89,8 +106,23 @@ public sealed class BottomDock
             reserved = h - 1;
         }
 
+        // 턴 모드에선 스크롤 영역을 고정한다(재설정 금지) — 현재 예약 높이 안에서만 그린다.
+        if (_turnMode)
+        {
+            reserved = _reserved;
+            scrollBottom = h - reserved;
+            if (scrollBottom < 1) scrollBottom = 1;
+            inputRows = Math.Min(inputRows, Math.Max(1, reserved - 1));
+        }
+
         var sb = new StringBuilder();
-        if (!_installed)
+        if (_turnMode)
+        {
+            // 커서 저장(출력 커서=영역 하단) + 실제 커서 숨김 — 편집 위치는 가짜 캐럿(반전 블록)으로만 표시해
+            // 진짜 커서가 스피너 옆(영역 하단)에 고정돼 보이는 현상을 없앤다.
+            sb.Append("\u001b7\u001b[?25l");
+        }
+        else if (!_installed)
         {
             // 신규 설치(입력 대기 시작): 하단에 reserved 줄 공간 확보 — 화면을 위로 스크롤해
             // 기존 출력은 스크롤백으로 보존하고, 그 빈 자리에 박스를 그린다(직전 출력을 덮지 않게).
@@ -164,9 +196,26 @@ public sealed class BottomDock
         var cursorRows = SplitByCells(LineEditor.PromptText + buf.ToString(0, pos), w);
         var curRow = inputRow0 + (cursorRows.Count - 1);
         var curCol = LineEditor.DisplayWidth(cursorRows[^1]) + 1;
-        sb.Append($"\x1b[{curRow};{curCol}H").Append("\x1b[?25h");
+        if (_turnMode)
+        {
+            // 턴 모드: 실제 커서는 출력용(영역 하단)으로 두고, 편집 위치엔 가짜 캐럿(반전 블록)만 찍는다.
+            // 마지막에 저장한 출력 커서로 복원(7/8)해 위 영역 스트리밍이 이어지게 한다.
+            if (curRow <= inputRow0 + inputRows - 1)
+            {
+                sb.Append($"\x1b[{curRow};{curCol}H\x1b[7m \x1b[0m");
+            }
 
-        Console.Write(sb.ToString());
+            sb.Append("\u001b8");   // 출력 커서 복원
+        }
+        else
+        {
+            sb.Append($"\x1b[{curRow};{curCol}H").Append("\x1b[?25h");
+        }
+
+        lock (_drawLock)
+        {
+            Console.Write(sb.ToString());
+        }
     }
 
     // 입력 확정: 스크롤 영역을 해제해 턴 동안 '일반 터미널'로 되돌린다(→ 마우스휠 네이티브 스크롤백 정상).
@@ -196,6 +245,50 @@ public sealed class BottomDock
     }
 
     /// <summary>
+    /// 확정 명령을 스크롤 영역 위로 echo 하되 <b>composer 는 유지</b>하고 턴 모드로 전환한다(고정 입력창).
+    /// 스크롤 영역은 그대로 두고, 명령을 영역 하단에 흘려보낸 뒤 출력 커서를 영역 하단에 park 한다 —
+    /// 이후 스트리밍 출력이 composer 위에서 스크롤된다. 입력 버퍼는 비우고 composer 를 다시 그린다.
+    /// </summary>
+    public void KeepComposerForTurn(string text, bool shell = false)
+    {
+        var h = Height();
+        var scrollBottom = Math.Max(1, h - _reserved);
+        var echo = shell
+            ? $"\x1b[0m\x1b[38;5;246m$ \x1b[0m{text}"
+            : $"\x1b[0m\x1b[32m{LineEditor.PromptText}\x1b[0m{text}";
+
+        lock (_drawLock)
+        {
+            // 영역 하단으로 이동 → 명령 echo + 개행(영역 스크롤) → 출력 커서를 영역 하단에 park.
+            Console.Write($"\x1b[{scrollBottom};1H\r\n{echo}");
+        }
+
+        _buf.Clear();
+        _pos = 0;
+        _shell = false;
+        _turnMode = true;
+        Draw(_buf, _pos);   // 턴 모드로 composer 재그림(save/restore)
+    }
+
+    /// <summary>턴 종료 — 턴 모드 해제. 다음 ReadLine 의 Draw 가 실제 커서로 정상 렌더한다.</summary>
+    public void EndTurnMode() => _turnMode = false;
+
+    /// <summary>턴 중 여부(ReplApp 이 이벤트 라우팅 판단에 사용).</summary>
+    public bool InTurn => _turnMode;
+
+    /// <summary>턴 중 composer 를 다시 그린다(외부 상태줄 변화 등). save/restore 로 출력 커서 보존.</summary>
+    public void RedrawInTurn() { if (_turnMode) Draw(_buf, _pos); }
+
+    /// <summary>턴 중 스피너/활동 표시를 그릴 행(입력창 바로 위 = 스크롤 영역 마지막 줄). 절대좌표.</summary>
+    public int ActivityRow => Math.Max(1, Height() - _reserved);
+
+    /// <summary>현재 입력 초안 텍스트.</summary>
+    public string CurrentText => _buf.ToString();
+
+    /// <summary>초안을 비우고 composer 를 다시 그린다(턴 중 Enter 로 큐에 넣은 뒤 호출).</summary>
+    public void ClearDraft() { _buf.Clear(); _pos = 0; Draw(_buf, _pos); }
+
+    /// <summary>
     /// 하단 고정 입력 한 줄 읽기. 반환 규칙은 LineEditor.ReadLine 과 동일(null=EOF/quit).
     /// cycleMode: Shift+Tab 시 모드 토글 후 새 상태줄 문자열 반환.
     /// </summary>
@@ -204,171 +297,215 @@ public sealed class BottomDock
         IReadOnlyList<string> slashCommands,
         Func<string>? cycleMode,
         bool brainstorm = false,
-        string? initial = null)
+        string? initialText = null)
     {
         _slash = slashCommands;
         _shell = false;
         _brainstorm = brainstorm;
         _animTick = 0;
         _animShade = BrainstormPalette[0];
-        // initial: 턴 중에 치다 만 입력을 되살린 것 — 커서는 그 끝에 둔다.
-        var buf = new StringBuilder(initial ?? string.Empty);
-        var pos = buf.Length;
-        var histIdx = history.Count;
-        var savedCurrent = "";
+        _cycleMode = cycleMode;
+        _hist = history;
+        _turnMode = false;   // 프롬프트 편집: 실제 커서로 정상 렌더
+        // composer 가 이미 설치돼 있고 새 초기값이 없으면(턴 종료 후 이어짐) 진행 중이던 초안을 보존한다.
+        if (!_installed || initialText != null)
+        {
+            _buf.Clear();
+            _buf.Append(initialText ?? string.Empty);
+            _pos = _buf.Length;
+        }
+        _histIdx = history.Count;
+        _savedCurrent = "";
         _lastW = Width();
         _lastH = Height();
-        Draw(buf, pos);
+        Draw(_buf, _pos);
 
-        // 붙여넣기를 ESC[200~ … ESC[201~ 로 감싸 받는다 → 붙여넣은 개행이 Enter 로 오인되지 않는다.
-        Console.Write(BracketedPaste.Enable);
-        try
-        {
+        // bracketed paste·포커스·마우스 VT 기능은 TerminalSession 이 세션 단위로 켜둔다(입력 층 재작성).
         while (true)
         {
-            var key = ReadKeyWithResize(buf, pos);
-
-            // 붙여넣기: 여러 줄이면 표식으로 접어 넣는다. 도크가 예약한 행수가 그대로 유지된다.
-            if (BracketedPaste.TryReadPaste(key, out var pasted))
+            var ev = ReadEventWithResize(_buf, _pos);
+            switch (HandleEvent(ev))
             {
-                PasteStore.Insert(buf, ref pos, pasted);
-                Draw(buf, pos);
-                continue;
-            }
-
-            if (key.Key == ConsoleKey.Enter || key.KeyChar == '\r' || key.KeyChar == '\n')
-            {
-                var content = buf.ToString();
-                if (content.Trim().Length == 0)
+                case ComposerOutcome.Submit:
                 {
-                    continue; // 빈 입력 무시
+                    var content = _buf.ToString();
+                    // 슬래시 명령(/...)은 모델 턴이 아니라 조기 처리(피커 등 일반 터미널 필요)라 composer 를
+                    // 해제한다. 실제 모델 턴만 composer 를 유지(고정 입력창)한다.
+                    if (content.TrimStart().StartsWith('/'))
+                    {
+                        SubmitAndTeardown(content);
+                    }
+                    else
+                    {
+                        KeepComposerForTurn(content);
+                    }
+                    return content;
                 }
-
-                if (_shell)
+                case ComposerOutcome.SubmitShell:
                 {
-                    SubmitAndTeardown(content, shell: true);
-                    return "!" + content;   // ReplApp 이 '!' 접두로 셸 실행
+                    var content = _buf.ToString();
+                    SubmitAndTeardown(content, shell: true);   // '!' 셸은 일반 터미널에서 실행
+                    return "!" + content;
                 }
-
-                SubmitAndTeardown(content);
-                return content;
-            }
-
-            switch (key.Key)
-            {
-                case ConsoleKey.Backspace:
-                    if (_shell && buf.Length == 0)
-                    {
-                        _shell = false;   // 빈 셸 입력에서 Backspace → 셸 모드 해제(회색+'❯' 복귀)
-                        Draw(buf, pos);
-                        break;
-                    }
-                    if (pos > 0)
-                    {
-                        // 붙여넣기 표식은 한 글자씩이 아니라 통째로 지운다.
-                        var n = PasteStore.PlaceholderLengthEndingAt(buf.ToString(), pos);
-                        var del = n > 0 ? n : 1;
-                        buf.Remove(pos - del, del); pos -= del; DrawCoalesced(buf, pos);
-                    }
-                    break;
-                case ConsoleKey.Delete:
-                    if (pos < buf.Length) { buf.Remove(pos, 1); DrawCoalesced(buf, pos); }
-                    break;
-                case ConsoleKey.LeftArrow:
-                    if (pos > 0) { pos--; Draw(buf, pos); }
-                    break;
-                case ConsoleKey.RightArrow:
-                    if (pos < buf.Length) { pos++; Draw(buf, pos); }
-                    break;
-                case ConsoleKey.Home:
-                    pos = 0; Draw(buf, pos);
-                    break;
-                case ConsoleKey.End:
-                    pos = buf.Length; Draw(buf, pos);
-                    break;
-                case ConsoleKey.UpArrow:
-                    if (histIdx > 0)
-                    {
-                        if (histIdx == history.Count) savedCurrent = buf.ToString();
-                        histIdx--;
-                        SetBuffer(buf, ref pos, history[histIdx]);
-                        Draw(buf, pos);
-                    }
-                    break;
-                case ConsoleKey.DownArrow:
-                    if (histIdx < history.Count)
-                    {
-                        histIdx++;
-                        SetBuffer(buf, ref pos, histIdx == history.Count ? savedCurrent : history[histIdx]);
-                        Draw(buf, pos);
-                    }
-                    break;
-                case ConsoleKey.Tab:
-                    if (key.Modifiers.HasFlag(ConsoleModifiers.Shift))
-                    {
-                        if (cycleMode is not null)
-                        {
-                            Draw(buf, pos, cycleMode());
-                        }
-                        break;
-                    }
-                    if (LineEditor.TryAcceptSeed(buf, ref pos) || TryComplete(buf, ref pos, slashCommands))
-                    {
-                        Draw(buf, pos);
-                    }
-                    break;
+                case ComposerOutcome.Keymap:
+                    SubmitAndTeardown("");
+                    return "?";
+                case ComposerOutcome.Quit:
+                    return null;
+                case ComposerOutcome.None:
                 default:
-                    if (key.KeyChar == '') // Ctrl+D
-                    {
-                        if (buf.Length == 0) { return null; }
-                        break;
-                    }
-                    if (key.KeyChar == '') // Ctrl+U
-                    {
-                        buf.Clear(); pos = 0; Draw(buf, pos);
-                        break;
-                    }
-                    // 빈 입력에서 '!' → 셸 모드 진입('!' 는 버퍼에 넣지 않음, 빨강 배경으로만 표시).
-                    if (buf.Length == 0 && !_shell && key.KeyChar == '!')
-                    {
-                        _shell = true;
-                        Draw(buf, pos);
-                        break;
-                    }
-                    // 빈 입력에서 '?' → 키맵(터미널에 '?' 표시하지 않음). 도크 해제 후 ReplApp 이 표시.
-                    if (buf.Length == 0 && !_shell && key.KeyChar == '?')
-                    {
-                        SubmitAndTeardown("");
-                        return "?";
-                    }
-                    if (!char.IsControl(key.KeyChar))
-                    {
-                        buf.Insert(pos, key.KeyChar); pos++;
-                        DrawCoalesced(buf, pos);
-                    }
-                    break;
+                    continue;
             }
-        }
-        }
-        finally
-        {
-            Console.Write(BracketedPaste.Disable);
         }
     }
 
-    // 키를 기다리되, 대기 중 터미널 크기가 바뀌면 도크를 재설치한다(리사이즈 잔상 제거).
-    // 폴링 불가 환경(입력 리다이렉트 등, Console.KeyAvailable throw)에선 기존처럼 블로킹으로 폴백.
-    private ConsoleKeyInfo ReadKeyWithResize(StringBuilder buf, int pos)
+    /// <summary>
+    /// 입력 이벤트 하나를 처리해 _buf/_pos 를 편집하고 다시 그린다. 프롬프트 루프와 턴 중 편집이
+    /// <b>같은</b> 처리를 공유해 입력창이 항상 동일하게 동작한다. 확정/종료류만 ComposerOutcome 로 알린다.
+    /// </summary>
+    public ComposerOutcome HandleEvent(Input.InputEvent ev)
     {
+        if (ev is Input.PasteEvent pe)
+        {
+            PasteStore.Insert(_buf, ref _pos, pe.Text);
+            Draw(_buf, _pos);
+            return ComposerOutcome.None;
+        }
+
+        if (ev is Input.CancelEvent)
+        {
+            if (_buf.Length > 0) { _buf.Clear(); _pos = 0; Draw(_buf, _pos); return ComposerOutcome.None; }
+            return ComposerOutcome.Quit;
+        }
+
+        if (ev is not Input.KeyEvent keyEvent)
+        {
+            return ComposerOutcome.None;   // Mouse/Focus 등 무시
+        }
+
+        var key = keyEvent.Key;
+
+        if (key.Key == ConsoleKey.Enter || key.KeyChar == '\r' || key.KeyChar == '\n')
+        {
+            if (_buf.ToString().Trim().Length == 0)
+            {
+                return ComposerOutcome.None; // 빈 입력 무시
+            }
+
+            return _shell ? ComposerOutcome.SubmitShell : ComposerOutcome.Submit;
+        }
+
+        switch (key.Key)
+        {
+            case ConsoleKey.Backspace:
+                if (_shell && _buf.Length == 0)
+                {
+                    _shell = false;
+                    Draw(_buf, _pos);
+                    break;
+                }
+                if (_pos > 0)
+                {
+                    var n = PasteStore.PlaceholderLengthEndingAt(_buf.ToString(), _pos);
+                    var del = n > 0 ? n : 1;
+                    _buf.Remove(_pos - del, del); _pos -= del; DrawCoalesced(_buf, _pos);
+                }
+                break;
+            case ConsoleKey.Delete:
+                if (_pos < _buf.Length) { _buf.Remove(_pos, 1); DrawCoalesced(_buf, _pos); }
+                break;
+            case ConsoleKey.LeftArrow:
+                if (_pos > 0) { _pos--; Draw(_buf, _pos); }
+                break;
+            case ConsoleKey.RightArrow:
+                if (_pos < _buf.Length) { _pos++; Draw(_buf, _pos); }
+                break;
+            case ConsoleKey.Home:
+                _pos = 0; Draw(_buf, _pos);
+                break;
+            case ConsoleKey.End:
+                _pos = _buf.Length; Draw(_buf, _pos);
+                break;
+            case ConsoleKey.UpArrow:
+                if (_histIdx > 0)
+                {
+                    if (_histIdx == _hist.Count) _savedCurrent = _buf.ToString();
+                    _histIdx--;
+                    SetBuffer(_buf, ref _pos, _hist[_histIdx]);
+                    Draw(_buf, _pos);
+                }
+                break;
+            case ConsoleKey.DownArrow:
+                if (_histIdx < _hist.Count)
+                {
+                    _histIdx++;
+                    SetBuffer(_buf, ref _pos, _histIdx == _hist.Count ? _savedCurrent : _hist[_histIdx]);
+                    Draw(_buf, _pos);
+                }
+                break;
+            case ConsoleKey.Tab:
+                if (key.Modifiers.HasFlag(ConsoleModifiers.Shift))
+                {
+                    if (_cycleMode is not null)
+                    {
+                        Draw(_buf, _pos, _cycleMode());
+                    }
+                    break;
+                }
+                if (LineEditor.TryAcceptSeed(_buf, ref _pos) || TryComplete(_buf, ref _pos, _slash))
+                {
+                    Draw(_buf, _pos);
+                }
+                break;
+            default:
+                if (key.KeyChar == '\u0004') // Ctrl+D
+                {
+                    if (_buf.Length == 0) { return ComposerOutcome.Quit; }
+                    break;
+                }
+                if (key.KeyChar == '\u0015') // Ctrl+U
+                {
+                    _buf.Clear(); _pos = 0; Draw(_buf, _pos);
+                    break;
+                }
+                if (_buf.Length == 0 && !_shell && key.KeyChar == '!')
+                {
+                    _shell = true;
+                    Draw(_buf, _pos);
+                    break;
+                }
+                if (_buf.Length == 0 && !_shell && key.KeyChar == '?')
+                {
+                    return ComposerOutcome.Keymap;
+                }
+                if (!char.IsControl(key.KeyChar))
+                {
+                    _buf.Insert(_pos, key.KeyChar); _pos++;
+                    DrawCoalesced(_buf, _pos);
+                }
+                break;
+        }
+
+        return ComposerOutcome.None;
+    }
+
+    // 이벤트를 기다리되, 대기 중 터미널 크기가 바뀌면 도크를 재설치한다(리사이즈 잔상 제거).
+    // 공용 리더(raw+VtParser)가 없으면(세션 밖) Console 키를 감싸 폴백.
+    private Input.InputEvent ReadEventWithResize(StringBuilder buf, int pos)
+    {
+        var input = Input.TerminalInput.Shared;
+        if (input is null)
+        {
+            return new Input.KeyEvent(Console.ReadKey(intercept: true));
+        }
+
         while (true)
         {
-            bool avail;
-            try { avail = BracketedPaste.KeyAvailable; }
-            catch { return BracketedPaste.ReadKey(); }   // 폴링 불가 → 블로킹(리사이즈 감지 없음)
-
-            if (avail)
+            // ResizePollMs 만큼 이벤트를 기다리고, 없으면 리사이즈/펄스를 확인하고 다시 대기.
+            // (ESC 타임아웃 확정은 TryReadEvent 안에서 처리된다.)
+            if (input.TryReadEvent(ResizePollMs) is { } ev)
             {
-                return BracketedPaste.ReadKey();
+                return ev;
             }
 
             int w = Width(), h = Height();
@@ -389,8 +526,6 @@ public sealed class BottomDock
                     Draw(buf, pos);
                 }
             }
-
-            Thread.Sleep(ResizePollMs);
         }
     }
 
@@ -409,7 +544,7 @@ public sealed class BottomDock
     private void DrawCoalesced(StringBuilder buf, int pos)
     {
         bool more;
-        try { more = Console.KeyAvailable; }
+        try { more = BracketedPaste.KeyAvailable; }
         catch { more = false; }
         if (more) return;
         Draw(buf, pos);

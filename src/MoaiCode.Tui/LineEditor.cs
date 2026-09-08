@@ -99,7 +99,7 @@ public static class LineEditor
         Func<string>? cycleMode = null,
         Func<string>? statusLine = null,
         bool brainstorm = false,
-        string? initial = null)
+        string? initialText = null)
     {
         if (Console.IsInputRedirected)
         {
@@ -115,29 +115,44 @@ public static class LineEditor
             Console.WriteLine(statusLine!());
         }
 
-        // initial: 턴 중에 치다 만 입력을 되살린 것 — 커서는 그 끝에 둔다.
-        var buf = new StringBuilder(initial ?? string.Empty);
+        var buf = new StringBuilder(initialText ?? string.Empty);
         var pos = buf.Length;
         var histIdx = history.Count;
         var savedCurrent = "";
         var r = new PromptRenderer(hasStatus, slashCommands, brainstorm);
         r.Refresh(buf, pos);
 
-        // 붙여넣기를 ESC[200~ … ESC[201~ 로 감싸 받는다 → 붙여넣은 개행이 Enter 로 오인되지 않는다.
-        Console.Write(BracketedPaste.Enable);
+        // bracketed paste 등 VT 기능은 TerminalSession 이 세션 단위로 켜둔다(입력 층 재작성).
         try
         {
         while (true)
         {
-            var key = BracketedPaste.ReadKey();
+            var ev = Input.TerminalInput.Shared is { } input
+                ? input.ReadEvent() ?? new Input.KeyEvent(default)
+                : new Input.KeyEvent(Console.ReadKey(intercept: true));
 
-            // 붙여넣기: 여러 줄이면 표식으로 접어 넣는다(전송하지 않음).
-            if (BracketedPaste.TryReadPaste(key, out var pasted))
+            // 붙여넣기: 여러 줄이면 표식으로 접어 넣는다(개행이 Enter 로 안 샌다).
+            if (ev is Input.PasteEvent pe)
             {
-                PasteStore.Insert(buf, ref pos, pasted);
+                PasteStore.Insert(buf, ref pos, pe.Text);
                 r.Refresh(buf, pos);
                 continue;
             }
+
+            // Ctrl+C: 입력이 있으면 지우고, 비었으면 종료.
+            if (ev is Input.CancelEvent)
+            {
+                if (buf.Length > 0) { buf.Clear(); pos = 0; r.Refresh(buf, pos); continue; }
+                r.Finish();
+                return null;
+            }
+
+            if (ev is not Input.KeyEvent keyEvent)
+            {
+                continue;   // Mouse/Focus 무시
+            }
+
+            var key = keyEvent.Key;
 
             if (key.Key == ConsoleKey.Enter || key.KeyChar == '\r' || key.KeyChar == '\n')
             {
@@ -223,12 +238,12 @@ public static class LineEditor
                     break;
 
                 default:
-                    if (key.KeyChar == '') // Ctrl+D
+                    if (key.KeyChar == '\u0004') // Ctrl+D
                     {
                         if (buf.Length == 0) { r.Finish(); return null; }
                         break;
                     }
-                    if (key.KeyChar == '') // Ctrl+U
+                    if (key.KeyChar == '\u0015') // Ctrl+U
                     {
                         buf.Clear(); pos = 0;
                         r.Refresh(buf, pos);
@@ -246,7 +261,7 @@ public static class LineEditor
         }
         finally
         {
-            Console.Write(BracketedPaste.Disable);
+            // VT 기능 해제는 TerminalSession 이 세션 종료 시 처리한다.
         }
     }
 
@@ -255,7 +270,7 @@ public static class LineEditor
     private static void DrawCoalesced(PromptRenderer r, StringBuilder buf, int pos)
     {
         bool more;
-        try { more = Console.KeyAvailable; }
+        try { more = BracketedPaste.KeyAvailable; }
         catch { more = false; }
 
         if (more) return;

@@ -40,7 +40,7 @@ public sealed class ModeAwarePermissionGate : IPermissionGate
     public async ValueTask<bool> AllowAsync(ITool tool, ToolUseBlock call, CancellationToken ct)
     {
         // Plan: 비-읽기전용 차단.
-        if (_state.Mode == AgentMode.Plan && !tool.IsReadOnly)
+        if (_state.Mode is AgentMode.Plan or AgentMode.Analysis && !tool.IsReadOnly)
         {
             return false;
         }

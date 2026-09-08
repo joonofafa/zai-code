@@ -61,6 +61,20 @@ public static class Reminders
         "## Exited Plan Mode\nYou have exited plan mode. You can now make edits, run tools, and take " +
         "actions (subject to permission prompts).";
 
+    public const string AnalysisMode =
+        "Analysis mode is active. Your job is to ANSWER the user's questions about this codebase in plain, " +
+        "everyday language. The user is NOT a developer and just wants to understand what the code does. " +
+        "You MUST NOT edit files, run commands, make commits, or use any non-read-only tool — use only " +
+        "read-only tools (Read/Glob/Grep) to find the answer in the code. This supersedes other instructions. " +
+        "Do NOT produce an execution plan or propose changes (that is Plan mode's job) — just answer the " +
+        "question that was asked. Explain in simple terms: avoid jargon, and when a technical term is " +
+        "unavoidable define it in one short phrase; use analogies where they help. (\"Plain language\" here " +
+        "means vocabulary, NOT politeness — keep the same speech register as the rest of the session.) " +
+        "Ground every answer in the " +
+        "actual code (mention the file so the user could point someone to it), but describe what it DOES in " +
+        "human terms rather than dumping code line by line. Be concise and direct. If the question cannot be " +
+        "answered from the code, say so plainly instead of guessing.";
+
     // 브레인스토밍 모드 (화두 → Q&A 구체화 → 플랜). 핵심: 질문은 한 번에 하나씩, 턴 단위로.
     public const string Brainstorm =
         "Brainstorming mode is active. The user has only a rough idea, not a spec — help them think it " +
