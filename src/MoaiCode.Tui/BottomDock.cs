@@ -535,10 +535,12 @@ public sealed class BottomDock
     // 예전엔 전체 클리어(2J)로 잔상을 지웠으나 화면의 대화 내용까지 통째로 사라져 "화면이 지워진다"로
     // 보였다(출력이 쌓여 스크롤바가 생기는 등 폭이 1칸만 변해도 발동). 이제 옛 composer 하단 줄만
     // 지우고(ED0) 새 크기 하단에 재설치한다 — 대화는 화면에, 지워진 잔상은 스크롤백에만 남는다.
+    // 데스크톱 터미널은 리사이즈 때 개행 reflow 로 줄을 다시 매기므로 옛 composer 가 예상 위치보다
+    // 위로 올라가 있을 수 있다(상태줄 중복 잔상의 원인). 여유 마진(4줄)을 두고 위에서부터 지운다.
     private void OnResize(StringBuilder buf, int pos)
     {
-        var oldTop = Math.Max(1, _lastH - _reserved + 1);   // 옛 composer 상단(1-기반)
-        Console.Write($"\x1b[r\x1b[{oldTop};1H\x1b[J");     // 영역 해제 + 옛 입력창 잔상만 지움
+        var oldTop = Math.Max(1, _lastH - _reserved + 1 - 4);   // reflow 여유분 포함한 옛 composer 상단
+        Console.Write($"\x1b[r\x1b[{oldTop};1H\x1b[J");         // 영역 해제 + 옛 입력창 잔상만 지움
         _installed = false;
         _reserved = 0;
         Draw(buf, pos);   // Draw 가 새 크기로 재설치(스크롤로 예약 줄 확보 + composer 재그림)
