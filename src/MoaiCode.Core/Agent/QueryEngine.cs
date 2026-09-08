@@ -499,6 +499,17 @@ public sealed class QueryEngine
                 await _observer.BeforeToolAsync(tool, call, toolContext, ct).ConfigureAwait(false);
                 var (output, isError) = await ExecuteToolAsync(tool, call, toolContext, ct).ConfigureAwait(false);
                 _log($"tool done: {call.Name} error={isError} outputChars={output.Length}");
+                // 실패 시 에러 본문(ASCII 정규화 + 상한)을 남긴다 — outputChars 만으론 사후 디버깅 불가.
+                if (isError)
+                {
+                    var sanitized = new string(output.Where(char.IsAscii).ToArray());
+                    if (sanitized.Length > 300)
+                    {
+                        sanitized = sanitized[..300] + "…";
+                    }
+
+                    _log($"tool failed: {call.Name} detail: {sanitized}");
+                }
                 // 컨텍스트(모델)로 가는 결과만 상한을 건다 — UI(ToolExecuted)와 관찰자엔 원문 유지.
                 _messages.Add(new ToolResultMessage(call.Id, CapToolOutput(output, _maxToolResultChars), isError));
                 yield return new ToolExecuted(call.Name, call.Id, output, isError);

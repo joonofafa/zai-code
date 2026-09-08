@@ -175,12 +175,12 @@ public static class LineEditor
                         // 붙여넣기 표식은 한 글자씩이 아니라 통째로 지운다.
                         var n = PasteStore.PlaceholderLengthEndingAt(buf.ToString(), pos);
                         var del = n > 0 ? n : 1;
-                        buf.Remove(pos - del, del); pos -= del; DrawCoalesced(r, buf, pos);
+                        buf.Remove(pos - del, del); pos -= del; r.Refresh(buf, pos);
                     }
                     break;
 
                 case ConsoleKey.Delete:
-                    if (pos < buf.Length) { buf.Remove(pos, 1); DrawCoalesced(r, buf, pos); }
+                    if (pos < buf.Length) { buf.Remove(pos, 1); r.Refresh(buf, pos); }
                     break;
 
                 case ConsoleKey.LeftArrow:
@@ -253,7 +253,7 @@ public static class LineEditor
                     {
                         buf.Insert(pos, key.KeyChar);
                         pos++;
-                        DrawCoalesced(r, buf, pos);
+                        r.Refresh(buf, pos);
                     }
                     break;
             }
@@ -263,18 +263,6 @@ public static class LineEditor
         {
             // VT 기능 해제는 TerminalSession 이 세션 종료 시 처리한다.
         }
-    }
-
-    // 붙여넣기 등으로 입력 큐가 차 있으면 매 키마다 다시 그리지 않고 큐가 빌 때 한 번만 그린다.
-    // (마지막 refresh 가 wrap 을 정확히 처리하므로 대량 입력도 올바르게 표시된다.)
-    private static void DrawCoalesced(PromptRenderer r, StringBuilder buf, int pos)
-    {
-        bool more;
-        try { more = BracketedPaste.KeyAvailable; }
-        catch { more = false; }
-
-        if (more) return;
-        r.Refresh(buf, pos);
     }
 
     // ── wrap 레이아웃 계산 (순수 함수 — 단위 테스트 대상) ────────────────────────

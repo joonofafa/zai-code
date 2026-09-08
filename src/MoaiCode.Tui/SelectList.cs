@@ -153,6 +153,20 @@ public static class SelectList
         }
     }
 
+    // 위젯 영역(lines 줄)을 지운다: 커서를 lines 줄 위로 옮긴 뒤 DL(ESC[nM)으로 삭제.
+    // 예전의 ESC[0J(커서→화면 끝 지움)는 ED 가 DECSTBM 스크롤 영역을 무시해, 턴 중 스크롤 영역 밖
+    // 하단에 고정된 composer(입력창)까지 지워버려 "처리 중에 입력창이 사라지는" 원인이 됐다.
+    // DL 은 스크롤 영역 안에서만 동작하므로 영역 밖을 침범하지 않는다. 커서는 위젯 시작 행에 둔다.
+    private static void EraseWidgetLines(int lines)
+    {
+        if (lines < 1)
+        {
+            return;
+        }
+
+        Console.Write($"\x1b[{lines}A\r\x1b[{lines}M");
+    }
+
     // 선택 확정: 위젯(제목+도움말+항목 목록) 전체를 지우고 한 줄 확정 표시만 남긴다.
     // 강조 상태를 화면에 유지하지 않으므로 리사이즈/줄바꿈으로 인한 중복 잔상이 원천 차단된다.
     private static int Finish(IReadOnlyList<string> items, int idx)
@@ -160,10 +174,9 @@ public static class SelectList
         if (!Console.IsOutputRedirected)
         {
             // 커서는 마지막 항목 바로 아래 줄에 있다. 위젯 시작(제목 또는 도움말 줄)까지 올라가
-            // 화면 끝까지 지운다. 각 줄이 1 물리줄로 보장되므로 줄 수 계산이 정확하다.
+            // 위젯 줄만 지운다(각 줄이 1 물리줄로 보장되므로 줄 수 계산이 정확하다).
             var visible = Math.Min(items.Count, MaxVisible);
-            var up = visible + 1 + (_titleShown ? 1 : 0); // 항목 + 도움말 1줄 + 제목(있으면) 1줄
-            Console.Write($"\x1b[{up}A\r\x1b[0J");
+            EraseWidgetLines(visible + 1 + (_titleShown ? 1 : 0)); // 항목 + 도움말 1줄 + 제목(있으면) 1줄
         }
 
         Console.WriteLine($"\x1b[36m{L10n.Get("common.select.selected", (idx + 1).ToString().PadLeft(_numberWidth, '0'), items[idx])}\x1b[0m");
@@ -218,7 +231,7 @@ public static class SelectList
     {
         if (!Console.IsOutputRedirected)
         {
-            Console.Write($"\x1b[{oldVisible}A\r\x1b[0J");
+            EraseWidgetLines(oldVisible + 1 + (_titleShown ? 1 : 0)); // 항목 + 도움말 + 제목(있으면)
         }
 
         Render(items, idx, first: true);
@@ -229,8 +242,7 @@ public static class SelectList
     {
         if (!Console.IsOutputRedirected)
         {
-            var up = oldVisible + 1 + (_titleShown ? 1 : 0); // 항목 + 도움말 1줄 + 제목(있으면) 1줄
-            Console.Write($"\x1b[{up}A\r\x1b[0J");
+            EraseWidgetLines(oldVisible + 1 + (_titleShown ? 1 : 0)); // 항목 + 도움말 1줄 + 제목(있으면) 1줄
         }
     }
 

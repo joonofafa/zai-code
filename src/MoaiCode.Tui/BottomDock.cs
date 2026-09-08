@@ -408,11 +408,11 @@ public sealed class BottomDock
                 {
                     var n = PasteStore.PlaceholderLengthEndingAt(_buf.ToString(), _pos);
                     var del = n > 0 ? n : 1;
-                    _buf.Remove(_pos - del, del); _pos -= del; DrawCoalesced(_buf, _pos);
+                    _buf.Remove(_pos - del, del); _pos -= del; Draw(_buf, _pos);
                 }
                 break;
             case ConsoleKey.Delete:
-                if (_pos < _buf.Length) { _buf.Remove(_pos, 1); DrawCoalesced(_buf, _pos); }
+                if (_pos < _buf.Length) { _buf.Remove(_pos, 1); Draw(_buf, _pos); }
                 break;
             case ConsoleKey.LeftArrow:
                 if (_pos > 0) { _pos--; Draw(_buf, _pos); }
@@ -481,7 +481,7 @@ public sealed class BottomDock
                 if (!char.IsControl(key.KeyChar))
                 {
                     _buf.Insert(_pos, key.KeyChar); _pos++;
-                    DrawCoalesced(_buf, _pos);
+                    Draw(_buf, _pos);
                 }
                 break;
         }
@@ -511,9 +511,9 @@ public sealed class BottomDock
             int w = Width(), h = Height();
             if (w != _lastW || h != _lastH)
             {
+                OnResize(buf, pos);   // _lastW/_lastH 는 OnResize 가 옛 크기로 잔상 계산 뒤 갱신
                 _lastW = w;
                 _lastH = h;
-                OnResize(buf, pos);
             }
             else if (_brainstorm)
             {
@@ -529,25 +529,17 @@ public sealed class BottomDock
         }
     }
 
-    // 리사이즈 처리: 스크롤 영역 해제 + 화면 클리어 → 도크를 새 크기의 하단에 재설치.
-    // 리사이즈 시 터미널이 DECSTBM 영역을 리셋해 이전 입력창이 화면 중간에 잔상으로 남는데,
-    // 전체 클리어로 그 잔상을 확실히 지운다(대화 내용은 터미널 스크롤백에 보존).
+    // 리사이즈 처리: 터미널이 DECSTBM 영역을 리셋해 이전 입력창이 화면 중간에 잔상으로 남는다.
+    // 예전엔 전체 클리어(2J)로 잔상을 지웠으나 화면의 대화 내용까지 통째로 사라져 "화면이 지워진다"로
+    // 보였다(출력이 쌓여 스크롤바가 생기는 등 폭이 1칸만 변해도 발동). 이제 옛 composer 하단 줄만
+    // 지우고(ED0) 새 크기 하단에 재설치한다 — 대화는 화면에, 지워진 잔상은 스크롤백에만 남는다.
     private void OnResize(StringBuilder buf, int pos)
     {
-        Console.Write("\x1b[r\x1b[2J\x1b[H");   // 영역 해제 + 화면 클리어 + 커서 홈
+        var oldTop = Math.Max(1, _lastH - _reserved + 1);   // 옛 composer 상단(1-기반)
+        Console.Write($"\x1b[r\x1b[{oldTop};1H\x1b[J");     // 영역 해제 + 옛 입력창 잔상만 지움
         _installed = false;
         _reserved = 0;
-        Draw(buf, pos);
-    }
-
-    // 붙여넣기 등 큐가 차 있으면 큐가 빌 때만 다시 그린다(대량 입력 빠르게).
-    private void DrawCoalesced(StringBuilder buf, int pos)
-    {
-        bool more;
-        try { more = BracketedPaste.KeyAvailable; }
-        catch { more = false; }
-        if (more) return;
-        Draw(buf, pos);
+        Draw(buf, pos);   // Draw 가 새 크기로 재설치(스크롤로 예약 줄 확보 + composer 재그림)
     }
 
     // 문자열을 표시폭 w 셀 단위로 분할(넓은 문자를 경계에서 쪼개지 않음). 최소 1개 행 반환.
