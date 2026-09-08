@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using MoaiCode.Core;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Tools;
 using MoaiCode.Localization;
@@ -13,7 +14,7 @@ namespace MoaiCode.Tools.Web;
 /// <summary>
 /// z.ai 내장 web_search 툴 경유 웹검색. 대화 모델과 같은 엔드포인트(chat/completions)에
 /// tools=[{type:web_search}] 를 실어 보내고, 응답 최상위 `web_search` 배열(제목·URL·본문·발행일)을
-/// 결과 목록으로 돌려준다 — 별도 검색 키가 필요 없다(OPENAI_API_KEY/OPENAI_BASE_URL 재사용).
+/// 결과 목록으로 돌려준다 — 별도 검색 키가 필요 없다(대화 모델과 같은 z.ai 접속 정보를 재사용).
 ///
 /// 예전엔 Gemini 의 Google Search grounding 을 썼는데, 그쪽은 (a) 결과 목록이 아니라 모델 답변의
 /// 근거 표시라 제목 없이 리다이렉트 URL 만 오고, (b) 검색 여부를 모델이 재량으로 정해 "검색해줘"
@@ -65,9 +66,9 @@ public sealed class WebSearchTool : ITool
             yield break;
         }
 
-        var key = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
-        var baseUrl = Environment.GetEnvironmentVariable("OPENAI_BASE_URL");
-        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(baseUrl))
+        var key = ZaiEndpoint.ApiKey();
+        var baseUrl = ZaiEndpoint.BaseUrl();
+        if (string.IsNullOrWhiteSpace(key))
         {
             yield return new ToolOutput(L10n.Get("tools.webSearch.noKey"), IsError: true);
             yield break;
@@ -112,9 +113,7 @@ public sealed class WebSearchTool : ITool
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key);
 
         var count = Math.Clamp(inp.Limit ?? 5, 1, 50);
-        var model = Environment.GetEnvironmentVariable("MOAI_MODEL")
-                    ?? Environment.GetEnvironmentVariable("OPENAI_MODEL")
-                    ?? "glm-5.3";
+        var model = ZaiEndpoint.Model();
 
         // 검색 결과만 필요하므로 모델 답변은 최소로 자른다(max_tokens=1). 결과는 답변이 아니라
         // 최상위 web_search 배열로 오기 때문에, 토큰을 더 써도 얻는 게 없다.
