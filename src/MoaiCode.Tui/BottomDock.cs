@@ -259,8 +259,10 @@ public sealed class BottomDock
 
         lock (_drawLock)
         {
-            // 영역 하단으로 이동 → 명령 echo + 개행(영역 스크롤) → 출력 커서를 영역 하단에 park.
-            Console.Write($"\x1b[{scrollBottom};1H\r\n{echo}");
+            // 영역 하단으로 이동 → 명령 echo + 개행(영역 스크롤) → echo 를 한 줄 더 밀어 올리고 커서는
+            // 빈 영역 하단에 park. 스피너(ActivityRow = 영역 하단)가 매 프레임 2K 로 그 줄을 지우는데,
+            // 마지막 개행이 없으면 echo 가 정확히 그 줄에 남아 스피너 첫 프레임에 지워진다(프롬프트 소실).
+            Console.Write($"\x1b[{scrollBottom};1H\r\n{echo}\r\n");
         }
 
         _buf.Clear();
