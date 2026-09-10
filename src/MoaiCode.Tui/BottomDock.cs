@@ -21,6 +21,7 @@ public sealed class BottomDock
     private IReadOnlyList<string> _slash = Array.Empty<string>();  // ghost 자동완성용 명령 목록
     private bool _shell;   // '!' 셸 모드: 입력창 빨강 배경 + '❯'/'!' 미표시. 버퍼엔 '!'를 넣지 않는다.
     private int _lastW, _lastH;   // 마지막으로 그린 터미널 크기(리사이즈 감지용)
+    private bool _shrunkRecently; // 직전 리사이즈에서 축소했는가(재성장 시 스크롤백 잔상 되돌아옴 방지)
 
     // 입력 상태(영구): 프롬프트 편집과 턴 중 편집이 같은 버퍼·히스토리를 공유해 입력창이 항상 동일하게
     // 유지되도록 필드로 둔다(예전엔 ReadLine 지역변수였음).
@@ -545,7 +546,54 @@ public sealed class BottomDock
         Console.Write(sb.ToString());
         _installed = false;
         _reserved = 0;
+        _shrunkRecently = false;   // 프롬프트 경로 재설치 — 잔상 플래그 초기화
         Draw(buf, pos);   // Draw 가 새 크기로 재설치(스크롤로 예약 줄 확보 + composer 재그림)
+    }
+
+    /// <summary>
+    /// 턴 중 리사이즈 처리(ESC 워처 40ms 폴에서 호출). 턴 모드에선 Draw 가 스크롤 영역을 재설정하지
+    /// 못하므로 잔상만 지우고 composer 를 다시 그린다. 크기 변화가 없으면 아무것도 안 한다.
+    /// </summary>
+    public void HandleResizeInTurn()
+    {
+        int w = Width(), h = Height();
+        if (w == _lastW && h == _lastH)
+        {
+            return;
+        }
+
+        // 옛 composer 잔상을 (newH-oldH) 평행이동 위치에서 행 단위로 지운다(ED 금지 — 스크롤백 보존).
+        var delta = h - _lastH;
+        var first = Math.Max(1, _lastH + delta - _reserved + 1 - 4);
+        var last = Math.Min(h, _lastH + delta);
+        // 축소했다가 다시 키우면, 축소 때 스크롤백으로 밀려난 옛 composer 행이 화면으로 되돌아와
+        // 새 입력창 바로 위에 중복 잔상으로 남는다(상태줄 2줄). 커진 만큼 위쪽도 같이 지운다.
+        if (delta > 0 && _shrunkRecently)
+        {
+            first = Math.Max(1, first - delta);
+        }
+
+        _shrunkRecently = delta < 0 || _shrunkRecently;
+        if (delta > 0)
+        {
+            _shrunkRecently = false;   // 커진 시점의 되돌아온 잔상까지 지웠으니 플래그 해제
+        }
+
+        var sb = new StringBuilder();
+        for (var row = first; row <= last; row++)
+        {
+            sb.Append($"\x1b[{row};1H\x1b[2K");
+        }
+
+        sb.Append($"\x1b[1;{Math.Max(1, h - _reserved)}r");   // 새 크기로 스크롤 영역 재설정
+        lock (_drawLock)
+        {
+            Console.Write(sb.ToString());
+        }
+
+        _lastW = w;
+        _lastH = h;
+        Draw(_buf, _pos);   // 턴 모드 Draw(save/restore — 출력 커서 보존)
     }
 
     // 문자열을 표시폭 w 셀 단위로 분할(넓은 문자를 경계에서 쪼개지 않음). 최소 1개 행 반환.

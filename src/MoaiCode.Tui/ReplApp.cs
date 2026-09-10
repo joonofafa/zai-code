@@ -1231,6 +1231,10 @@ public sealed class ReplApp
                         break;
                     }
 
+                    // 턴 중 리사이즈: OnResize 는 프롬프트 대기 루프에서만 도니 여기서 감시한다.
+                    // 두고 보면 reflow 로 옛 composer/상태줄이 옛 좌표에 남아 중복 잔상이 된다.
+                    _dock?.HandleResizeInTurn();
+
                     try
                     {
                         await Task.Delay(40, stop.Token).ConfigureAwait(false);
