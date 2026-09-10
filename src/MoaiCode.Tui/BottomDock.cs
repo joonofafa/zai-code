@@ -229,15 +229,9 @@ public sealed class BottomDock
         sb.Append("\x1b[?25h");                                // 커서 표시
         if (!string.IsNullOrEmpty(text))                      // 빈 텍스트(예: '?')는 에코 없이 도크만 해제
         {
-            if (shell)
-            {
-                sb.Append("\x1b[0m\x1b[38;5;246m$ \x1b[0m").Append(text).Append('\n');   // 셸 에코: 회색 '$ '
-            }
-            else
-            {
-                sb.Append("\x1b[0m\x1b[32m").Append(LineEditor.PromptText).Append("\x1b[0m")
-                  .Append(text).Append('\n');                 // 명령 echo(일반 흐름 — 이후 출력이 정상 스크롤)
-            }
+            // 채팅처럼 우측 정렬 버블로 echo(일반 흐름 — 이후 출력이 정상 스크롤).
+            sb.Append(UserBubble.Render(text, Width(), shell));
+            sb.Append('\n');
         }
         Console.Write(sb.ToString());
         _installed = false;
@@ -253,15 +247,14 @@ public sealed class BottomDock
     {
         var h = Height();
         var scrollBottom = Math.Max(1, h - _reserved);
-        var echo = shell
-            ? $"\x1b[0m\x1b[38;5;246m$ \x1b[0m{text}"
-            : $"\x1b[0m\x1b[32m{LineEditor.PromptText}\x1b[0m{text}";
+        // 채팅처럼 우측 정렬 버블로 echo(스크롤 영역 폭 기준).
+        var echo = UserBubble.Render(text, Width(), shell);
 
         lock (_drawLock)
         {
-            // 영역 하단으로 이동 → 명령 echo + 개행(영역 스크롤) → echo 를 한 줄 더 밀어 올리고 커서는
-            // 빈 영역 하단에 park. 스피너(ActivityRow = 영역 하단)가 매 프레임 2K 로 그 줄을 지우는데,
-            // 마지막 개행이 없으면 echo 가 정확히 그 줄에 남아 스피너 첫 프레임에 지워진다(프롬프트 소실).
+            // 영역 하단으로 이동 → 버블 echo(자체 개행 포함) → 커서를 빈 영역 하단에 park.
+            // 스피너(ActivityRow = 영역 하단)가 매 프레임 2K 로 그 줄을 지우므로 echo 가 park 줄에
+            // 걸치지 않게 버블 뒤 개행 하나를 더 둔다.
             Console.Write($"\x1b[{scrollBottom};1H\r\n{echo}\r\n");
         }
 
