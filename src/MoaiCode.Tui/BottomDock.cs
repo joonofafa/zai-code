@@ -525,15 +525,24 @@ public sealed class BottomDock
     }
 
     // 리사이즈 처리: 터미널이 DECSTBM 영역을 리셋해 이전 입력창이 화면 중간에 잔상으로 남는다.
-    // 예전엔 전체 클리어(2J)로 잔상을 지웠으나 화면의 대화 내용까지 통째로 사라져 "화면이 지워진다"로
-    // 보였다(출력이 쌓여 스크롤바가 생기는 등 폭이 1칸만 변해도 발동). 이제 옛 composer 하단 줄만
-    // 지우고(ED0) 새 크기 하단에 재설치한다 — 대화는 화면에, 지워진 잔상은 스크롤백에만 남는다.
-    // 데스크톱 터미널은 리사이즈 때 개행 reflow 로 줄을 다시 매기므로 옛 composer 가 예상 위치보다
-    // 위로 올라가 있을 수 있다(상태줄 중복 잔상의 원인). 여유 마진(4줄)을 두고 위에서부터 지운다.
+    // 지우는 방식이 핵심: ED(2J/ED0) 는 데스크톱 터미널이 창이 커질 때 스크롤백에서 끌어올린 대화
+    // 줄까지 지워 복구 불가로 만든다. 대신 옛 composer 가 있던 행들만 행 단위 지움(2K)을 쓴다.
+    // 리사이즈 후 옛 하단 내용은 새 하단에 붙는다(성장=위에 줄 추가, 축소=아래 줄은 스크롤백으로
+    // 밀림) — 즉 옛 좌표를 (newH - oldH) 만큼 평행이동한 행이 옛 composer 의 새 위치다. 거기에
+    // reflow 여유 마진을 얹어 지운다.
     private void OnResize(StringBuilder buf, int pos)
     {
-        var oldTop = Math.Max(1, _lastH - _reserved + 1 - 4);   // reflow 여유분 포함한 옛 composer 상단
-        Console.Write($"\x1b[r\x1b[{oldTop};1H\x1b[J");         // 영역 해제 + 옛 입력창 잔상만 지움
+        var h = Height();
+        var delta = h - _lastH;                                 // 리사이즈로 인한 세로 이동량
+        var first = Math.Max(1, _lastH + delta - _reserved + 1 - 4);   // 마진 포함 옛 composer 의 새 상단
+        var last = Math.Min(h, _lastH + delta);                 // 옛 화면 하단의 새 위치
+        var sb = new StringBuilder("\x1b[r");                  // 스크롤 영역 해제
+        for (var row = first; row <= last; row++)
+        {
+            sb.Append($"\x1b[{row};1H\x1b[2K");
+        }
+
+        Console.Write(sb.ToString());
         _installed = false;
         _reserved = 0;
         Draw(buf, pos);   // Draw 가 새 크기로 재설치(스크롤로 예약 줄 확보 + composer 재그림)
