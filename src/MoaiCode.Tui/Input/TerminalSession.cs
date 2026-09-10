@@ -14,9 +14,11 @@ namespace MoaiCode.Tui.Input;
 /// </summary>
 public sealed class TerminalSession : IDisposable
 {
-    // bracketed paste + 포커스 리포팅 + SGR 1006 마우스. 종료 시 역순 해제.
-    private const string EnableFeatures = "\u001b[?2004h\u001b[?1004h\u001b[?1000;1006h";
-    private const string DisableFeatures = "\u001b[?1000;1006l\u001b[?1004l\u001b[?2004l";
+    // bracketed paste + 포커스 리포팅. 종료 시 역순 해제.
+    // 마우스 트래킹(?1000;1006)은 켜지 않는다 — 소비하는 UI 가 없는데 켜면 터미널이 휠/클릭을
+    // 앱으로 삼켜 네이티브 스크롤백(마우스휠 위로)이 죽는다(Windows Terminal ssh 에서 실제 발생).
+    private const string EnableFeatures = "\u001b[?2004h\u001b[?1004h";
+    private const string DisableFeatures = "\u001b[?1004l\u001b[?2004l";
 
     private readonly TerminalMode _mode;
     private readonly TerminalInput _input;
