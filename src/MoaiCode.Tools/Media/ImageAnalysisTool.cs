@@ -8,6 +8,8 @@ using MoaiCode.Core;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Tools;
 using MoaiCode.Localization;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Processing;
 
 namespace MoaiCode.Tools.Media;
 
@@ -24,6 +26,9 @@ public sealed class ImageAnalysisTool : ITool
 {
     private const int MaxBytes = 20_000_000;
     private const int MaxRedirects = 5;
+    // 짧은 변이 이보다 작으면 글자가 뭉개져 OCR 정확도가 급감한다(2026-09-12 234px UI 스크린샷 관측).
+    private const int MinShortEdge = 512;
+    private const int MaxUpscaleFactor = 3; // 아이콘급 이미지의 과대확대 방지
     private static readonly TimeSpan DownloadTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ApiTimeout = TimeSpan.FromSeconds(120);
 
@@ -109,6 +114,9 @@ public sealed class ImageAnalysisTool : ITool
             yield return new ToolOutput(L10n.Get("tools.imageAnalysis.emptyImage"), IsError: true);
             yield break;
         }
+
+        // 1.5) 작은 이미지는 자동 업스케일 — 비전 모델의 최소 가독 해상도 미만에서 글자가 뭉개진다.
+        (bytes, mediaType) = EnsureMinEdge(bytes, mediaType);
 
         // 2) 비전 모델 호출(data URL base64).
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -250,6 +258,37 @@ public sealed class ImageAnalysisTool : ITool
     /// <summary>MIME 타입과 base64 바이트로 data URL 을 만든다(테스트 대상).</summary>
     public static string BuildDataUrl(string mediaType, byte[] bytes)
         => $"data:{(string.IsNullOrEmpty(mediaType) ? "image/png" : mediaType)};base64,{Convert.ToBase64String(bytes)}";
+
+    /// <summary>
+    /// 짧은 변이 <see cref="MinShortEdge"/> 미만인 래스터 이미지를 Lanczos 로 확대한다.
+    /// 비전 모델은 낮은 해상도의 작은 글씨를 뭉개서 읽으므로 업스케일이 OCR 품질을 크게 올린다.
+    /// 디코드 실패·애니메이션 GIF 등 처리 불가한 입력은 원본을 그대로 돌려준다(보조 경로이므로).
+    /// </summary>
+    public static (byte[] Bytes, string MediaType) EnsureMinEdge(byte[] bytes, string mediaType)
+    {
+        try
+        {
+            using var image = Image.Load(bytes);
+            var shortEdge = Math.Min(image.Width, image.Height);
+            var scale = Math.Min(MinShortEdge / (double)shortEdge, MaxUpscaleFactor);
+            if (scale <= 1)
+            {
+                return (bytes, mediaType);
+            }
+
+            var newWidth = Math.Max(1, (int)Math.Round(image.Width * scale));
+            var newHeight = Math.Max(1, (int)Math.Round(image.Height * scale));
+            image.Mutate(ctx => ctx.Resize(newWidth, newHeight, KnownResamplers.Lanczos3));
+
+            using var ms = new MemoryStream();
+            image.SaveAsPng(ms); // 업스케일본은 무손실 PNG 로 재인코딩(손실 압축 반복 방지)
+            return (ms.ToArray(), "image/png");
+        }
+        catch
+        {
+            return (bytes, mediaType);
+        }
+    }
 
     private static string MediaForExtension(string ext) => ext.ToLowerInvariant() switch
     {

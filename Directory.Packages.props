@@ -12,6 +12,8 @@
     <PackageVersion Include="PdfPig" Version="0.1.15" />
     <!-- OpenXml 이 끌어오는 System.IO.Packaging 8.0.0(NU1903 취약)을 패치본으로 강제 override. -->
     <PackageVersion Include="System.IO.Packaging" Version="9.0.8" />
+    <!-- ImageAnalysis 툴의 작은 이미지 자동 업스케일(순수 관리 코드, 네이티브 의존 없음). -->
+    <PackageVersion Include="SixLabors.ImageSharp" Version="3.1.7" />
     <PackageVersion Include="System.CommandLine" Version="2.0.9" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageVersion Include="xunit" Version="2.9.2" />

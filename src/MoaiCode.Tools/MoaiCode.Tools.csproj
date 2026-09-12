@@ -6,4 +6,8 @@
     <ProjectReference Include="..\MoaiCode.Tools.OpenXml\MoaiCode.Tools.OpenXml.csproj" />
     <ProjectReference Include="..\MoaiCode.Localization\MoaiCode.Localization.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- ImageAnalysis: 짧은 변이 작은 이미지의 자동 업스케일(OCR 품질). -->
+    <PackageReference Include="SixLabors.ImageSharp" />
+  </ItemGroup>
 </Project>

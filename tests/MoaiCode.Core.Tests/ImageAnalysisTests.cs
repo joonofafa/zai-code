@@ -1,6 +1,7 @@
 using System.Text.Json;
 using MoaiCode.Core.Tools;
 using MoaiCode.Tools.Media;
+using SixLabors.ImageSharp;
 using Xunit;
 
 // ImageAnalysis(z.ai 비전 모델): 입력 검증·응답 파싱·data URL 조립.
@@ -90,5 +91,55 @@ public sealed class ImageAnalysisTests
     {
         var url = ImageAnalysisTool.BuildDataUrl("", new byte[] { 0 });
         Assert.StartsWith("data:image/png;base64,", url);
+    }
+
+    [Fact]
+    public void EnsureMinEdge_upscales_small_image()
+    {
+        using var src = new Image<SixLabors.ImageSharp.PixelFormats.Rgba32>(100, 40);
+        using var ms = new MemoryStream();
+        src.SaveAsPng(ms);
+        var (bytes, media) = ImageAnalysisTool.EnsureMinEdge(ms.ToArray(), "image/png");
+
+        using var outImg = Image.Load(bytes);
+        Assert.Equal(3, outImg.Width / 100);   // 3배(최대 배율) 확대
+        Assert.Equal(120, outImg.Height);       // 40 * 3
+        Assert.Equal("image/png", media);
+    }
+
+    [Fact]
+    public void EnsureMinEdge_keeps_large_image_untouched()
+    {
+        using var src = new Image<SixLabors.ImageSharp.PixelFormats.Rgba32>(1024, 768);
+        using var ms = new MemoryStream();
+        src.SaveAsPng(ms);
+        var original = ms.ToArray();
+
+        var (bytes, media) = ImageAnalysisTool.EnsureMinEdge(original, "image/png");
+        Assert.Same(original, bytes);   // 재인코딩 없이 원본 그대로
+        Assert.Equal("image/png", media);
+    }
+
+    [Fact]
+    public void EnsureMinEdge_falls_back_to_original_on_non_image()
+    {
+        var notImage = new byte[] { 1, 2, 3, 4, 5 };
+        var (bytes, media) = ImageAnalysisTool.EnsureMinEdge(notImage, "image/png");
+        Assert.Same(notImage, bytes);
+        Assert.Equal("image/png", media);
+    }
+
+    [Fact]
+    public void EnsureMinEdge_caps_at_3x()
+    {
+        // 10px 짧은 변은 51.2배가 필요하지만 3배 제한 → 30px.
+        using var src = new Image<SixLabors.ImageSharp.PixelFormats.Rgba32>(10, 20);
+        using var ms = new MemoryStream();
+        src.SaveAsPng(ms);
+        var (bytes, _) = ImageAnalysisTool.EnsureMinEdge(ms.ToArray(), "image/png");
+
+        using var outImg = Image.Load(bytes);
+        Assert.Equal(30, outImg.Width);
+        Assert.Equal(60, outImg.Height);
     }
 }
