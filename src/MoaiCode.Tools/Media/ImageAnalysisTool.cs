@@ -9,6 +9,7 @@ using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Tools;
 using MoaiCode.Localization;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Metadata;
 using SixLabors.ImageSharp.Processing;
 
 namespace MoaiCode.Tools.Media;
@@ -29,6 +30,8 @@ public sealed class ImageAnalysisTool : ITool
     // 짧은 변이 이보다 작으면 글자가 뭉개져 OCR 정확도가 급감한다(2026-09-12 234px UI 스크린샷 관측).
     private const int MinShortEdge = 512;
     private const int MaxUpscaleFactor = 3; // 아이콘급 이미지의 과대확대 방지
+    // decompression bomb 방어: 헤더 기준 긴 변 상한(디코드 시 픽셀 버퍼 전량 할당 전에 차단).
+    private const int MaxPixelsOnLongEdge = 12_000;
     private static readonly TimeSpan DownloadTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ApiTimeout = TimeSpan.FromSeconds(120);
 
@@ -116,7 +119,22 @@ public sealed class ImageAnalysisTool : ITool
         }
 
         // 1.5) 작은 이미지는 자동 업스케일 — 비전 모델의 최소 가독 해상도 미만에서 글자가 뭉개진다.
-        (bytes, mediaType) = EnsureMinEdge(bytes, mediaType);
+        // 치수 상한 초과(decompression bomb)는 InvalidDataException 으로 던져진다.
+        string? scaleError = null;
+        try
+        {
+            (bytes, mediaType) = EnsureMinEdge(bytes, mediaType);
+        }
+        catch (InvalidDataException ex)
+        {
+            scaleError = ex.Message;
+        }
+
+        if (scaleError is not null)
+        {
+            yield return new ToolOutput(scaleError, IsError: true);
+            yield break;
+        }
 
         // 2) 비전 모델 호출(data URL base64).
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -158,6 +176,13 @@ public sealed class ImageAnalysisTool : ITool
         }
 
         var path = Path.GetFullPath(Path.IsPathRooted(source) ? source : Path.Combine(workingDir, source));
+        // 로컬 파일도 다운로드와 동일한 상한(읽기 전 길이 검사 — ReadAllBytes 가 무제한 읽기 전에 차단).
+        var fi = new FileInfo(path);
+        if (fi.Length > MaxBytes)
+        {
+            throw new IOException(L10n.Get("tools.imageAnalysis.fileTooLarge", MaxBytes / 1_000_000, path));
+        }
+
         var bytes = await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false);
         var mediaType = MediaForExtension(Path.GetExtension(path));
         return (bytes, mediaType);
@@ -210,7 +235,14 @@ public sealed class ImageAnalysisTool : ITool
         if (!resp.IsSuccessStatusCode)
         {
             // 본문에 사유(키/쿼터/모델명)가 담겨 오므로 잘라서 그대로 노출한다.
-            throw new HttpRequestException($"HTTP {(int)resp.StatusCode}: {text[..Math.Min(text.Length, 400)]}");
+            // 자르기는 서로게이트 페어 중간에서 끊지 않게 문자 경계에서 자른다.
+            var cut = Math.Min(text.Length, 400);
+            while (cut > 0 && char.IsHighSurrogate(text[cut - 1]))
+            {
+                cut--;
+            }
+
+            throw new HttpRequestException($"HTTP {(int)resp.StatusCode}: {text[..cut]}");
         }
 
         return RenderAnswer(text);
@@ -263,9 +295,31 @@ public sealed class ImageAnalysisTool : ITool
     /// 짧은 변이 <see cref="MinShortEdge"/> 미만인 래스터 이미지를 Lanczos 로 확대한다.
     /// 비전 모델은 낮은 해상도의 작은 글씨를 뭉개서 읽으므로 업스케일이 OCR 품질을 크게 올린다.
     /// 디코드 실패·애니메이션 GIF 등 처리 불가한 입력은 원본을 그대로 돌려준다(보조 경로이므로).
+    /// 단, 치수 상한 초과(decompression bomb)는 예외를 던져 호출자가 에러로 보고하게 한다.
     /// </summary>
     public static (byte[] Bytes, string MediaType) EnsureMinEdge(byte[] bytes, string mediaType)
     {
+        // 디코드 전 헤더만 읽어 치수를 검사한다 — 크기 상한 내 파일도 헤더 기준 수만 픽셀이 가능
+        // (decompression bomb)하므로 전량 할당 후의 catch 로는 늦다. 식별 실패(비이미지)는 예외로
+        // 나오므로 잡아서 원본 폴백한다.
+        int width, height;
+        try
+        {
+            var info = Image.Identify(bytes);
+            width = info.Width;
+            height = info.Height;
+        }
+        catch
+        {
+            return (bytes, mediaType); // 비이미지 등 식별 실패 → 원본 폴백
+        }
+
+        if (Math.Max(width, height) > MaxPixelsOnLongEdge)
+        {
+            throw new InvalidDataException(
+                L10n.Get("tools.imageAnalysis.dimsTooLarge", width, height, MaxPixelsOnLongEdge));
+        }
+
         try
         {
             using var image = Image.Load(bytes);
@@ -348,6 +402,12 @@ public sealed class ImageAnalysisTool : ITool
             }
 
             var media = resp.Content.Headers.ContentType?.MediaType ?? string.Empty;
+            // SVG(image/svg+xml)는 래스터 비전 모델이 못 쓰고 스크립트를 품을 수 있어 차단한다.
+            if (media.Contains("svg", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new HttpRequestException(L10n.Get("tools.imageAnalysis.svgDenied"));
+            }
+
             if (media.Length > 0 && !media.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
             {
                 throw new HttpRequestException(L10n.Get("tools.imageFetch.notImage", media));

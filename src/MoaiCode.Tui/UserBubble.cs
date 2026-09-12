@@ -43,7 +43,7 @@ public static class UserBubble
         return sb.ToString();
     }
 
-    // 표시폭(wide=2셀) 기준 줄바꿈. 단어 경계 우선, 못 하면 셀 단위.
+    // 표시폭(wide=2셀) 기준 셀 단위 줄바꿈(단어 경계는 고려하지 않는다 — 버블 안이라 중간 끊김도 가독성 문제 없음).
     private static List<string> WrapByCells(string s, int w)
     {
         var result = new List<string>();

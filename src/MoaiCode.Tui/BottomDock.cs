@@ -593,7 +593,10 @@ public sealed class BottomDock
 
         _lastW = w;
         _lastH = h;
-        Draw(_buf, _pos);   // 턴 모드 Draw(save/restore — 출력 커서 보존)
+        lock (_drawLock)
+        {
+            Draw(_buf, _pos);   // 턴 모드 Draw(save/restore — 출력 커서 보존). 다른 그리기 경로와 상호배제.
+        }
     }
 
     // 문자열을 표시폭 w 셀 단위로 분할(넓은 문자를 경계에서 쪼개지 않음). 최소 1개 행 반환.
