@@ -24,6 +24,7 @@ public static class ToolRegistry
         new WebSearchTool(),
         new ImageCreateTool(),
         new ImageFetchTool(),
+        new ImageAnalysisTool(),
         new MemoryTool(),
     };
 }

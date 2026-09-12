@@ -31,6 +31,15 @@ public static class ZaiEndpoint
            ?? Environment.GetEnvironmentVariable("ZAI_MODEL")
            ?? DefaultModel;
 
+    /// <summary>비전(이미지 이해) 전용 모델 id. MOAI_VISION_MODEL → ZAI_VISION_MODEL → 기본값.</summary>
+    public static string VisionModel()
+        => Environment.GetEnvironmentVariable("MOAI_VISION_MODEL")
+           ?? Environment.GetEnvironmentVariable("ZAI_VISION_MODEL")
+           ?? DefaultVisionModel;
+
+    /// <summary>기본 비전 모델. 코딩 엔드포인트·코딩 키로 그대로 호출 검증됨(2026-09-12).</summary>
+    public const string DefaultVisionModel = "glm-4.6v";
+
     /// <summary>공식 z.ai Coding Plan 엔드포인트인지. Coding Plan 키는 여기서만 유효하다.</summary>
     public static bool IsOfficial(string? value)
         => Uri.TryCreate(value, UriKind.Absolute, out var uri)
