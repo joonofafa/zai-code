@@ -87,12 +87,14 @@ public sealed class PermissionRules : IPermissionRuleStore
 
     // 파일을 건드리지 않는 조회 명령. 규칙을 쌓지 않아도 이만큼은 묻지 않는다
     // (BashSecurity 의 읽기 전용 목록과 같은 취지 — Config 는 Tools.Bash 를 참조할 수 없어 여기 둔다).
+    // 주의: sed(-i)/awk(system())/env(임의 명령 실행)/find(-delete,-exec)/sort(-o)는
+    // 읽기 전용이 아니므로 넣지 않는다 — 첫 토큰만 보고 자동 승인하면 변조·실행이 무확인 통과된다.
     private static readonly HashSet<string> ReadOnlyBashCommands = new(StringComparer.Ordinal)
     {
-        "ls", "cat", "pwd", "echo", "grep", "rg", "find", "head", "tail",
-        "wc", "stat", "file", "which", "whoami", "date", "env", "tree", "du", "df",
-        "sort", "uniq", "cut", "basename", "dirname", "realpath", "readlink",
-        "sha256sum", "md5sum", "sed", "awk", "column", "diff", "printf", "true",
+        "ls", "cat", "pwd", "echo", "grep", "rg", "head", "tail",
+        "wc", "stat", "file", "which", "whoami", "date", "tree", "du", "df",
+        "uniq", "cut", "basename", "dirname", "realpath", "readlink",
+        "sha256sum", "md5sum", "column", "diff", "printf", "true",
     };
 
     private static string? FirstToken(string command)

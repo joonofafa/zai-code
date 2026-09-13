@@ -38,6 +38,10 @@ public class BashSecurityTests
     [InlineData("cat foo.txt", true)]
     [InlineData("/usr/bin/grep x y", true)]
     [InlineData("rm file", false)]
+    // 읽기 전용이 아니다 — 변조·실행 가능: find(-delete/-exec), env(임의 명령 prefix).
+    [InlineData("find . -name x", false)]
+    [InlineData("env", false)]
+    [InlineData("env rm -rf ~/proj", false)]
     public void Classifies_read_only(string cmd, bool expected)
     {
         Assert.Equal(expected, BashSecurity.IsReadOnlyCommand(cmd));

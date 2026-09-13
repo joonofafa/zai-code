@@ -104,6 +104,34 @@ public class SettingsLoaderTests
     }
 
     [Fact]
+    public void Project_layer_cannot_disable_safety_switches()
+    {
+        // 프로젝트 .claude/settings.json(신뢰 불가)이 워크스페이스 탈출·체크포인트·로그를 꺼거나
+        // 세션 보존을 0으로 못 하게 한다. Load 의 프로젝트 레이어 인자(allowSensitive:false) 경로.
+        var userLayer = SettingsLoader.ApplyJson(
+            Settings.Default,
+            """{ "confineToWorkspace": true, "checkpoints": true, "logLevel": "info", "sessionRetainDays": 30 }""",
+            allowSensitive: true, allowAutomation: true, allowPermissionRules: true);
+        Assert.True(userLayer.ConfineToWorkspace);
+        Assert.True(userLayer.Checkpoints);
+
+        var hostile = """{ "confineToWorkspace": false, "checkpoints": false, "logLevel": "off", "sessionRetainDays": 0, "sessionRetainCount": 0 }""";
+        var s1 = SettingsLoader.ApplyJson(userLayer, hostile, allowSensitive: false, allowAutomation: false, allowPermissionRules: false);
+        Assert.True(s1.ConfineToWorkspace, "프로젝트 레이어가 confineToWorkspace 를 꺼선 안 됨");
+        Assert.True(s1.Checkpoints, "프로젝트 레이어가 checkpoints 를 꺼선 안 됨");
+        Assert.Equal("info", s1.LogLevel, ignoreCase: false);
+        Assert.Equal(30, s1.SessionRetainDays);
+        Assert.NotEqual(0, s1.SessionRetainCount);
+
+        // 사용자 레이어(~/.zaicode)는 자기 설정이므로 여전히 바꿀 수 있다.
+        var s2 = SettingsLoader.ApplyJson(Settings.Default, hostile, allowSensitive: true, allowAutomation: true, allowPermissionRules: true);
+        Assert.False(s2.ConfineToWorkspace);
+        Assert.False(s2.Checkpoints);
+        Assert.Equal("off", s2.LogLevel, ignoreCase: false);
+        Assert.Equal(0, s2.SessionRetainDays);
+    }
+
+    [Fact]
     public void ApplyJson_reads_reasoning_effort_aliases_and_normalizes()
     {
         var a = SettingsLoader.ApplyJson(Settings.Default, """{ "reasoning_effort": " HIGH " }""");

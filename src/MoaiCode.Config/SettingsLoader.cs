@@ -54,6 +54,15 @@ public static class SettingsLoader
     public static Settings ApplyJson(Settings baseline, string json)
         => ApplyJson(baseline, json, allowSensitive: true, allowAutomation: true, allowPermissionRules: true);
 
+    /// <summary>레이어별 게이트를 명시하는 머지 — 프로젝트 레이어(신뢰 불가) 검증용 테스트가 쓴다.</summary>
+    public static Settings ApplyJson(
+        Settings baseline,
+        string json,
+        bool allowSensitive,
+        bool allowAutomation,
+        bool allowPermissionRules)
+        => ApplyJson(baseline, json, allowSensitive, allowAutomation, allowPermissionRules, allowModel: true);
+
     private static Settings ApplyJson(
         Settings baseline,
         string json,
@@ -98,7 +107,7 @@ public static class SettingsLoader
                 Permission = allowSensitive
                     ? ParsePermission(GetString(root, "permission", "permissionMode")) ?? baseline.Permission
                     : baseline.Permission,
-                LogLevel = GetString(root, "logLevel", "log_level") ?? baseline.LogLevel,
+                LogLevel = allowSensitive ? GetString(root, "logLevel", "log_level") ?? baseline.LogLevel : baseline.LogLevel,
                 MaxTurns = GetInt(root, "maxTurns", "max_turns") ?? baseline.MaxTurns,
                 OutputStyle = GetString(root, "outputStyle", "output_style") ?? baseline.OutputStyle,
                 LintCommand = allowAutomation
@@ -115,12 +124,20 @@ public static class SettingsLoader
                     : baseline.AutoTest,
                 RepoMapTokens = GetInt(root, "repoMapTokens", "repo_map_tokens") ?? baseline.RepoMapTokens,
                 // 세션 보존 임계값은 settings.json 전용(env 미노출 — 런타임 설정 방침).
-                SessionRetainCount = GetInt(root, "sessionRetainCount", "session_retain_count") ?? baseline.SessionRetainCount,
-                SessionRetainDays = GetInt(root, "sessionRetainDays", "session_retain_days") ?? baseline.SessionRetainDays,
-                Checkpoints = GetBool(root, "checkpoints", "autoCheckpoint", "auto_checkpoint")
-                              ?? baseline.Checkpoints,
-                ConfineToWorkspace = GetBool(root, "confineToWorkspace", "confine_to_workspace", "confine")
-                              ?? baseline.ConfineToWorkspace,
+                SessionRetainCount = allowSensitive
+                    ? GetInt(root, "sessionRetainCount", "session_retain_count") ?? baseline.SessionRetainCount
+                    : baseline.SessionRetainCount,
+                SessionRetainDays = allowSensitive
+                    ? GetInt(root, "sessionRetainDays", "session_retain_days") ?? baseline.SessionRetainDays
+                    : baseline.SessionRetainDays,
+                // 체크포인트·워크스페이스 탈출 제한은 안전장치다 — 신뢰할 수 없는 프로젝트
+                // 레이어가 끄게 두면 롤백 불능·임의 경로 접근이 무확인으로 풀린다.
+                Checkpoints = allowSensitive
+                    ? GetBool(root, "checkpoints", "autoCheckpoint", "auto_checkpoint") ?? baseline.Checkpoints
+                    : baseline.Checkpoints,
+                ConfineToWorkspace = allowSensitive
+                    ? GetBool(root, "confineToWorkspace", "confine_to_workspace", "confine") ?? baseline.ConfineToWorkspace
+                    : baseline.ConfineToWorkspace,
                 ContextWindowTokens = GetInt(root, "contextWindow", "context_window", "contextWindowTokens")
                                       ?? baseline.ContextWindowTokens,
                 // 규칙은 사용자 레이어에서만 수용한다. 프로젝트 레이어는 권한 승격 방지.

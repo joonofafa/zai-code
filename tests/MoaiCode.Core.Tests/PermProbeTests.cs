@@ -35,9 +35,21 @@ public sealed class BashSegmentPermissionTests
     [InlineData("git status | head -5")]
     [InlineData("git status --short | wc -l")]
     [InlineData("ls -la | tail -3")]
-    [InlineData("cat a.txt | grep foo | sort")]
+    [InlineData("cat a.txt | grep foo | uniq")]
     public void Compound_command_is_allowed_when_every_segment_is(string command)
         => Assert.Equal(RuleMatch.Allow, Eval(command, "Bash(git status:*)"));
+
+    [Theory]
+    // 변조·실행 가능한 명령은 읽기 전용 목록에 없다 — 첫 토큰만 봐도 자동 승인하면 안 된다.
+    // sed -i(파일 변조), awk system()(임의 실행), env(명령 prefix), find -delete(삭제), sort -o(덮어쓰기).
+    [InlineData("sed -i s/a/b/ config.txt")]
+    [InlineData("awk 'BEGIN{system(\"id\")}'")]
+    [InlineData("env rm -rf ~/proj")]
+    [InlineData("find . -name '*.tmp' -delete")]
+    [InlineData("sort -o list.txt input.txt")]
+    [InlineData("grep x f && sed -i s/a/b/ ~/.bashrc")]
+    public void Mutating_commands_are_never_auto_allowed(string command)
+        => Assert.Equal(RuleMatch.None, Eval(command));
 
     [Theory]
     // 한 세그먼트라도 허용되지 않으면 확인으로 넘긴다.

@@ -17,7 +17,7 @@ public static class BashSecurity
     private static readonly (Regex Pattern, string ReasonKey)[] Destructive =
     {
         // --- Unix/macOS (bash/zsh) ---
-        (Rx(@"\brm\s+(-\w*[rf]\w*\s+)+(/|~|/\*|\$HOME)(\s|$)"), "tools.bashSecurity.rmRootHome"),
+        (Rx(@"\brm\s+(-\w*[rf]\w*\s+)+(/|~|/\*|\$HOME)(\s|$|>|;|&|\|)"), "tools.bashSecurity.rmRootHome"),
         (Rx(@"\brm\s+(-\w*[rf]\w*\s+)+/(boot|bin|sbin|lib|lib64|usr|etc|sys|proc|dev|var|opt|root|run|System|Library)(/|\s|$)"),
             "tools.bashSecurity.rmSystemDir"),
         (Rx(@"\brm\s+(-\w*[rf]\w*\s+)+/\*"), "tools.bashSecurity.rmRootWildcard"),
@@ -28,8 +28,13 @@ public static class BashSecurity
         (Rx(@"\b(diskutil)\s+(eraseDisk|eraseVolume|reformat|zeroDisk)\b"), "tools.bashSecurity.diskutilErase"),
         (Rx(@">\s*/dev/(sd|nvme|disk|hd|rdisk)"), "tools.bashSecurity.redirectBlockDevice"),
         (Rx(@"\bchmod\s+-R\s+0*777\s+/(\s|$)"), "tools.bashSecurity.chmodRoot777"),
+        // `chmod 777 -R /` 처럼 플래그가 뒤로 가도 재귀 777 루트는 잡는다.
+        (Rx(@"\bchmod\s+0*777\s+(-\w*R\w*\s+)+/(\s|$)"), "tools.bashSecurity.chmodRoot777"),
         (Rx(@"\b(shutdown|reboot|halt|poweroff)\b"), "tools.bashSecurity.powerCommand"),
         (Rx(@"\b(curl|wget)\b[^|]*\|\s*(sudo\s+)?(sh|bash|zsh|pwsh|powershell)\b"), "tools.bashSecurity.remoteScriptExec"),
+        // 파이프 체인 중간에 디코더/tee가 끼어도 최종적으로 셸로 흘러가면 같은 위험 —
+        // `curl x | base64 -d | sh` 형태를 잡는다(마지막 파이프 세그먼트가 셸인지만 본다).
+        (Rx(@"\b(curl|wget)\b(?:[^|]*\|[^|]*)+\|\s*(sudo\s+)?(sh|bash|zsh|pwsh|powershell)\b"), "tools.bashSecurity.remoteScriptExec"),
         (Rx(@"\bgit\b.*\bpush\b.*--force\b.*\b(main|master)\b"), "tools.bashSecurity.forcePushProtected"),
 
         // --- Windows (cmd/powershell) ---
@@ -44,11 +49,12 @@ public static class BashSecurity
             "tools.bashSecurity.psForceRecursive"),
     };
 
-    /// <summary>읽기 전용으로 간주되는 안전한 명령 prefix (권한 자동 허용 후보).</summary>
+    /// <summary>읽기 전용으로 간주되는 안전한 명령 prefix (권한 자동 허용 후보).
+    /// find(-delete/-exec 가능), env(임의 명령 실행 가능)는 의도적으로 제외한다.</summary>
     private static readonly HashSet<string> ReadOnlyCommands = new(StringComparer.Ordinal)
     {
-        "ls", "cat", "pwd", "echo", "grep", "rg", "find", "head", "tail",
-        "wc", "stat", "file", "which", "whoami", "date", "env", "tree", "du", "df",
+        "ls", "cat", "pwd", "echo", "grep", "rg", "head", "tail",
+        "wc", "stat", "file", "which", "whoami", "date", "tree", "du", "df",
     };
 
     /// <summary>
@@ -75,6 +81,10 @@ public static class BashSecurity
     {
         (Rx(@"\bfind\b[^|;&]*\s-delete\b"), "tools.bashSecurity.findDelete"),
         (Rx(@"\bfind\b[^|;&]*-exec\s+rm\b"), "tools.bashSecurity.findExecRm"),
+        // `find / | xargs rm -rf` — 파이프 너머 xargs rm 은 위 두 패턴이 못 본다. 확인으로.
+        (Rx(@"\bfind\b.*\|\s*xargs\s+(rm|rmdir)\b"), "tools.bashSecurity.findExecRm"),
+        // xargs rm 은 stdin 공급과 조합해 사실상 임의 대량 삭제다 — 확인 티어로.
+        (Rx(@"\bxargs\s+(rm|rmdir)\b"), "tools.bashSecurity.findExecRm"),
         (Rx(@"\bgit\b[^|;&]*\bpush\b[^|;&]*\s(--force|-f)\b"), "tools.bashSecurity.gitForcePush"),
         (Rx(@"\bgit\b[^|;&]*\breset\b[^|;&]*\s--hard\b"), "tools.bashSecurity.gitResetHard"),
         (Rx(@"\bgit\s+clean\b[^|;&]*-\w*[fd]"), "tools.bashSecurity.gitClean"),

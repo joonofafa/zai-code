@@ -107,8 +107,21 @@ public static class Rm
                 continue;
             }
 
+            // 셸 확장 정규화 — `rm -rf $'/'`(ANSI-C quoting), `rm -rf ${HOME}`(파라미터 확장)은
+            // bash 가 `/`, 홈으로 확장하지만 토큰 비교는 미스한다. ${X} → $X 로, $'x' → x 로 정규화.
+            // (따옴표 Trim 보다 먼저 — Trim 이 끝따옴표를 먼저 깎으면 $'...' 폼이 무너진다.)
+            if (token.StartsWith("$'", StringComparison.Ordinal) && token.EndsWith("'", StringComparison.Ordinal))
+            {
+                token = token[2..^1];
+            }
+            else if (token.StartsWith("${", StringComparison.Ordinal) && token.EndsWith("}", StringComparison.Ordinal))
+            {
+                token = "$" + token[2..^1];
+            }
+
             // 따옴표 제거 — `rm -rf "/"` 같은 회피 시도.
             token = token.Trim('"', '\'');
+
             if (token.Length > 0)
             {
                 targets.Add(token);
