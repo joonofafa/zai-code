@@ -106,37 +106,59 @@ public sealed class DocxEditTool : ITool
 
     private static int Apply(string path, List<Replacement> reps, bool matchCase, bool includeHf)
     {
-        using var doc = WordprocessingDocument.Open(path, isEditable: true);
-        var main = doc.MainDocumentPart ?? throw new InvalidOperationException("no main part");
-
+        // 원본 보호: 임시 복사본에서 수정한 뒤 원자적 교체 — 수정/저장 중 실패해도 원본이 깨지지 않는다.
+        var tmp = path + ".tmp";
+        File.Copy(path, tmp, overwrite: true);
         var total = 0;
-        foreach (var para in main.Document.Body?.Descendants<Paragraph>() ?? Enumerable.Empty<Paragraph>())
+        try
         {
-            total += ReplaceInParagraph(para, reps, matchCase);
-        }
-
-        if (includeHf)
-        {
-            foreach (var hp in main.HeaderParts)
+            using (var doc = WordprocessingDocument.Open(tmp, isEditable: true))
             {
-                foreach (var para in hp.Header.Descendants<Paragraph>())
+                var main = doc.MainDocumentPart ?? throw new InvalidOperationException("no main part");
+
+                foreach (var para in main.Document.Body?.Descendants<Paragraph>() ?? Enumerable.Empty<Paragraph>())
                 {
                     total += ReplaceInParagraph(para, reps, matchCase);
                 }
-            }
 
-            foreach (var fp in main.FooterParts)
-            {
-                foreach (var para in fp.Footer.Descendants<Paragraph>())
+                if (includeHf)
                 {
-                    total += ReplaceInParagraph(para, reps, matchCase);
+                    foreach (var hp in main.HeaderParts)
+                    {
+                        foreach (var para in hp.Header.Descendants<Paragraph>())
+                        {
+                            total += ReplaceInParagraph(para, reps, matchCase);
+                        }
+                    }
+
+                    foreach (var fp in main.FooterParts)
+                    {
+                        foreach (var para in fp.Footer.Descendants<Paragraph>())
+                        {
+                            total += ReplaceInParagraph(para, reps, matchCase);
+                        }
+                    }
+                }
+
+                if (total > 0)
+                {
+                    main.Document.Save();
                 }
             }
-        }
 
-        if (total > 0)
+            if (total > 0)
+            {
+                File.Move(tmp, path, overwrite: true);
+            }
+            else
+            {
+                try { File.Delete(tmp); } catch { } // 변경이 없으면 원본을 그대로 둔다.
+            }
+        }
+        catch
         {
-            main.Document.Save();
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+            throw;
         }
 
         return total;

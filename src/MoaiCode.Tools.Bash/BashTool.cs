@@ -4,7 +4,6 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using CliWrap;
-using CliWrap.Buffered;
 using MoaiCode.Core.Tools;
 using MoaiCode.Localization;
 
@@ -121,61 +120,82 @@ public sealed class BashTool : ITool
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(timeout);
 
-        BufferedCommandResult result;
+        // 파이프로 직접 출력을 수집한다 — 타임아웃/취소 시에도 그 시점까지 받은 출력을
+        // 버리지 않고 부분 결과로 돌려줄 수 있다(ExecuteBufferedAsync 는 예외 시 출력을 잃음).
+        var stdoutBuf = new StringBuilder();
+        var stderrBuf = new StringBuilder();
+        var exitCode = 0;
         var timedOut = false;
         try
         {
-            result = await Cli.Wrap(shell)
+            var cmd = Cli.Wrap(shell)
                 .WithArguments(args)
                 .WithWorkingDirectory(workDir)
                 .WithValidation(CommandResultValidation.None)
                 // 자식 출력은 UTF-8로 디코딩(Windows는 위에서 chcp 65001로 UTF-8 정규화, Unix는 기본 UTF-8).
-                // 앰비언트 Console.OutputEncoding 에 의존하지 않도록 명시.
-                .ExecuteBufferedAsync(Encoding.UTF8, timeoutCts.Token)
-                .ConfigureAwait(false);
+                .WithStandardOutputPipe(PipeTarget.ToDelegate(s => stdoutBuf.AppendLine(s), Encoding.UTF8))
+                .WithStandardErrorPipe(PipeTarget.ToDelegate(s => stderrBuf.AppendLine(s), Encoding.UTF8));
+            var commandTask = cmd.ExecuteAsync(timeoutCts.Token);
+            var result = await commandTask.ConfigureAwait(false);
+            exitCode = result.ExitCode;
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             timedOut = true;
-            result = null!;
         }
 
         if (timedOut)
         {
-            yield return new ToolOutput(L10n.Get("tools.bash.timeout", timeout), IsError: true);
+            // 타임아웃이어도 지금까지 쌓인 출력은 모델에게 보여준다(진단/재시도 근거).
+            var partial = Truncate(Combine(stdoutBuf, stderrBuf));
+            var msg = L10n.Get("tools.bash.timeout", timeout);
+            if (partial.Length > 0)
+            {
+                msg += "\n" + partial;
+            }
+
+            yield return new ToolOutput(msg, IsError: true);
             yield break;
         }
 
         // 명령 실행 후의 cwd를 마커에서 추출해 유지한다 (출력에서는 마커 제거).
-        var (stdout, newCwd) = ExtractCwd(result.StandardOutput ?? "");
+        var (_, newCwd) = ExtractCwd(stdoutBuf.ToString());
         if (newCwd is not null && Directory.Exists(newCwd))
         {
             _currentDir = newCwd;
         }
 
+        var text = Truncate(Combine(stdoutBuf, stderrBuf));
+        if (text.Length == 0)
+        {
+            text = $"(no output, exit code {exitCode})";
+        }
+
+        yield return new ToolOutput(text, IsError: exitCode != 0);
+    }
+
+    // stdout(stderr 포함) 조합 — stdout 에서는 cwd 마커를 제거한 뒤 합친다.
+    private static string Combine(StringBuilder stdoutBuf, StringBuilder stderrBuf)
+    {
+        var stdout = ExtractCwd(stdoutBuf.ToString()).Output.TrimEnd('\n', '\r');
         var combined = new StringBuilder();
         if (!string.IsNullOrEmpty(stdout))
         {
             combined.Append(stdout);
         }
 
-        if (!string.IsNullOrEmpty(result.StandardError))
+        var stderr = stderrBuf.ToString();
+        if (!string.IsNullOrEmpty(stderr))
         {
             if (combined.Length > 0)
             {
                 combined.AppendLine();
             }
 
-            combined.Append(result.StandardError);
+            combined.Append(stderr);
         }
 
-        var text = Truncate(combined.ToString());
-        if (text.Length == 0)
-        {
-            text = $"(no output, exit code {result.ExitCode})";
-        }
-
-        yield return new ToolOutput(text, IsError: result.ExitCode != 0);
+        return combined.ToString();
     }
 
     // cwd가 유효하지 않으면(삭제/이동) 프로세스 cwd → 홈 순으로 폴백.

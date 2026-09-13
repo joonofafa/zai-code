@@ -47,10 +47,10 @@ public sealed class SessionStore
             sb.AppendLine(JsonSerializer.Serialize<Message>(m, Json));
         }
 
+        // 원자적 쓰기(tmp+rename) — 직접 truncate 쓰기는 크래시 시 파일을 반쯤 깨뜨린다.
+        // AtomicFile 는 생성 시점부터 0600(트랜스크립트에 시크릿 가능)이라 별도 chmod 불필요.
         var path = PathFor(sessionId);
-        await File.WriteAllTextAsync(path, sb.ToString(), ct).ConfigureAwait(false);
-        // 트랜스크립트에 tool 출력·사용자 입력(시크릿 가능)이 담기므로 사용자 전용(0600).
-        FilePermissions.RestrictFileToUser(path);
+        await AtomicFile.WriteAllTextAsync(path, sb.ToString(), ct).ConfigureAwait(false);
 
         EnforceRetention(sessionId);                   // 보존 정책: 상위 N개/N일 밖 정리(현재 세션 제외)
     }

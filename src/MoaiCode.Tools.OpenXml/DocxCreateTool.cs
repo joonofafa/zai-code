@@ -139,7 +139,12 @@ public sealed class DocxCreateTool : ITool
 
     private static void Write(string path, Input inp, string workingDir)
     {
-        using var doc = WordprocessingDocument.Create(path, WordprocessingDocumentType.Document);
+        // 원자적 생성: tmp 에 완전히 쓰고 rename — 중간에 실패해도 기존 파일을 덮어쓰지 않는다.
+        var tmp = path + ".tmp";
+        try
+        {
+            using (var doc = WordprocessingDocument.Create(tmp, WordprocessingDocumentType.Document))
+            {
         var main = doc.AddMainDocumentPart();
         main.Document = new Document();
         var body = main.Document.AppendChild(new Body());
@@ -204,6 +209,15 @@ public sealed class DocxCreateTool : ITool
 
         // 페이지 설정(A4 세로 + 1" 여백) + 하단 중앙 페이지 번호 푸터. SectionProperties 는 body 의 마지막 자식.
         AppendPageSetup(main, body);
+            }
+
+            File.Move(tmp, path, overwrite: true);
+        }
+        catch
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+            throw;
+        }
     }
 
     // 문서 기본 서식(DocDefaults): Latin=Arial, 11pt. 한글(EastAsia) 폰트는 여기서 강제하지 않고

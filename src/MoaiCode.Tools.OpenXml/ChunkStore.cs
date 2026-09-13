@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using MoaiCode.Core;
 using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.OpenXml;
@@ -53,7 +54,7 @@ public sealed class ChunkStore
     public void SaveManifest(ChunkManifest manifest)
     {
         Directory.CreateDirectory(_chunksDir);
-        File.WriteAllText(ManifestPath, JsonSerializer.Serialize(manifest, Json));
+        AtomicFile.WriteAllText(ManifestPath, JsonSerializer.Serialize(manifest, Json));
     }
 
     // 문서(상대경로)의 청크를 jsonl 로 기록한다. 반환값은 manifest 에 저장할 상대 파일명.
@@ -68,7 +69,7 @@ public sealed class ChunkStore
             sb.AppendLine(JsonSerializer.Serialize(new ChunkLine(i, chunks[i]), Json));
         }
 
-        File.WriteAllText(full, sb.ToString());
+        AtomicFile.WriteAllText(full, sb.ToString());
         return relFile;
     }
 
@@ -134,13 +135,13 @@ public sealed class ChunkStore
             Buffer.BlockCopy(vectors[r], 0, bytes, r * dim * 4, dim * 4);
         }
 
-        File.WriteAllBytes(full, bytes);
+        AtomicFile.WriteAllBytes(full, bytes);
 
         var vm = LoadVectorManifest();
         var docs = vm?.Documents ?? new List<VectorDocEntry>();
         docs.RemoveAll(d => string.Equals(d.Source, relSource, StringComparison.Ordinal));
         docs.Add(new VectorDocEntry(relSource, vecRel, vectors.Count));
-        File.WriteAllText(VectorManifestPath, JsonSerializer.Serialize(new VectorManifest(embModel, dim, docs), Json));
+        AtomicFile.WriteAllText(VectorManifestPath, JsonSerializer.Serialize(new VectorManifest(embModel, dim, docs), Json));
     }
 
     // 문서의 벡터를 vectors.json + .vec 에서 제거(원본 삭제 시).
@@ -154,7 +155,7 @@ public sealed class ChunkStore
 
         var entry = vm.Documents.FirstOrDefault(d => string.Equals(d.Source, relSource, StringComparison.Ordinal));
         vm.Documents.RemoveAll(d => string.Equals(d.Source, relSource, StringComparison.Ordinal));
-        File.WriteAllText(VectorManifestPath, JsonSerializer.Serialize(vm, Json));
+        AtomicFile.WriteAllText(VectorManifestPath, JsonSerializer.Serialize(vm, Json));
         if (entry is not null)
         {
             try

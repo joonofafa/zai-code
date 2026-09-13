@@ -206,7 +206,12 @@ public sealed class XlsxCreateTool : ITool
 
     private static void Write(string path, List<SheetIn> sheets)
     {
-        using var doc = SpreadsheetDocument.Create(path, SpreadsheetDocumentType.Workbook);
+        // 원자적 생성: tmp 에 완전히 쓰고 rename — 중간에 실패해도 기존 파일을 덮어쓰지 않는다.
+        var tmp = path + ".tmp";
+        try
+        {
+            using (var doc = SpreadsheetDocument.Create(tmp, SpreadsheetDocumentType.Workbook))
+            {
         var wbPart = doc.AddWorkbookPart();
         wbPart.Workbook = new Workbook();
 
@@ -320,6 +325,15 @@ public sealed class XlsxCreateTool : ITool
                 Name = string.IsNullOrWhiteSpace(sheet.Name) ? $"Sheet{sheetId}" : sheet.Name!,
             });
             sheetId++;
+            }
+
+            File.Move(tmp, path, overwrite: true);
+            }
+        }
+        catch
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+            throw;
         }
     }
 

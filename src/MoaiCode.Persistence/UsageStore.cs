@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MoaiCode.Core;
 
 namespace MoaiCode.Persistence;
 
@@ -113,7 +114,8 @@ public sealed class UsageStore
             }
 
             var doc = new Doc { Since = Since.ToString("o"), Models = _models };
-            File.WriteAllText(_path, JsonSerializer.Serialize(doc, Json));
+            // 원자적 쓰기(tmp+fsync+rename) — 직접 truncate 는 크래시 시 통계 파일을 깨뜨린다.
+            AtomicFile.WriteAllText(_path, JsonSerializer.Serialize(doc, Json));
         }
         catch
         {

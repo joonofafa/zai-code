@@ -135,6 +135,8 @@ public sealed class BackgroundShellRegistry
 
     public static BackgroundShellRegistry Shared { get; } = new();
 
+    private const int MaxTrackedShells = 50;   // 완료 셸 무한 누적 방지 상한
+
     private readonly ConcurrentDictionary<string, BackgroundShell> _shells = new();
     private readonly int _maxChars;
     private int _seq;
@@ -163,7 +165,32 @@ public sealed class BackgroundShellRegistry
 
         shell.Track(run);
         _shells[id] = shell;
+        Prune();
         return shell;
+    }
+
+    // 상한 초과 시 오래된 종료(completed/killed) 셸부터 제거. 실행 중 셸은 절대 건드리지 않고,
+    // 최근 종료 셸은 모델이 BashOutput 으로 늦게 읽을 수 있으므로 즉시 지우지 않고 상한으로 관리.
+    private void Prune()
+    {
+        if (_shells.Count <= MaxTrackedShells)
+        {
+            return;
+        }
+
+        var done = _shells.Values
+            .Where(s => s.Status != BackgroundShellStatus.Running)
+            .OrderBy(s => s.StartedAt)
+            .ToList();
+        foreach (var s in done)
+        {
+            if (_shells.Count <= MaxTrackedShells)
+            {
+                break;
+            }
+
+            _shells.TryRemove(s.Id, out _);
+        }
     }
 
     public BackgroundShell? Get(string id) => _shells.TryGetValue(id, out var s) ? s : null;

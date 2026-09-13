@@ -314,8 +314,13 @@ public sealed class PptxCreateTool : ITool
 
     private static List<PptxLayoutCheck.Issue> Write(string path, string? template, List<SlideIn> slides, string workingDir)
     {
+        // 원자적 생성: tmp 에 완전히 쓰고 rename — 중간에 실패해도 기존 파일을 덮어쓰지 않는다.
+        var tmp = path + ".tmp";
         var issues = new List<PptxLayoutCheck.Issue>();
-        using var doc = PresentationDocument.Create(path, PresentationDocumentType.Presentation);
+        try
+        {
+            using (var doc = PresentationDocument.Create(tmp, PresentationDocumentType.Presentation))
+            {
         var presPart = doc.AddPresentationPart();
         presPart.Presentation = new P.Presentation();
 
@@ -415,6 +420,15 @@ public sealed class PptxCreateTool : ITool
             slideIdList,
             new SlideSize { Cx = (int)SlideW, Cy = (int)SlideH },
             new NotesSize { Cx = 6858000, Cy = 9144000 });
+            }
+
+            File.Move(tmp, path, overwrite: true);
+        }
+        catch
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+            throw;
+        }
 
         return issues;
     }
