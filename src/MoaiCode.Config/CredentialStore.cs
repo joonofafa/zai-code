@@ -58,53 +58,7 @@ public sealed class FileCredentialStore : ICredentialStore
 
     private void Save(Dictionary<string, string> dict)
     {
-        var dir = Path.GetDirectoryName(_path);
-        if (!string.IsNullOrEmpty(dir))
-        {
-            Directory.CreateDirectory(dir);
-            if (!OperatingSystem.IsWindows())
-            {
-                try
-                {
-                    // 부모 디렉토리도 사용자 전용(0700).
-                    File.SetUnixFileMode(dir,
-                        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-                }
-                catch (IOException) { }
-                catch (UnauthorizedAccessException) { }
-            }
-        }
-
-        var json = JsonSerializer.Serialize(dict);
-
-        // Race-free write: 임시파일에 쓰고 chmod 후 원자적 이동.
-        // (File.WriteAllText 이후 chmod 하면 짧게나마 world-readable 창이 열림.)
-        var tmp = _path + ".tmp";
-        try
-        {
-            // 임시파일 생성 즉시 0600 적용 (world-readable window 회피).
-            using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
-            {
-                if (!OperatingSystem.IsWindows())
-                {
-                    try
-                    {
-                        File.SetUnixFileMode(tmp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-                    }
-                    catch (IOException) { }
-                    catch (UnauthorizedAccessException) { }
-                }
-                var bytes = System.Text.Encoding.UTF8.GetBytes(json);
-                fs.Write(bytes, 0, bytes.Length);
-            }
-
-            // 원자적 교체 (동일 파일시스템). File.Move 는 퍼미션을 유지하므로 재적용 불필요.
-            File.Move(tmp, _path, overwrite: true);
-        }
-        catch
-        {
-            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
-            throw;
-        }
+        // Race-free write: 임시파일(생성 순간 0600)에 쓰고 원자적 이동. 공용 헬퍼 사용(SecureFile).
+        SecureFile.Write(_path, JsonSerializer.SerializeToUtf8Bytes(dict), lockDownDir: true);
     }
 }

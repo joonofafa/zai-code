@@ -75,12 +75,9 @@ public static class SettingsWriter
 
     private static void Write(string path, JsonObject obj)
     {
-        var dir = Path.GetDirectoryName(path);
-        if (!string.IsNullOrEmpty(dir))
-        {
-            Directory.CreateDirectory(dir);
-        }
-
-        File.WriteAllText(path, obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        // 설정에는 프록시 자격증명 등 민감값이 섞일 수 있다 — 보안 쓰기(임시파일 0600 + 원자적 rename).
+        // 직접 truncate 쓰기는 크래시 시 파일을 망가뜨리므로 쓰지 않는다.
+        var json = obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+        SecureFile.Write(path, System.Text.Encoding.UTF8.GetBytes(json));
     }
 }

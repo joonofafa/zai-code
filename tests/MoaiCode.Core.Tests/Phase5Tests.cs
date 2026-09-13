@@ -233,6 +233,23 @@ public class CredentialStoreTests : IDisposable
         Assert.Equal("zai-test", new FileCredentialStore(_path).Get("ZAI_API_KEY"));
         Assert.Contains("ZAI_API_KEY", new FileCredentialStore(_path).Keys());
     }
+
+    [Fact]
+    public void Set_writes_file_with_owner_only_permissions()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return; // Unix 파일 모드 없음
+        }
+
+        var store = new FileCredentialStore(_path);
+        store.Set("ZAI_API_KEY", "secret");
+
+        var mode = File.GetUnixFileMode(_path);
+        Assert.True((mode & (UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.OtherRead | UnixFileMode.OtherWrite)) == 0,
+            $"credentials.json must not be group/other readable, got {mode}");
+        Assert.False(File.Exists(_path + ".tmp"), "temp file must not linger");
+    }
 }
 
 public class HistoryStoreTests : IDisposable

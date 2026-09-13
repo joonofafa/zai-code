@@ -79,6 +79,11 @@ public static class MoaiLog
             var ip = IPAddress.TryParse(host, out var parsed)
                 ? parsed
                 : Dns.GetHostAddresses(host).FirstOrDefault() ?? throw new InvalidOperationException("host not resolvable");
+            if (!IsPrivateNetwork(ip))
+            {
+                throw new InvalidOperationException("UDP log target must be a private/loopback address");
+            }
+
             _udpEndpoint = new IPEndPoint(ip, port);
             _udp = new UdpClient();
             Info($"UDP log trace enabled -> {host}:{port}");
@@ -88,6 +93,27 @@ public static class MoaiLog
             _udp = null;
             _udpEndpoint = null; // 설정 실패는 무시(파일 로깅은 계속).
         }
+    }
+
+    // 평문 UDP 는 LAN 밖으로 새어나가면 안 된다 — 루프백/사설 대역(RFC1918)/IPv6 ULA·link-local 만 허용.
+    // 공인 주소(개발자가 우연히 지정한 원격 수집기 등)는 거부: 로그엔 프롬프트 조각이 흐른다(Udp/UdpBlob).
+    private static bool IsPrivateNetwork(IPAddress ip)
+    {
+        if (ip.AddressFamily == AddressFamily.InterNetworkV6)
+        {
+            if (ip.IsIPv4MappedToIPv6)
+            {
+                return IsPrivateNetwork(ip.MapToIPv4());
+            }
+
+            return ip.IsIPv6UniqueLocal || ip.IsIPv6LinkLocal; // fc00::/7, fe80::/10
+        }
+
+        var b = ip.GetAddressBytes();
+        return IPAddress.IsLoopback(ip)
+            || b[0] == 10                                        // 10/8
+            || (b[0] == 192 && b[1] == 168)                     // 192.168/16
+            || (b[0] == 172 && b[1] >= 16 && b[1] <= 31);       // 172.16/12
     }
 
     private static void SendUdp(string line)
