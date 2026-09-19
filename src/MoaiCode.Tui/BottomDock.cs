@@ -606,7 +606,12 @@ public sealed class BottomDock
             sb.Append($"\x1b[{row};1H\x1b[2K");
         }
 
-        sb.Append($"\x1b[1;{Math.Max(1, h - _reserved)}r");   // 새 크기로 스크롤 영역 재설정
+        var regionBottom = Math.Max(1, h - _reserved);
+        sb.Append($"\x1b[1;{regionBottom}r");   // 새 크기로 스크롤 영역 재설정(DECSTBM 은 커서를 홈(1,1)에 둔다)
+        // 재정렬: 영역 재설정까지 거치면 출력 커서가 홈(1,1)에 남아, 다음 출력이 대화 본문 위를
+        // 화면 맨 위부터 덮어썼다. 새 영역 하단에 재파킹한다 — \r\n 로 영역을 1줄 스크롤해 파킹 줄의
+        // 기존 내용은 위로 밀어 보존하고, 이후 출력은 빈 밑줄에서 이어진다(본문 유실 0).
+        sb.Append($"\x1b[{regionBottom};1H\r\n");
         lock (_drawLock)
         {
             Console.Write(sb.ToString());
