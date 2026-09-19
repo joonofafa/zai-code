@@ -530,15 +530,18 @@ public sealed class ReplApp
                         pendingCalls[t.Block.Id] = t.Block;
                         _producedOutputInTurn = true;
                         RenderToolCall(t);
+                        _dock?.NoteScrollOutput();   // 잔상이 새 출력 밑에 묻힘 — 되돌아올 본문 보호
                         has = await MoveNextWithSpinnerAsync(e, L10n.Get("repl.spinner.working"), tct).ConfigureAwait(false);
                         continue;
                     case ToolExecuted x:
                         pendingCalls.TryGetValue(x.ToolUseId, out var callBlock);
                         RenderToolResult(x, callBlock);
+                        _dock?.NoteScrollOutput();   // 잔상이 새 출력 밑에 묻힘 — 되돌아올 본문 보호
                         has = await MoveNextWithSpinnerAsync(e, L10n.Get("repl.spinner.working"), tct).ConfigureAwait(false);
                         continue;
                     case StreamNotice sn:
                         AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(sn.Text)}[/]");
+                        _dock?.NoteScrollOutput();
                         has = await MoveNextWithSpinnerAsync(e, L10n.Get("repl.spinner.working"), tct).ConfigureAwait(false);
                         continue;
                     case TurnCompleted:
@@ -949,6 +952,7 @@ public sealed class ReplApp
             if (!string.IsNullOrWhiteSpace(cleanText))
             {
                 _producedOutputInTurn = true;
+                _dock?.NoteScrollOutput();   // 잔상이 새 출력 밑에 묻힘 — 되돌아올 본문 보호
                 AnsiConsole.Markup("[aqua]Z.ai Code[/] ");
                 AnsiConsole.Markup(Markup.Escape(cleanText));
                 AnsiConsole.WriteLine();
@@ -1019,6 +1023,7 @@ public sealed class ReplApp
         if (!string.IsNullOrWhiteSpace(finalText))
         {
             _producedOutputInTurn = true;
+            _dock?.NoteScrollOutput();   // 잔상이 새 출력 밑에 묻힘 — 되돌아올 본문 보호
             AnsiConsole.Write(BuildRenderedPanel(finalText));
         }
 

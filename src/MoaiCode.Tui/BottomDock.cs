@@ -21,7 +21,7 @@ public sealed class BottomDock
     private IReadOnlyList<string> _slash = Array.Empty<string>();  // ghost 자동완성용 명령 목록
     private bool _shell;   // '!' 셸 모드: 입력창 빨강 배경 + '❯'/'!' 미표시. 버퍼엔 '!'를 넣지 않는다.
     private int _lastW, _lastH;   // 마지막으로 그린 터미널 크기(리사이즈 감지용)
-    private bool _shrunkRecently; // 직전 리사이즈에서 축소했는가(재성장 시 스크롤백 잔상 되돌아옴 방지)
+    private int _ghostRows;       // 축소로 스크롤백에 밀려난 composer 잔상 줄 수(재성장 시 되돌아옴 — 지워야 할 대상)
 
     // 입력 상태(영구): 프롬프트 편집과 턴 중 편집이 같은 버퍼·히스토리를 공유해 입력창이 항상 동일하게
     // 유지되도록 필드로 둔다(예전엔 ReadLine 지역변수였음).
@@ -268,6 +268,14 @@ public sealed class BottomDock
 
     /// <summary>턴 종료 — 턴 모드 해제. 다음 ReadLine 의 Draw 가 실제 커서로 정상 렌더한다.</summary>
     public void EndTurnMode() => _turnMode = false;
+
+    /// <summary>
+    /// 턴/에코 중 스크롤 영역에 새 출력이 흘렀음을 알린다. 축소로 밀려난 잔상(_ghostRows)은 새 출력
+    /// 밑에 묻혀 재성장해도 화면으로 돌아오지 않는다. 정확한 묻힌 줄 수는 wrap 때문에 셀 수 없어
+    /// 누적을 전부 무효화한다 — 되돌아온 <b>대화 본문</b>을 잔상으로 착각해 지우는 유실(불가결)보다
+    /// 잔상이 남는 화면 잔재(미관)가 훨씬 안전하다.
+    /// </summary>
+    public void NoteScrollOutput() => _ghostRows = 0;
 
     /// <summary>턴 중 여부(ReplApp 이 이벤트 라우팅 판단에 사용).</summary>
     public bool InTurn => _turnMode;
@@ -537,6 +545,15 @@ public sealed class BottomDock
         var delta = h - _lastH;                                 // 리사이즈로 인한 세로 이동량
         var first = Math.Max(1, _lastH + delta - _reserved + 1 - 4);   // 마진 포함 옛 composer 의 새 상단
         var last = Math.Min(h, _lastH + delta);                 // 옛 화면 하단의 새 위치
+        // 되돌아온 잔상 밴드: 축소 때 스크롤백으로 밀려난 composer 줄이 성장으로 화면에 되돌아온 영역.
+        // 되돌아온 만큼 위로 확장해 지운다(ED 금지 — 스크롤백 본문 보존). 턴 중 경로(HandleResizeInTurn)와
+        // 같은 원리를 프롬프트 경로에도 적용 — 여기 없어서 축소→재성장 시 이중 상태줄 잔상이 남았다.
+        var returned = Math.Min(_ghostRows, Math.Max(0, delta));
+        if (returned > 0)
+        {
+            first = Math.Max(1, first - returned);
+        }
+
         var sb = new StringBuilder("\x1b[r");                  // 스크롤 영역 해제
         for (var row = first; row <= last; row++)
         {
@@ -546,7 +563,7 @@ public sealed class BottomDock
         Console.Write(sb.ToString());
         _installed = false;
         _reserved = 0;
-        _shrunkRecently = false;   // 프롬프트 경로 재설치 — 잔상 플래그 초기화
+        _ghostRows = 0;   // 잔상 밴드를 지웠으니 누적 초기화(프롬프트 경로는 재설치 경로)
         Draw(buf, pos);   // Draw 가 새 크기로 재설치(스크롤로 예약 줄 확보 + composer 재그림)
     }
 
@@ -566,17 +583,21 @@ public sealed class BottomDock
         var delta = h - _lastH;
         var first = Math.Max(1, _lastH + delta - _reserved + 1 - 4);
         var last = Math.Min(h, _lastH + delta);
-        // 축소했다가 다시 키우면, 축소 때 스크롤백으로 밀려난 옛 composer 행이 화면으로 되돌아와
-        // 새 입력창 바로 위에 중복 잔상으로 남는다(상태줄 2줄). 커진 만큼 위쪽도 같이 지운다.
-        if (delta > 0 && _shrunkRecently)
+        // 축소했다가 다시 키우면, 축소 때 스크롤백으로 밀려난 옛 composer 행이 화면으로 되돌아온다.
+        // 되돌아온 줄 수 = min(누적 밀려남 _ghostRows, 이번 성장량 delta) — 정확히 그만큼만 위로
+        // 확장해 지운다. 옛 플래그 방식(_shrunkRecently + delta 1회분)은 축소 반복 시 지움이 부족했고
+        // (잔상 잔존), 되돌아온 줄이 대화 본문일 때도 지워 유실을 냈다. 누적 계산이 둘 다 해결한다.
+        var returned = Math.Min(_ghostRows, Math.Max(0, delta));
+        if (returned > 0)
         {
-            first = Math.Max(1, first - delta);
+            first = Math.Max(1, first - returned);
+            _ghostRows -= returned;
         }
 
-        _shrunkRecently = delta < 0 || _shrunkRecently;
-        if (delta > 0)
+        if (delta < 0)
         {
-            _shrunkRecently = false;   // 커진 시점의 되돌아온 잔상까지 지웠으니 플래그 해제
+            // 축소: 화면 하단에 고정돼 있던 composer 줄이 스크롤백으로 밀려난 줄 수를 누적.
+            _ghostRows += -delta;
         }
 
         var sb = new StringBuilder();
