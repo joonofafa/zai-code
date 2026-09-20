@@ -64,8 +64,12 @@ public sealed record Settings
     /// </summary>
     public bool ConfineToWorkspace { get; init; } = true;
 
-    /// <summary>모델 컨텍스트 창(토큰). 컴팩션/복구 임계선의 기준 — 약 70%에서 선제 컴팩션.</summary>
-    public int ContextWindowTokens { get; init; } = 200_000;
+    /// <summary>
+    /// 모델 컨텍스트 창(토큰). 컴팩션/복구 임계선의 기준 — 약 70%에서 선제 컴팩션.
+    /// 0(기본) = 자동: 현재 모델 id 로 ZaiEndpoint 스펙 테이블을 조회한다(glm-5.3 → 1M).
+    /// 모델별 실측과 다르면 이 키로 명시 오버라이드.
+    /// </summary>
+    public int ContextWindowTokens { get; init; }
 
     public static Settings Default { get; } = new();
 }

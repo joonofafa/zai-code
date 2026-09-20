@@ -40,6 +40,34 @@ public static class ZaiEndpoint
     /// <summary>기본 비전 모델. 코딩 엔드포인트·코딩 키로 그대로 호출 검증됨(2026-09-12).</summary>
     public const string DefaultVisionModel = "glm-4.6v";
 
+    /// <summary>
+    /// 모델별 컨텍스트 창(토큰). 공식 문서 기준(2026-09-20): docs.z.ai/guides/llm, /guides/vlm.
+    /// /models API는 스펙 메타데이터를 주지 않아 내장 테이블로 유지한다. 새 모델은 여기 추가.
+    /// 미등록 모델은 <see cref="FallbackContextWindow"/>를 쓴다.
+    /// </summary>
+    private static readonly Dictionary<string, int> ContextWindows = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["glm-5.3"] = 1_000_000,
+        ["glm-5.3-flash"] = 1_000_000,
+        ["glm-5.3-flashx"] = 1_000_000,
+        ["glm-5.2"] = 1_000_000,
+        ["glm-5.1"] = 200_000,
+        ["glm-5"] = 200_000,
+        ["glm-5-turbo"] = 200_000,      // 문서 미고시 — glm-5 와 같은 세대로 추정
+        ["glm-4.7"] = 200_000,          // 문서 미고시 — glm-4.6(200K) 후속으로 추정
+        ["glm-4.6"] = 200_000,
+        ["glm-4.6v"] = 200_000,          // 비전 모델도 4.6 세대와 동일
+        ["glm-4.5"] = 128_000,
+        ["glm-4.5-air"] = 128_000,
+    };
+
+    /// <summary>테이블에 없는 모델의 컨텍스트 창. 보수적 하한.</summary>
+    public const int FallbackContextWindow = 200_000;
+
+    /// <summary>모델 id → 컨텍스트 창. 등록되지 않은 id 는 폴백 값을 돌려준다.</summary>
+    public static int ContextWindow(string? modelId)
+        => modelId is not null && ContextWindows.TryGetValue(modelId, out var w) ? w : FallbackContextWindow;
+
     /// <summary>공식 z.ai Coding Plan 엔드포인트인지. Coding Plan 키는 여기서만 유효하다.</summary>
     public static bool IsOfficial(string? value)
         => Uri.TryCreate(value, UriKind.Absolute, out var uri)

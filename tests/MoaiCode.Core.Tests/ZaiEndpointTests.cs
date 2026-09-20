@@ -1,3 +1,4 @@
+using MoaiCode.Config;
 using MoaiCode.Core;
 using Xunit;
 
@@ -38,4 +39,24 @@ public sealed class ZaiEndpointTests
             Environment.SetEnvironmentVariable("ZAI_BASE_URL", prev);
         }
     }
+
+    [Theory]
+    [InlineData("glm-5.3", 1_000_000)]
+    [InlineData("glm-5.3-flash", 1_000_000)]
+    [InlineData("glm-5.3-flashx", 1_000_000)]
+    [InlineData("glm-5.2", 1_000_000)]
+    [InlineData("glm-5.1", 200_000)]
+    [InlineData("glm-4.6", 200_000)]
+    [InlineData("glm-4.5", 128_000)]
+    [InlineData("glm-4.5-air", 128_000)]
+    [InlineData("GLM-5.3", 1_000_000)]          // 대소문자 무시
+    [InlineData("glm-9.9", 200_000)]              // 미등록 → 폴백
+    [InlineData("", 200_000)]                     // 빈 id → 폴백
+    [InlineData(null, 200_000)]                   // null → 폴백
+    public void ContextWindow_returns_spec_or_fallback(string? modelId, int expected)
+        => Assert.Equal(expected, ZaiEndpoint.ContextWindow(modelId));
+
+    [Fact]
+    public void Default_context_window_setting_is_auto()
+        => Assert.Equal(0, Settings.Default.ContextWindowTokens);
 }

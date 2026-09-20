@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Security;
 using MoaiCode.Config;
+using MoaiCode.Core;
 using MoaiCode.Core.Agent;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Memory;
@@ -206,7 +207,10 @@ public static class AppBootstrap
 
         var engine = new QueryEngine(
             model, toolList, gate, observer, settings.MaxTurns,
-            contextWindowTokens: settings.ContextWindowTokens,
+            // 컨텍스트 창: 명시 설정(contextWindow) > 모델별 스펙 테이블 자동 조회. 기본 모델 glm-5.3 → 1M.
+            contextWindowTokens: settings.ContextWindowTokens > 0
+                ? settings.ContextWindowTokens
+                : ZaiEndpoint.ContextWindow((model as IModelControl)?.CurrentModel),
             pendingTasks: () => taskStore.All().Any(t => t.Status != MoaiCode.Tools.Tasks.TaskStatus.Completed),
             maxToolResultChars: maxToolResultChars,
             harvestMemories: true,
