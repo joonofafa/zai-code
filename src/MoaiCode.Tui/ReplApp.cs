@@ -634,7 +634,21 @@ public sealed class ReplApp
         var modeTxt = L10n.Get(modeKey);
         var toggle = L10n.Get("repl.status.toggle");
         var model = ModelStatusLabel();
-        return $"{ansi}{modeTxt}\x1b[0m\x1b[38;5;249m ({toggle}) · {model}\x1b[0m";
+        var context = ContextLabel();
+        return $"{ansi}{modeTxt}\x1b[0m\x1b[38;5;249m ({toggle}) · {model}{(context.Length > 0 ? $" · {context}" : "")}\x1b[0m";
+    }
+
+    // 상태줄 Context 표기: 추정 컨텍스트 / 컨텍스트 창 백분율(Claude Code 와 동일 형식).
+    private string ContextLabel()
+    {
+        var window = _ctx.Engine.ContextWindowTokens;
+        if (window <= 0)
+        {
+            return string.Empty;
+        }
+
+        var pct = (int)Math.Clamp((long)_ctx.Engine.EstimatedContextTokens * 100 / window, 0, 100);
+        return L10n.Get("repl.status.context", pct);
     }
 
     // 상태줄 모델 표기: 난이도 티어(MOAI_MODEL_LOW/MID/HIGH)가 하나라도 설정돼 있으면
@@ -651,7 +665,7 @@ public sealed class ReplApp
 
         var def = CurrentModelLabel();
         static string Id(string s) { var i = s.LastIndexOf('/'); return (i >= 0 ? s[(i + 1)..] : s).Trim(); }
-        string T(string? v) => Id(string.IsNullOrWhiteSpace(v) ? def : v!);
+        string T(string? v) => CapitalizeModel(Id(string.IsNullOrWhiteSpace(v) ? def : v!));
         return $"L:{T(low)} M:{T(mid)} H:{T(high)}";
     }
 
@@ -1165,10 +1179,38 @@ public sealed class ReplApp
             : null;
 
     // /usage 집계·상태줄에 쓰는 현재 모델 라벨. 라이브 모델(/model) 우선, 없으면 프로바이더 설명에서.
+    // 표기는 Capital 형(Glm-5.3) — 소문자 시작보다 상태줄에서 읽기 좋다.
     private string CurrentModelLabel()
-        => !string.IsNullOrEmpty(_ctx.Models?.CurrentModel)
-            ? _ctx.Models!.CurrentModel
-            : ShortModel(_ctx.ProviderDesc);
+        => CapitalizeModel(
+            !string.IsNullOrEmpty(_ctx.Models?.CurrentModel)
+                ? _ctx.Models!.CurrentModel
+                : ShortModel(_ctx.ProviderDesc));
+
+    // glm-5.3 → Glm-5.3, glm-4.5-air → Glm-4.5-Air: 하이픈 구분 세그먼트별 첫 글자 대문자.
+    private static string CapitalizeModel(string? id)
+    {
+        if (string.IsNullOrEmpty(id))
+        {
+            return id ?? string.Empty;
+        }
+
+        var parts = id.Split('-');
+        var sb = new System.Text.StringBuilder(id.Length);
+        for (var i = 0; i < parts.Length; i++)
+        {
+            if (i > 0)
+            {
+                sb.Append('-');
+            }
+
+            if (parts[i].Length > 0)
+            {
+                sb.Append(char.ToUpperInvariant(parts[i][0])).Append(parts[i][1..]);
+            }
+        }
+
+        return sb.ToString();
+    }
 
     // ESC 워처: 턴 동안 백그라운드로 ESC 를 감지해 turnCts 를 취소. IsPrompting(권한/선택 위젯이
     // stdin 점유) 중에는 절대 키를 읽지 않아 입력 충돌을 피한다. non-blocking(KeyAvailable) 폴링.

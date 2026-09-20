@@ -106,6 +106,12 @@ public sealed class QueryEngine
 
     public IReadOnlyList<Message> Messages => _messages;
 
+    /// <summary>설정된 컨텍스트 창(토큰). 상태줄 Context % 의 분모.</summary>
+    public int ContextWindowTokens => _compactTokens * 100 / 70;   // _compactTokens = 70% 지점에서 역산
+
+    /// <summary>현재 대화의 추정 컨텍스트 토큰(chars/4). 컴팩션 판정과 같은 추정치.</summary>
+    public int EstimatedContextTokens => EstimateTokens(_messages);
+
     /// <summary>세션 누적 토큰 사용량 (/cost 표시용).</summary>
     public Usage CumulativeUsage { get; private set; } = new(0, 0);
 
