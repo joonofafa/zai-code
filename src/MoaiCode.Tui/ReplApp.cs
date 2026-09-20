@@ -638,7 +638,7 @@ public sealed class ReplApp
         return $"{ansi}{modeTxt}\x1b[0m\x1b[38;5;249m ({toggle}) · {model}{(context.Length > 0 ? $" · {context}" : "")}\x1b[0m";
     }
 
-    // 상태줄 Context 표기: 추정 컨텍스트 / 컨텍스트 창 백분율(Claude Code 와 동일 형식).
+    // 상태줄 Context 표기: 추정 컨텍스트 백분율 + 컨텍스트 창 크기(Claude Code 와 동일 형식).
     private string ContextLabel()
     {
         var window = _ctx.Engine.ContextWindowTokens;
@@ -648,7 +648,25 @@ public sealed class ReplApp
         }
 
         var pct = (int)Math.Clamp((long)_ctx.Engine.EstimatedContextTokens * 100 / window, 0, 100);
-        return L10n.Get("repl.status.context", pct);
+        return L10n.Get("repl.status.context", pct, HumanizeTokens(window));
+    }
+
+    // 토큰 수 사람 표기: 1_000_000 → "1M", 200_000 → "200K", 1_500_000 → "1.5M", 999 → "999".
+    private static string HumanizeTokens(int tokens)
+    {
+        if (tokens >= 1_000_000 && tokens % 100_000 == 0)
+        {
+            var m = tokens / 1_000_000.0;
+            var s = m.ToString("0.#");
+            return $"{s}M";
+        }
+
+        if (tokens >= 1_000)
+        {
+            return $"{tokens / 1_000}K";
+        }
+
+        return tokens.ToString();
     }
 
     // 상태줄 모델 표기: 난이도 티어(MOAI_MODEL_LOW/MID/HIGH)가 하나라도 설정돼 있으면
