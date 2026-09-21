@@ -226,12 +226,14 @@ public static class SelectList
         }
     }
 
-    // 삭제로 항목 수가 줄면, 기존 항목 영역을 첫 줄부터 지우고(줄 수 감소 잔상 방지) 새 목록으로 다시 그린다.
+    // 삭제로 항목 수가 줄면, 항목 블록만 지우고(제목·도움말 줄은 그대로) 새 목록으로 다시 그린다.
+    // 제목·도움말까지 지우면 그 두 줄이 재그리기 안 돼 화면 전체가 위로 끌려올라가는 잔상이 남는다.
+    // DL 은 스크롤 영역 안에서만 동작하므로 영역 밖 composer 는 침범하지 않는다.
     private static void RedrawAfterDelete(int oldVisible, IReadOnlyList<string> items, int idx)
     {
         if (!Console.IsOutputRedirected)
         {
-            EraseWidgetLines(oldVisible + 1 + (_titleShown ? 1 : 0)); // 항목 + 도움말 + 제목(있으면)
+            Console.Write($"\x1b[{oldVisible}A\r\x1b[{oldVisible}M");   // 항목 블록만 삭제
         }
 
         Render(items, idx, first: true);
