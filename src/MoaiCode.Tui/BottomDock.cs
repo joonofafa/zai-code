@@ -64,8 +64,8 @@ public sealed class BottomDock
         catch { return 80; }
     }
 
-    /// <summary>하단 고정이 의미 있는 최소 높이(활동/라인/입력/라인/상태 = 최소 5줄 예약 + 스크롤 여유).</summary>
-    public static bool Fits() => Height() >= 9;
+    /// <summary>하단 고정이 의미 있는 최소 높이(라인/입력/라인/상태 = 최소 4줄 예약 + 스크롤 여유).</summary>
+    public static bool Fits() => Height() >= 11;
 
     /// <summary>스크롤 영역 해제 + 커서를 맨 아래로. REPL 종료/전환 시 반드시 호출.</summary>
     public void Teardown()
@@ -98,8 +98,8 @@ public sealed class BottomDock
         var blen = LineEditor.DisplayWidth(buf.ToString());
         var showGhost = !_shell && ghost.Length > 0 && pos == buf.Length && inputRows == 1
                         && plen + blen + LineEditor.DisplayWidth(ghost) <= w;
-        // 레이아웃(위→아래): 입력행(배경색으로 구분) / 상태줄("act mode"). 구분선 없음.
-        var reserved = inputRows + 1;
+        // 레이아웃(위→아래): 구분선 / 입력행(배경색으로 구분) / 구분선 / 상태줄. Claude Code 와 동일한 형태.
+        var reserved = inputRows + 3;
         var scrollBottom = h - reserved;              // 마지막 스크롤 행(1-기반)
         if (scrollBottom < 1)
         {
@@ -113,7 +113,7 @@ public sealed class BottomDock
             reserved = _reserved;
             scrollBottom = h - reserved;
             if (scrollBottom < 1) scrollBottom = 1;
-            inputRows = Math.Min(inputRows, Math.Max(1, reserved - 1));
+            inputRows = Math.Min(inputRows, Math.Max(1, reserved - 3));
         }
 
         var sb = new StringBuilder();
@@ -152,8 +152,11 @@ public sealed class BottomDock
             _reserved = reserved;
         }
 
-        var inputRow0 = scrollBottom + 1;
+        var inputRow0 = scrollBottom + 2;
         var statusRow = inputRow0 + inputRows;
+
+        // 구분선(입력창 위): 옅은 가로선 — Claude Code 스타일. 행 전체를 연한 회색 '─' 로.
+        sb.Append($"\x1b[{scrollBottom + 1};1H\x1b[2K").Append(Separator(w));
 
         // 입력행: 각 행을 clear 후 절대 좌표로 직접 출력(auto-wrap 미사용).
         // '!' 셸 모드면 어두운 빨강 배경 + '❯' 숨김(폭 유지 위해 공백 2칸), 아니면 어두운 회색 배경 + 초록 '❯'.
@@ -188,7 +191,8 @@ public sealed class BottomDock
             if (bg.Length > 0) sb.Append("\x1b[K\x1b[0m"); else sb.Append("\x1b[0m");
         }
 
-        // 상태줄(입력창 아래). 구분선 없음.
+        // 상태줄(입력창 아래). 그 위에 구분선 — 상태줄과도 시각적으로 분리.
+        sb.Append($"\x1b[{statusRow - 1};1H\x1b[2K").Append(Separator(w));
         sb.Append($"\x1b[{statusRow};1H\x1b[2K").Append(statusOverride ?? _status());
 
         // 커서를 편집 위치로(절대 좌표) + 커서 표시(입력 차례). 처리 중엔 숨겨져 있다가 여기서 다시 보임.
@@ -218,6 +222,10 @@ public sealed class BottomDock
             Console.Write(sb.ToString());
         }
     }
+
+    // 구분선 렌더: 폭만큼 옅은 회색 '─'. 배경색 리셋(0)으로 입력행 배경이 새지 않게 한다.
+    private static string Separator(int w)
+        => "\x1b[38;5;240m" + new string('─', w) + "\x1b[0m";
 
     // 입력 확정: 스크롤 영역을 해제해 턴 동안 '일반 터미널'로 되돌린다(→ 마우스휠 네이티브 스크롤백 정상).
     // 하단 박스를 지우고 입력한 명령을 일반 흐름으로 echo. 하단 고정은 다음 ReadLine 의 Draw 가 다시 세운다.
@@ -543,13 +551,12 @@ public sealed class BottomDock
     {
         var h = Height();
         var delta = h - _lastH;                                 // 리사이즈로 인한 세로 이동량
-        var first = Math.Max(1, _lastH + delta - _reserved + 1 - 4);   // 마진 포함 옛 composer 의 새 상단
+        var first = Math.Max(1, _lastH + delta - _reserved + 1 - 6);   // 마진 포함 옛 composer 의 새 상단(구분선 2줄 반영)
         var last = Math.Min(h, _lastH + delta);                 // 옛 화면 하단의 새 위치
         // 되돌아온 잔상 밴드: 축소 때 스크롤백으로 밀려난 composer 줄이 성장으로 화면에 되돌아온 영역.
         // 되돌아온 만큼 위로 확장해 지운다(ED 금지 — 스크롤백 본문 보존). 턴 중 경로(HandleResizeInTurn)와
         // 같은 원리를 프롬프트 경로에도 적용 — 여기 없어서 축소→재성장 시 이중 상태줄 잔상이 남았다.
-        var returned = Math.Min(_ghostRows, Math.Max(0, delta));
-        if (returned > 0)
+        var returned = Math.Min(_ghostRows, Math.Max(0, delta));        if (returned > 0)
         {
             first = Math.Max(1, first - returned);
         }
@@ -581,7 +588,7 @@ public sealed class BottomDock
 
         // 옛 composer 잔상을 (newH-oldH) 평행이동 위치에서 행 단위로 지운다(ED 금지 — 스크롤백 보존).
         var delta = h - _lastH;
-        var first = Math.Max(1, _lastH + delta - _reserved + 1 - 4);
+        var first = Math.Max(1, _lastH + delta - _reserved + 1 - 6);   // 마진 포함 옛 composer 의 새 상단(구분선 2줄 반영)
         var last = Math.Min(h, _lastH + delta);
         // 축소했다가 다시 키우면, 축소 때 스크롤백으로 밀려난 옛 composer 행이 화면으로 되돌아온다.
         // 되돌아온 줄 수 = min(누적 밀려남 _ghostRows, 이번 성장량 delta) — 정확히 그만큼만 위로
