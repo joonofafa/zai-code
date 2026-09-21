@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.OpenXml;
 
@@ -116,4 +117,27 @@ public static class FontResolver
     /// <summary>텍스트에 맞는 EA 폰트(없으면 null = 라틴만). docx/pptx 런에서 사용.</summary>
     public static string? EastAsianFor(string? text) =>
         DetectLang(text) is { } lang ? ResolveEastAsian(lang) : null;
+
+    /// <summary>언어코드가 동아시아(ko/ja/zh)면 그대로, 아니면 null. 앱 언어 → 문서 기본 폰트 결정용.</summary>
+    public static string? EastAsianLangOrNull(string? lang) =>
+        !string.IsNullOrWhiteSpace(lang) && Chains.ContainsKey(lang.Trim()) ? lang.Trim() : null;
+
+    /// <summary>런 프루핑 언어 태그(BCP-47). EA 미감지 시 en-US.</summary>
+    public static string BcpTag(string? lang) => lang switch
+    {
+        "ko" => "ko-KR",
+        "ja" => "ja-JP",
+        "zh" => "zh-CN",
+        _ => "en-US",
+    };
+
+    /// <summary>
+    /// 앱 언어(L10n)가 동아시아면 그 언어의 기본 폰트(맑은 고딕 등), 아니면 null.
+    /// 생성 문서(pptx/docx/xlsx)의 기본 폰트를 언어에 맞춰 통일하는 데 쓴다(라틴 기본값 대체).
+    /// </summary>
+    public static string? AppDefaultEastAsianFont()
+    {
+        var lang = EastAsianLangOrNull(L10n.CurrentLanguage);
+        return lang is null ? null : ResolveEastAsian(lang);
+    }
 }

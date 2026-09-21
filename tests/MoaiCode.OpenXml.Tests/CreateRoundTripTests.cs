@@ -2,6 +2,7 @@ using System.Text.Json;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Validation;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 using MoaiCode.Tools.OpenXml;
 using Xunit;
 
@@ -89,6 +90,34 @@ public sealed class CreateRoundTripTests : IDisposable
     }
 
     [Fact]
+    public async Task Docx_paragraph_indent_and_newlines_render()
+    {
+        await Run(new DocxCreateTool(), new
+        {
+            path = "indent.docx",
+            blocks = new object[]
+            {
+                new { type = "paragraph", text = "3. 세부 사항은 다음과 같습니다." },
+                new { type = "paragraph", text = "가. 대상 서비스: 연구개발망 Gitlab", indent = 1 },
+                new { type = "paragraph", text = "첫 줄\n둘째 줄" }, // \n → 줄바꿈(w:br)
+            },
+        });
+
+        using var doc = WordprocessingDocument.Open(Path.Combine(_dir, "indent.docx"), false);
+        Assert.Equal(0, Validate(doc));
+        var body = doc.MainDocumentPart!.Document.Body!;
+
+        // indent:1 문단에 좌측 들여쓰기(720twips=0.5")가 적용됨.
+        var indented = body.Descendants<DocumentFormat.OpenXml.Wordprocessing.Paragraph>()
+            .First(p => p.InnerText.StartsWith("가."));
+        Assert.Equal("720", indented.ParagraphProperties!
+            .GetFirstChild<DocumentFormat.OpenXml.Wordprocessing.Indentation>()!.Left!.Value);
+
+        // 텍스트 내 \n 이 줄바꿈(w:br)으로 렌더됨.
+        Assert.NotEmpty(body.Descendants<DocumentFormat.OpenXml.Wordprocessing.Break>());
+    }
+
+    [Fact]
     public async Task Extractor_preserves_table_structure_as_markdown()
     {
         await Run(new DocxCreateTool(), new
@@ -155,6 +184,33 @@ public sealed class CreateRoundTripTests : IDisposable
         // 외부(우리가 안 심은) 파일은 null.
         await File.WriteAllTextAsync(Path.Combine(_dir, "plain.txt"), "hi");
         Assert.Null(OfficeDocId.Read(Path.Combine(_dir, "plain.txt")));
+    }
+
+    [Fact]
+    public async Task Created_docs_carry_theme_stamp()
+    {
+        // 생성 3종은 테마(색·폰트)를 커스텀 속성으로 심어, COM 편집 툴이 기본값으로 읽을 수 있어야 한다.
+        await Run(new PptxCreateTool(), new { path = "th.pptx", accent = "#E83D45", bg = "#FFFFFF", text_color = "#1F2937",
+            slides = new[] { new { title = "t", bullets = new[] { "b" } } } });
+        await Run(new DocxCreateTool(), new { path = "th.docx", accent = "E83D45", title = "T", paragraphs = new[] { "p" } });
+        await Run(new XlsxCreateTool(), new { path = "th.xlsx", body_font = "Malgun Gothic", sheets = new[] { new { name = "s", rows = new[] { new[] { "a" } } } } });
+
+        var ppt = DocThemeStamp.Read(Path.Combine(_dir, "th.pptx"))!;
+        Assert.Equal("E83D45", ppt.Accent);
+        Assert.Equal("FFFFFF", ppt.Bg);
+        Assert.Equal("1F2937", ppt.Text);
+        Assert.False(string.IsNullOrEmpty(ppt.TitleFont));
+
+        var doc = DocThemeStamp.Read(Path.Combine(_dir, "th.docx"))!;
+        Assert.Equal("E83D45", doc.Accent);
+
+        var xls = DocThemeStamp.Read(Path.Combine(_dir, "th.xlsx"))!;
+        Assert.Equal("Malgun Gothic", xls.BodyFont);
+
+        // 스탬프 후에도 문서는 유효하다.
+        Assert.Equal("E83D45", DocThemeStamp.Read(Path.Combine(_dir, "th.pptx"))!.Accent);
+        using var p = PresentationDocument.Open(Path.Combine(_dir, "th.pptx"), false);
+        Assert.Equal(0, Validate(p));
     }
 
     [Fact]
@@ -300,6 +356,139 @@ public sealed class CreateRoundTripTests : IDisposable
         Assert.NotEmpty(shapes);
         Assert.All(shapes, sh => Assert.NotNull(sh.ShapeProperties?.Transform2D));
         Assert.Contains("제목 슬라이드", slide.InnerText); // 텍스트가 실제로 들어있음
+    }
+
+    [Fact]
+    public async Task Pptx_korean_language_uses_malgun_gothic_default_font()
+    {
+        // 앱 언어=ko 면 문서 기본 폰트가 Calibri Light 가 아니라 맑은 고딕이어야 한다(빌 리포트).
+        var prev = L10n.CurrentLanguage;
+        try
+        {
+            L10n.SetLanguage("ko");
+            await Run(new PptxCreateTool(), new
+            {
+                path = "ko.pptx",
+                slides = new[] { new { title = "2026년 진행 보고", bullets = new[] { "요점 1" } } },
+            });
+
+            using var doc = PresentationDocument.Open(Path.Combine(_dir, "ko.pptx"), false);
+            Assert.Equal(0, Validate(doc));
+
+            // 테마 major/minor: Latin·EA 모두 맑은 고딕(Calibri Light/Calibri 대체).
+            var theme = doc.PresentationPart!.SlideMasterParts.First().ThemePart!.Theme;
+            var fs = theme.ThemeElements!.FontScheme!;
+            Assert.Equal("Malgun Gothic", fs.MajorFont!.LatinFont!.Typeface!.Value);
+            Assert.Equal("Malgun Gothic", fs.MinorFont!.LatinFont!.Typeface!.Value);
+            Assert.Equal("Malgun Gothic", fs.MajorFont.EastAsianFont!.Typeface!.Value);
+            Assert.DoesNotContain("Calibri", theme.OuterXml); // 어디에도 Calibri 잔존 금지
+
+            // 제목 런: Latin·EA 폰트가 맑은 고딕이고 프루핑 언어 태그가 ko-KR.
+            var slide = doc.PresentationPart.SlideParts.First().Slide;
+            var titleRun = slide.Descendants<DocumentFormat.OpenXml.Drawing.Run>()
+                .First(r => r.Text?.Text == "2026년 진행 보고");
+            var rp = titleRun.RunProperties!;
+            Assert.Equal("Malgun Gothic", rp.GetFirstChild<DocumentFormat.OpenXml.Drawing.LatinFont>()!.Typeface!.Value);
+            Assert.Equal("Malgun Gothic", rp.GetFirstChild<DocumentFormat.OpenXml.Drawing.EastAsianFont>()!.Typeface!.Value);
+            Assert.Equal("ko-KR", rp.Language!.Value);
+        }
+        finally
+        {
+            L10n.SetLanguage(prev);
+        }
+    }
+
+    [Fact]
+    public async Task Docx_korean_language_uses_malgun_gothic_default_font()
+    {
+        var prev = L10n.CurrentLanguage;
+        try
+        {
+            L10n.SetLanguage("ko");
+            await Run(new DocxCreateTool(),
+                new { path = "ko.docx", title = "2026년 보고", paragraphs = new[] { "본문 내용" } });
+
+            using var doc = WordprocessingDocument.Open(Path.Combine(_dir, "ko.docx"), false);
+            Assert.Equal(0, Validate(doc));
+
+            // DocDefaults 기본 폰트: 라틴·EastAsia 모두 맑은 고딕(Arial 대체).
+            var def = doc.MainDocumentPart!.StyleDefinitionsPart!.Styles!
+                .Descendants<DocumentFormat.OpenXml.Wordprocessing.RunFonts>().First();
+            Assert.Equal("Malgun Gothic", def.Ascii!.Value);
+            Assert.Equal("Malgun Gothic", def.EastAsia!.Value);
+
+            // 본문 런도 라틴·EA 모두 맑은 고딕으로 통일.
+            var runFonts = doc.MainDocumentPart.Document.Body!
+                .Descendants<DocumentFormat.OpenXml.Wordprocessing.Run>()
+                .Select(r => r.RunProperties?.RunFonts).First(f => f is not null)!;
+            Assert.Equal("Malgun Gothic", runFonts.Ascii!.Value);
+            Assert.Equal("Malgun Gothic", runFonts.EastAsia!.Value);
+        }
+        finally
+        {
+            L10n.SetLanguage(prev);
+        }
+    }
+
+    [Fact]
+    public async Task Xlsx_korean_language_uses_malgun_gothic_font()
+    {
+        var prev = L10n.CurrentLanguage;
+        try
+        {
+            L10n.SetLanguage("ko");
+            await Run(new XlsxCreateTool(), new
+            {
+                path = "ko.xlsx",
+                sheets = new[] { new { name = "요약", rows = new[] { new[] { "항목", "값" }, new[] { "매출", "120" } } } },
+            });
+
+            using var doc = SpreadsheetDocument.Open(Path.Combine(_dir, "ko.xlsx"), false);
+            Assert.Equal(0, Validate(doc));
+            var names = doc.WorkbookPart!.WorkbookStylesPart!.Stylesheet.Fonts!
+                .Descendants<DocumentFormat.OpenXml.Spreadsheet.FontName>()
+                .Select(n => n.Val!.Value).ToList();
+            Assert.Contains("Malgun Gothic", names); // 스타일시트 폰트가 맑은 고딕(Calibri 대체)
+        }
+        finally
+        {
+            L10n.SetLanguage(prev);
+        }
+    }
+
+    [Fact]
+    public async Task Pptx_two_col_heading_with_newlines_does_not_bleed_heading_format()
+    {
+        // 모델이 heading 에 여러 줄을 \n 으로 뭉쳐 보내는 경우(2026-08-26 "서식 충돌 재발") —
+        // 첫 줄만 헤딩(굵게·강조색), 나머지는 본문 불릿 서식이어야 한다.
+        await Run(new PptxCreateTool(), new
+        {
+            path = "twocol.pptx",
+            slides = new object[]
+            {
+                new
+                {
+                    title = "시장 기회와 차별점",
+                    layout = "two_col",
+                    columns = new object[]
+                    {
+                        new { heading = "시장 기회\n생성형 AI 도입이 확대되고 있습니다.\n초기 거버넌스 체계가 유리합니다." },
+                        new { heading = "제안 차별점", bullets = new[] { "운영 가능한 산출물로 설계합니다." } },
+                    },
+                },
+            },
+        });
+
+        using var doc = PresentationDocument.Open(Path.Combine(_dir, "twocol.pptx"), false);
+        Assert.Equal(0, Validate(doc));
+        var slide = doc.PresentationPart!.SlideParts.First().Slide;
+        var runs = slide.Descendants<DocumentFormat.OpenXml.Drawing.Run>().ToList();
+
+        DocumentFormat.OpenXml.Drawing.Run R(string text) => runs.First(r => r.Text?.Text == text);
+        Assert.True(R("시장 기회").RunProperties!.Bold?.Value == true);                       // 첫 줄 = 헤딩
+        Assert.NotEqual(true, R("생성형 AI 도입이 확대되고 있습니다.").RunProperties!.Bold?.Value); // 나머지 = 본문
+        Assert.NotEqual(true, R("초기 거버넌스 체계가 유리합니다.").RunProperties!.Bold?.Value);
+        Assert.DoesNotContain(runs, r => r.Text?.Text?.Contains('\n') == true);               // 개행 뭉침 없음
     }
 
     [Fact]
@@ -469,5 +658,27 @@ public sealed class CreateRoundTripTests : IDisposable
         var firstCell = doc.WorkbookPart!.WorksheetParts.First().Worksheet
             .Descendants<DocumentFormat.OpenXml.Spreadsheet.Cell>().First();
         Assert.NotNull(firstCell.StyleIndex); // 헤더 셀에 스타일 적용됨
+    }
+
+    // 이미지 헤더 크기 읽기(PNG/JPEG/GIF/BMP) — 디코더 없이 헤더만.
+    [Fact]
+    public void ImageInfo_ReadsPixelSize_FromHeaders()
+    {
+        // PNG 640x360
+        var png = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, (byte)'I', (byte)'H', (byte)'D', (byte)'R', 0, 0, 0x02, 0x80, 0, 0, 0x01, 0x68, 8, 6, 0, 0, 0 };
+        Assert.Equal((640, 360), ImageInfo.PixelSize(new MemoryStream(png)));
+
+        // JPEG: SOI, APP0(len 16), SOF0(len 17: precision, H=300, W=500)
+        var jpg = new List<byte> { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10 };
+        jpg.AddRange(new byte[14]);
+        jpg.AddRange(new byte[] { 0xFF, 0xC0, 0x00, 0x11, 8, 0x01, 0x2C, 0x01, 0xF4, 3 });
+        jpg.AddRange(new byte[9]);
+        Assert.Equal((500, 300), ImageInfo.PixelSize(new MemoryStream(jpg.ToArray())));
+
+        // GIF 20x10
+        var gif = new byte[] { (byte)'G', (byte)'I', (byte)'F', (byte)'8', (byte)'9', (byte)'a', 20, 0, 10, 0, 0, 0, 0 };
+        Assert.Equal((20, 10), ImageInfo.PixelSize(new MemoryStream(gif)));
+
+        Assert.Null(ImageInfo.PixelSize(new MemoryStream(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 })));
     }
 }

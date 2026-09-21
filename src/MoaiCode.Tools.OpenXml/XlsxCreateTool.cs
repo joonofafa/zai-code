@@ -47,6 +47,8 @@ public sealed class XlsxCreateTool : ITool
           "properties": {
             "path": { "type": "string", "description": "Output .xlsx path (relative to workspace)" },
             "template": { "type": "string", "enum": ["expense", "invoice", "inventory"], "description": "Optional business form to scaffold: expense, invoice, inventory. If set and 'sheets' is omitted, emits the standard blank form." },
+            "body_font": { "type": "string", "description": "Brand font name (from a template style skill). Applied to all cells." },
+            "title_font": { "type": "string", "description": "Brand font name alias (used if body_font absent)." },
             "sheets": {
               "type": "array",
               "description": "Sheets; each a name + rows (array of string cells)",
@@ -120,7 +122,14 @@ public sealed class XlsxCreateTool : ITool
     private sealed record Input(
         [property: JsonPropertyName("path")] string? Path,
         [property: JsonPropertyName("template")] string? Template,
+        // 브랜드 폰트(템플릿 스타일 스킬에서 전달). 전 셀에 적용해 브랜드 톤을 맞춘다.
+        [property: JsonPropertyName("body_font")] string? BodyFont,
+        [property: JsonPropertyName("title_font")] string? TitleFont,
         [property: JsonPropertyName("sheets")] List<SheetIn>? Sheets);
+
+    // 요청당 브랜드 폰트(BuildStylesheet 가 시그니처 변경 없이 읽도록 ThreadStatic).
+    [ThreadStatic]
+    private static string? _brandFont;
 
     // 한국 업무용 표준 엑셀 양식. template 지정 + sheets 미제공 시 규격 시트를 스캐폴딩한다.
     // 병합 셀은 미지원이므로 표 중심의 깔끔한 서식으로 구성한다(모델이 rows 로 값을 채워 넣음).
@@ -191,7 +200,20 @@ public sealed class XlsxCreateTool : ITool
         try
         {
             full = OpenXmlPaths.ResolveForWrite(context.WorkingDirectory, inp.Path, ".xlsx");
-            Write(full, sheets);
+            var bf = inp.BodyFont ?? inp.TitleFont;
+            _brandFont = string.IsNullOrWhiteSpace(bf) ? null : bf.Trim();
+            try
+            {
+                Write(full, sheets);
+            }
+            finally
+            {
+                _brandFont = null;
+            }
+
+            // 테마 스탬프(폰트만 — xlsx 생성은 색 테마가 없음). ExcelEdit 가 기본 폰트로 읽을 수 있게.
+            DocThemeStamp.Stamp(full, new DocTheme(null, null, null, null,
+                string.IsNullOrWhiteSpace(bf) ? FontResolver.AppDefaultEastAsianFont() : bf!.Trim()));
         }
         catch (Exception ex)
         {
@@ -206,12 +228,7 @@ public sealed class XlsxCreateTool : ITool
 
     private static void Write(string path, List<SheetIn> sheets)
     {
-        // 원자적 생성: tmp 에 완전히 쓰고 rename — 중간에 실패해도 기존 파일을 덮어쓰지 않는다.
-        var tmp = path + ".tmp";
-        try
-        {
-            using (var doc = SpreadsheetDocument.Create(tmp, SpreadsheetDocumentType.Workbook))
-            {
+        using var doc = SpreadsheetDocument.Create(path, SpreadsheetDocumentType.Workbook);
         var wbPart = doc.AddWorkbookPart();
         wbPart.Workbook = new Workbook();
 
@@ -325,15 +342,6 @@ public sealed class XlsxCreateTool : ITool
                 Name = string.IsNullOrWhiteSpace(sheet.Name) ? $"Sheet{sheetId}" : sheet.Name!,
             });
             sheetId++;
-            }
-
-            File.Move(tmp, path, overwrite: true);
-            }
-        }
-        catch
-        {
-            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
-            throw;
         }
     }
 
@@ -484,7 +492,13 @@ public sealed class XlsxCreateTool : ITool
         foreach (var s in specs) { cellFormats.AppendChild(Make(s, true)); }
         cellFormats.Count = (uint)(specs.Count * 2);
 
-        var fonts = new Fonts(new Font(), new Font(new Bold()));
+        // 폰트: 브랜드 폰트 > 앱 언어 기본 EA 폰트(맑은 고딕 등) > Excel 기본(Calibri). 앞의 둘이면 전 셀 그 폰트.
+        var effFont = string.IsNullOrWhiteSpace(_brandFont) ? FontResolver.AppDefaultEastAsianFont() : _brandFont;
+        var fonts = string.IsNullOrWhiteSpace(effFont)
+            ? new Fonts(new Font(), new Font(new Bold()))
+            : new Fonts(
+                new Font(new FontName { Val = effFont }),
+                new Font(new Bold(), new FontName { Val = effFont }));
         var fills = new Fills(new Fill(new PatternFill { PatternType = PatternValues.None }));
 
         // 테두리: 0 = 없음, 1 = 얇은 사방 테두리(양식 표용).

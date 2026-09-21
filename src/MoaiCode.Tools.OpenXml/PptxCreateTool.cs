@@ -53,6 +53,11 @@ public sealed class PptxCreateTool : ITool
           "type": "object",
           "properties": {
             "path": { "type": "string", "description": "Output .pptx path (relative to workspace)" },
+            "accent": { "type": "string", "description": "Brand accent color hex (from a template style skill). When any of accent/bg/text_color/title_font/body_font is given, the deck uses these brand values instead of the A/B/C/D preset." },
+            "bg": { "type": "string", "description": "Brand background color hex (from a template style skill)." },
+            "text_color": { "type": "string", "description": "Brand body/title text color hex (from a template style skill)." },
+            "title_font": { "type": "string", "description": "Brand title font name (from a template style skill)." },
+            "body_font": { "type": "string", "description": "Brand body font name (from a template style skill)." },
             "template": { "type": "string", "enum": ["A", "B", "C", "D"], "description": "Design template (default A). A = light corporate (grey bg, navy, left accent bar). B = keynote/bold (white bg, red, large type). C = minimal (white bg, black type, thin neutral bar, airy). D = dark (deep navy bg, light text, cyan accent). The template fixes colors, fonts, typography hierarchy, spacing and alignment — you only provide content." },
             "slides": {
               "type": "array",
@@ -155,120 +160,16 @@ public sealed class PptxCreateTool : ITool
         }
         """).RootElement.Clone();
 
-    private sealed record ColumnIn(
-        [property: JsonPropertyName("heading")] string? Heading,
-        [property: JsonPropertyName("bullets")] List<string>? Bullets);
-
-    private sealed record TableIn(
-        [property: JsonPropertyName("headers")] List<string>? Headers,
-        [property: JsonPropertyName("rows")] List<List<string>>? Rows);
-
-    private sealed record ShapeIn(
-        [property: JsonPropertyName("type")] string? Type,
-        [property: JsonPropertyName("x")] double? X,
-        [property: JsonPropertyName("y")] double? Y,
-        [property: JsonPropertyName("w")] double? W,
-        [property: JsonPropertyName("h")] double? H,
-        [property: JsonPropertyName("fill")] string? Fill,
-        [property: JsonPropertyName("text")] string? Text,
-        [property: JsonPropertyName("fontColor")] string? FontColor,
-        [property: JsonPropertyName("fontSize")] int? FontSize,
-        [property: JsonPropertyName("bold")] bool? Bold);
-
-    private sealed record ImageIn(
-        [property: JsonPropertyName("path")] string? Path,
-        [property: JsonPropertyName("x")] double? X,
-        [property: JsonPropertyName("y")] double? Y,
-        [property: JsonPropertyName("widthInches")] double? WidthInches);
-
-    private sealed record MetricIn(
-        [property: JsonPropertyName("value")] string? Value,
-        [property: JsonPropertyName("label")] string? Label);
-
-    private sealed record CardIn(
-        [property: JsonPropertyName("heading")] string? Heading,
-        [property: JsonPropertyName("body")] string? Body);
-
-    private sealed record StepIn(
-        [property: JsonPropertyName("label")] string? Label,
-        [property: JsonPropertyName("caption")] string? Caption);
-
-    private sealed record SlideIn(
-        [property: JsonPropertyName("title")] string? Title,
-        [property: JsonPropertyName("subtitle")] string? Subtitle,
-        [property: JsonPropertyName("layout")] string? Layout,
-        [property: JsonPropertyName("accent")] string? Accent,
-        [property: JsonPropertyName("bullets")] List<string>? Bullets,
-        [property: JsonPropertyName("columns")] List<ColumnIn>? Columns,
-        [property: JsonPropertyName("table")] TableIn? Table,
-        [property: JsonPropertyName("metrics")] List<MetricIn>? Metrics,
-        [property: JsonPropertyName("cards")] List<CardIn>? Cards,
-        [property: JsonPropertyName("steps")] List<StepIn>? Steps,
-        [property: JsonPropertyName("shapes")] List<ShapeIn>? Shapes,
-        [property: JsonPropertyName("image")] ImageIn? Image);
-
     private sealed record Input(
         [property: JsonPropertyName("path")] string? Path,
         [property: JsonPropertyName("template")] string? Template,
-        [property: JsonPropertyName("slides")] List<SlideIn>? Slides);
-
-    // 디자인 템플릿(프리셋) — 색·폰트·타이포 계층·정렬을 규격으로 고정한다.
-    // "이쁘게 만들어" 같은 모호한 지시 대신, 검증된 템플릿 안에서 콘텐츠만 채운다.
-    private sealed record ThemePreset(
-        string Name,
-        string BgHex,        // 슬라이드 배경
-        string AccentHex,    // 강조(제목·바)
-        string TitleHex,     // 제목 색
-        string SubtitleHex,  // 부제 색
-        string BodyHex,      // 본문 색
-        string TitleFont,    // 제목 글꼴
-        string BodyFont,     // 본문 글꼴
-        int TitlePt,         // 제목 pt
-        int SubtitlePt,      // 부제 pt
-        int BodyPt,          // 본문 pt
-        string PanelHex,     // 카드/패널 배경(배경보다 살짝 대비)
-        string FooterHex,    // 푸터(페이지번호·구분선) 무채색
-        string BorderHex);   // 카드 테두리(얇은 선) — 카드가 '빈 회색 박스'가 아니라 정의된 카드로 보이게
-
-    // A형: 연그레이 배경 + 네이비 accent + 흰 카드(얇은 테두리).
-    private static readonly ThemePreset TemplateA = new(
-        Name: "A", BgHex: "F7F8FA", AccentHex: "2F5496", TitleHex: "1F3864",
-        SubtitleHex: "44546A", BodyHex: "333333",
-        TitleFont: "Calibri Light", BodyFont: "Calibri",
-        TitlePt: 30, SubtitlePt: 17, BodyPt: 15,
-        PanelHex: "FFFFFF", FooterHex: "AAB0BC", BorderHex: "E2E6EC");
-
-    // B형: 흰 배경 + 큰 강조 타이포(키노트풍) + 레드 accent.
-    private static readonly ThemePreset TemplateB = new(
-        Name: "B", BgHex: "FFFFFF", AccentHex: "C00000", TitleHex: "C00000",
-        SubtitleHex: "595959", BodyHex: "262626",
-        TitleFont: "Arial", BodyFont: "Arial",
-        TitlePt: 34, SubtitlePt: 18, BodyPt: 16,
-        PanelHex: "FCFCFC", FooterHex: "B3B3B3", BorderHex: "EAEAEA");
-
-    // C형: 미니멀 — 흰 배경 + 흰 카드(얇은 테두리) + 절제된 틸 accent(무채색 탈피). 여백 큰.
-    private static readonly ThemePreset TemplateC = new(
-        Name: "C", BgHex: "FBFBFA", AccentHex: "0E7C86", TitleHex: "14181C",
-        SubtitleHex: "7A828A", BodyHex: "353A40",
-        TitleFont: "Calibri Light", BodyFont: "Calibri",
-        TitlePt: 30, SubtitlePt: 16, BodyPt: 15,
-        PanelHex: "FFFFFF", FooterHex: "B4BAC0", BorderHex: "E6E8E6");
-
-    // D형: 다크(짙은 남색 배경·밝은 텍스트·시안 강조 포인트).
-    private static readonly ThemePreset TemplateD = new(
-        Name: "D", BgHex: "1F2430", AccentHex: "4FC3F7", TitleHex: "FFFFFF",
-        SubtitleHex: "AEB6C7", BodyHex: "E3E8F0",
-        TitleFont: "Calibri Light", BodyFont: "Calibri",
-        TitlePt: 32, SubtitlePt: 17, BodyPt: 15,
-        PanelHex: "2A3242", FooterHex: "5A6478", BorderHex: "3A445A");
-
-    private static ThemePreset ResolveTemplate(string? t) => t?.Trim().ToUpperInvariant() switch
-    {
-        "B" => TemplateB,
-        "C" => TemplateC,
-        "D" => TemplateD,
-        _ => TemplateA, // 기본 A형
-    };
+        // 브랜드 테마(업로드 템플릿 스타일 스킬에서 전달). 하나라도 있으면 코드 프리셋 대신 이 값으로 스타일.
+        [property: JsonPropertyName("accent")] string? Accent,
+        [property: JsonPropertyName("bg")] string? Bg,
+        [property: JsonPropertyName("text_color")] string? TextColor,
+        [property: JsonPropertyName("title_font")] string? TitleFont,
+        [property: JsonPropertyName("body_font")] string? BodyFont,
+        [property: JsonPropertyName("slides")] List<PptxDesign.SlideSpec>? Slides);
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -287,7 +188,32 @@ public sealed class PptxCreateTool : ITool
         try
         {
             full = OpenXmlPaths.ResolveForWrite(context.WorkingDirectory, inp.Path, ".pptx");
-            issues = Write(full, inp.Template, inp.Slides, context.WorkingDirectory);
+            // 브랜드 테마 값이 하나라도 오면 데이터-테마(FromTheme), 아니면 코드 프리셋(A/B/C/D).
+            var hasTheme = inp.Accent is not null || inp.Bg is not null || inp.TextColor is not null
+                           || inp.TitleFont is not null || inp.BodyFont is not null;
+            var preset = hasTheme
+                ? PptxDesign.FromTheme(new TemplateTheme(
+                    AccentHex: inp.Accent, BgHex: inp.Bg, TextHex: inp.TextColor,
+                    TitleFontLatin: inp.TitleFont, TitleFontEa: inp.TitleFont,
+                    BodyFontLatin: inp.BodyFont, BodyFontEa: inp.BodyFont))
+                : PptxDesign.ResolveTemplate(inp.Template);
+
+            // 앱 언어가 동아시아(ko/ja/zh)면 문서 기본 폰트를 그 언어 폰트(예: Malgun Gothic)로 통일한다.
+            // 라틴 기본값(Calibri Light/Calibri)이 숫자·영문에 남아 이질적으로 보이던 문제 해소.
+            // 사용자가 브랜드 폰트를 명시(inp.TitleFont/BodyFont)한 경우는 그 폰트를 존중.
+            var docEaFont = FontResolver.AppDefaultEastAsianFont();
+            if (docEaFont is not null)
+            {
+                preset = preset with
+                {
+                    TitleFont = inp.TitleFont ?? docEaFont,
+                    BodyFont = inp.BodyFont ?? docEaFont,
+                };
+            }
+
+            issues = Write(full, preset, inp.Slides, context.WorkingDirectory, docEaFont);
+            // 문서가 자기 테마를 알게 스탬프 — COM 편집 툴(insert_table/add_designed_slide)이 기본값으로 읽는다.
+            DocThemeStamp.Stamp(full, new DocTheme(preset.AccentHex, preset.BgHex, preset.BodyHex, preset.TitleFont, preset.BodyFont));
         }
         catch (Exception ex)
         {
@@ -312,15 +238,10 @@ public sealed class PptxCreateTool : ITool
         yield return new ToolOutput(msg);
     }
 
-    private static List<PptxLayoutCheck.Issue> Write(string path, string? template, List<SlideIn> slides, string workingDir)
+    private static List<PptxLayoutCheck.Issue> Write(string path, PptxDesign.ThemePreset preset, List<PptxDesign.SlideSpec> slides, string workingDir, string? themeEaFont = null)
     {
-        // 원자적 생성: tmp 에 완전히 쓰고 rename — 중간에 실패해도 기존 파일을 덮어쓰지 않는다.
-        var tmp = path + ".tmp";
         var issues = new List<PptxLayoutCheck.Issue>();
-        try
-        {
-            using (var doc = PresentationDocument.Create(tmp, PresentationDocumentType.Presentation))
-            {
+        using var doc = PresentationDocument.Create(path, PresentationDocumentType.Presentation);
         var presPart = doc.AddPresentationPart();
         presPart.Presentation = new P.Presentation();
 
@@ -366,9 +287,8 @@ public sealed class PptxCreateTool : ITool
 
         // 테마(마스터에 필수).
         var themePart = masterPart.AddNewPart<ThemePart>();
-        themePart.Theme = MinimalTheme();
+        themePart.Theme = MinimalTheme(themeEaFont);
 
-        var preset = ResolveTemplate(template);
         var slideIdList = new SlideIdList();
         uint slideId = 256;
         var slideNo = 0;
@@ -392,17 +312,17 @@ public sealed class PptxCreateTool : ITool
                 var width = s.Image.WidthInches is > 0 ? s.Image.WidthInches!.Value : (isTextImage ? 4.2 : 4.0);
                 var (cx, cy) = ImageEmbed.EmuSize(imgFull, width);
                 var x = s.Image.X is { } xv ? (long)(xv * ImageEmbed.EmuPerInch)
-                    : isTextImage ? SlideW - cx - MarginX          // 우측 정렬
-                    : (SlideW - cx) / 2;                            // 중앙
+                    : isTextImage ? PptxDesign.SlideW - cx - PptxDesign.MarginX  // 우측 정렬
+                    : (PptxDesign.SlideW - cx) / 2;                              // 중앙
                 var y = s.Image.Y is { } yv ? (long)(yv * ImageEmbed.EmuPerInch)
-                    : isTextImage ? BodyTop + 300000               // 본문 상단 맞춤
+                    : isTextImage ? PptxDesign.BodyTop + 300000                  // 본문 상단 맞춤
                     : (long)(2.2 * ImageEmbed.EmuPerInch);
                 var tree = slidePart.Slide.CommonSlideData!.ShapeTree!;
                 tree.AppendChild(ImageEmbed.PptxPicture(slidePart, imgFull, x, y, cx, cy, 900U + slideId));
             }
 
             // 기하 QA — 텍스트 겹침/화면밖 검출(장식/배경 제외). 비-치명, 경고만 수집.
-            issues.AddRange(PptxLayoutCheck.Inspect(slidePart.Slide, slideNo, SlideW, SlideH));
+            issues.AddRange(PptxLayoutCheck.Inspect(slidePart.Slide, slideNo, PptxDesign.SlideW, PptxDesign.SlideH));
 
             slideIdList.AppendChild(new SlideId
             {
@@ -418,211 +338,117 @@ public sealed class PptxCreateTool : ITool
                 RelationshipId = presPart.GetIdOfPart(masterPart),
             }),
             slideIdList,
-            new SlideSize { Cx = (int)SlideW, Cy = (int)SlideH },
+            new SlideSize { Cx = (int)PptxDesign.SlideW, Cy = (int)PptxDesign.SlideH },
             new NotesSize { Cx = 6858000, Cy = 9144000 });
-            }
-
-            File.Move(tmp, path, overwrite: true);
-        }
-        catch
-        {
-            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
-            throw;
-        }
 
         return issues;
     }
 
-    // 슬라이드 기하(EMU). 12192000×6858000 = 16:9(와이드). 세로(H)는 4:3과 동일하므로
-    // 세로 배치 상수는 그대로 두고 가로만 넓어진다 — 기존 레이아웃 수직 흐름 무영향.
-    private const long SlideW = 12192000;     // 16:9 슬라이드 폭
-    private const long SlideH = 6858000;      // 슬라이드 높이
-    private const long LeftBarW = 110000;     // 좌측 accent 세로 바 폭
-    private const long MarginX = 685800;      // 0.75"
-    private const long ContentW = 10820400;   // 슬라이드 폭 - 좌우 여백(16:9)
-    private const long BodyTop = 1500000;
-    private const long BodyBottom = 6500000;
-    private const long RowHeight = 370840;    // 표 행 높이 ≈ 0.4"
-    private const long MinRowHeight = 210000; // 최소 행 높이 ≈ 0.23"(auto-fit 하한)
-    private const string DefaultAccent = "2F5496";
-
-    // 불릿 개수가 많을수록 시작 폰트를 줄여 슬라이드 밖으로 넘치는 것을 완화(normAutofit 과 병행).
-    private static int BulletFontSize(int count) => count switch
-    {
-        <= 5 => 1800,
-        <= 8 => 1600,
-        <= 11 => 1400,
-        <= 15 => 1200,
-        _ => 1050,
-    };
-
     // 템플릿(디자인 프리셋) × 레이아웃(객체 배치)로 슬라이드를 만든다.
-    // 디자인(색·타이포·정렬)은 프리셋이 규격으로 고정하고, 콘텐츠만 채운다.
-    private static Slide BuildSlide(SlideIn s, ThemePreset p, int index, int total)
+    // 배치·색·타이포는 백엔드 무관 플래너 PptxDesign.Plan 이 씬 op 로 규정하고,
+    // 여기서는 각 op 를 Open XML 도형으로 렌더한다(COM 렌더러와 동일한 씬을 공유 — DRY).
+    private static Slide BuildSlide(PptxDesign.SlideSpec s, PptxDesign.ThemePreset p, int index, int total)
     {
         var tree = new ShapeTree(NvGroupShapeProps(), new GroupShapeProperties());
         uint id = 2;
-
-        // 공통 디자인: 배경 + 좌측 accent 세로 바(AccentBar 는 채운 사각형이라 배경에도 재사용).
-        tree.AppendChild(AccentBar(id++, 0, 0, SlideW, SlideH, p.BgHex));
-        tree.AppendChild(AccentBar(id++, 0, 0, LeftBarW, SlideH, p.AccentHex));
-
-        var layout = (s.Layout ?? "content").Trim().ToLowerInvariant();
-
-        // ── cover: 중앙 큰 제목 + 부제 ──
-        if (layout == "cover")
+        foreach (var op in PptxDesign.Plan(s, p, index, total))
         {
-            tree.AppendChild(MakeShape(id++, "Title", MarginX, 2600000, ContentW, 1200000,
-                new[] { CenteredText(s.Title ?? string.Empty, p.TitlePt + 12, true, p.TitleHex, p.TitleFont) }));
-            tree.AppendChild(AccentBar(id++, (SlideW - 1400000) / 2, 3860000, 1400000, 44000, p.AccentHex));
-            if (!string.IsNullOrWhiteSpace(s.Subtitle))
-            {
-                tree.AppendChild(MakeShape(id++, "Subtitle", MarginX, 4000000, ContentW, 700000,
-                    new[] { CenteredText(s.Subtitle!, p.SubtitlePt, false, p.SubtitleHex, p.BodyFont) }));
-            }
-
-            return WrapSlide(tree);
+            tree.AppendChild(RenderOp(op, ref id));
         }
 
-        // ── section: 구간 구분(좌측 강조 블록 + 큰 제목 + 부제) ──
-        if (layout == "section")
-        {
-            tree.AppendChild(AccentBar(id++, MarginX, 2550000, 300000, 1000000, p.AccentHex));
-            tree.AppendChild(MakeShape(id++, "Title", MarginX + 480000, 2660000, ContentW - 480000, 880000,
-                new[] { TextParagraph(s.Title ?? string.Empty, (p.TitlePt + 6) * 100, bold: true, bullet: false, color: p.TitleHex, fontName: p.TitleFont) }));
-            if (!string.IsNullOrWhiteSpace(s.Subtitle))
-            {
-                tree.AppendChild(MakeShape(id++, "Subtitle", MarginX + 480000, 3560000, ContentW - 480000, 480000,
-                    new[] { TextParagraph(s.Subtitle!, p.SubtitlePt * 100, bold: false, bullet: false, color: p.SubtitleHex, fontName: p.BodyFont) }));
-            }
-
-            return WrapSlide(tree);
-        }
-
-        // ── quote: 큰 문구 하나(중앙) ──
-        if (layout == "quote")
-        {
-            tree.AppendChild(MakeShape(id++, "Quote", MarginX + 300000, 2300000, ContentW - 600000, 2200000,
-                new[] { CenteredText(s.Title ?? s.Subtitle ?? string.Empty, p.SubtitlePt + 12, true, p.TitleHex, p.TitleFont) }));
-            tree.AppendChild(AccentBar(id++, (SlideW - 1400000) / 2, 4650000, 1400000, 44000, p.AccentHex));
-            return WrapSlide(tree);
-        }
-
-        // ── content / text_image 공통: 좌측 정렬 제목 + 부제 + 짧은 강조바 ──
-        long bodyTop = BodyTop;
-        if (!string.IsNullOrWhiteSpace(s.Title))
-        {
-            tree.AppendChild(MakeShape(id++, "Title", MarginX, 360000, ContentW, 720000,
-                new[] { TextParagraph(s.Title!, p.TitlePt * 100, bold: true, bullet: false, color: p.TitleHex, fontName: p.TitleFont) }));
-            long y = 1080000;
-            if (!string.IsNullOrWhiteSpace(s.Subtitle))
-            {
-                tree.AppendChild(MakeShape(id++, "Subtitle", MarginX, y, ContentW, 440000,
-                    new[] { TextParagraph(s.Subtitle!, p.SubtitlePt * 100, bold: false, bullet: false, color: p.SubtitleHex, fontName: p.BodyFont) }));
-                y += 470000;
-            }
-
-            tree.AppendChild(AccentBar(id++, MarginX, y + 30000, 820000, 42000, p.AccentHex));
-            bodyTop = y + 250000;
-        }
-
-        var hasCols = s.Columns is { Count: > 0 };
-        var hasBullets = s.Bullets is { Count: > 0 };
-        var hasTable = s.Table is not null && ((s.Table.Headers?.Count ?? 0) > 0 || (s.Table.Rows?.Count ?? 0) > 0);
-        var hasMetrics = s.Metrics is { Count: > 0 };
-        var hasCards = s.Cards is { Count: > 0 };
-        var hasSteps = s.Steps is { Count: > 0 };
-
-        // 본문 폭: text_image 는 좌측 절반(우측은 이미지 자리).
-        long bodyW = layout == "text_image" ? (SlideW / 2) - MarginX : ContentW;
-        long bodyH = BodyBottom - bodyTop;
-
-        if (hasCols)
-        {
-            var cols = s.Columns!.Take(2).ToList();
-            const long gap = 360000;
-            var colW = (ContentW - gap) / 2;
-            const long pad = 260000;              // 카드 안쪽 여백 ≈ 0.28"
-            var cardH = BodyBottom - bodyTop;
-            for (var i = 0; i < cols.Count; i++)
-            {
-                var x = MarginX + i * (colW + gap);
-                // 배경 카드 + 상단 accent 칩 — '떠 있는 텍스트'가 아니라 구조를 가진 카드로 읽히게.
-                tree.AppendChild(Panel(id++, x, bodyTop, colW, cardH, p.PanelHex, p.BorderHex));
-                tree.AppendChild(AccentBar(id++, x + pad, bodyTop + pad, 300000, 46000, p.AccentHex));
-
-                var bullets = cols[i].Bullets ?? new List<string>();
-                var colSize = Math.Min(p.BodyPt * 100, BulletFontSize(bullets.Count));
-                var colGap = BulletSpaceBefore(bullets.Count);
-                var paras = new List<D.Paragraph>();
-                if (!string.IsNullOrWhiteSpace(cols[i].Heading))
-                {
-                    paras.Add(TextParagraph(cols[i].Heading!, p.SubtitlePt * 100, bold: true, bullet: false, color: p.AccentHex, fontName: p.BodyFont));
-                }
-
-                foreach (var b in bullets)
-                {
-                    paras.Add(TextParagraph(b, colSize, bold: false, bullet: true, color: p.BodyHex, fontName: p.BodyFont, spaceBeforePct: colGap));
-                }
-
-                if (paras.Count == 0)
-                {
-                    paras.Add(TextParagraph(string.Empty, p.BodyPt * 100, false, false, null));
-                }
-
-                // 텍스트는 칩 아래로 인셋 배치(카드 안쪽 패딩 반영).
-                tree.AppendChild(MakeShape(id++, $"Col{i + 1}", x + pad, bodyTop + pad + 120000, colW - 2 * pad, cardH - 2 * pad - 120000, paras));
-            }
-        }
-        else if (hasBullets)
-        {
-            var size = Math.Min(p.BodyPt * 100, BulletFontSize(s.Bullets!.Count));
-            var gap = BulletSpaceBefore(s.Bullets!.Count);
-            var paras = s.Bullets!.Select(b => TextParagraph(b, size, bold: false, bullet: true, color: p.BodyHex, fontName: p.BodyFont, spaceBeforePct: gap));
-
-            // text_image 는 우측 이미지와 균형을 위해 카드 없이. 그 외 단일 본문은 카드로 프레이밍
-            // (덱 전체를 카드 언어로 통일 — 빈 하단이 '카드 패딩'으로 읽혀 데드스페이스가 정돈된다).
-            if (layout == "text_image")
-            {
-                tree.AppendChild(MakeShape(id++, "Body", MarginX, bodyTop, bodyW, bodyH, paras));
-            }
-            else
-            {
-                const long pad = 320000;      // 카드 안쪽 여백 ≈ 0.35"
-                tree.AppendChild(Panel(id++, MarginX, bodyTop, ContentW, bodyH, p.PanelHex, p.BorderHex));
-                tree.AppendChild(AccentBar(id++, MarginX + pad, bodyTop + pad, 300000, 46000, p.AccentHex));
-                tree.AppendChild(MakeShape(id++, "Body", MarginX + pad, bodyTop + pad + 130000, ContentW - 2 * pad, bodyH - 2 * pad - 130000, paras));
-            }
-        }
-        else if (hasMetrics)
-        {
-            BuildStatRow(tree, ref id, bodyTop, bodyH, s.Metrics!, p);
-        }
-        else if (hasCards)
-        {
-            BuildCardGrid(tree, ref id, bodyTop, bodyH, s.Cards!, p);
-        }
-        else if (hasSteps)
-        {
-            BuildProcess(tree, ref id, bodyTop, bodyH, s.Steps!, p);
-        }
-
-        if (hasTable)
-        {
-            tree.AppendChild(BuildTable(id++, MarginX, bodyTop, ContentW, s.Table!, p.AccentHex, BodyBottom - bodyTop));
-        }
-
-        if (s.Shapes is { Count: > 0 })
-        {
-            foreach (var sh in s.Shapes!)
-            {
-                tree.AppendChild(CustomShape(id++, sh));
-            }
-        }
-
-        // 콘텐츠 계열 슬라이드 하단 푸터(구분선 + 페이지 번호).
-        AppendFooter(tree, ref id, index, total, p);
         return WrapSlide(tree);
+    }
+
+    // 씬 op → Open XML 도형(op 당 도형 1개, id 순차 부여 — 기존 출력과 동일 순서).
+    private static OpenXmlElement RenderOp(PptxDesign.SceneOp op, ref uint id) => op switch
+    {
+        PptxDesign.BarOp b => AccentBar(id++, b.X, b.Y, b.W, b.H, b.FillHex),
+        PptxDesign.PanelOp pn => Panel(id++, pn.X, pn.Y, pn.W, pn.H, pn.FillHex, pn.BorderHex),
+        PptxDesign.EllipseOp e => Circle(id++, e.X, e.Y, e.D, e.FillHex, e.Text, e.FontPt, e.FontColorHex),
+        PptxDesign.TextOp t => MakeShape(id++, t.Name, t.X, t.Y, t.W, t.H, t.Paras.Select(ParaToDrawing), MapAnchor(t.Anchor)),
+        PptxDesign.TableOp tb => BuildTable(id++, tb.X, tb.Y, tb.W, tb.Headers, tb.Rows, tb.AccentHex, tb.AvailHeight),
+        PptxDesign.FreeShapeOp f => CustomShape(id++, f.Spec),
+        _ => throw new NotSupportedException($"Unknown scene op: {op.GetType().Name}"),
+    };
+
+    private static D.TextAnchoringTypeValues? MapAnchor(PptxDesign.Anchor a) =>
+        a == PptxDesign.Anchor.Center ? D.TextAnchoringTypeValues.Center : null;
+
+    // ParaSpec → a:p. CenteredText/AlignedText/TextParagraph 를 통합(불릿·정렬·앞여백·EA폰트).
+    private static D.Paragraph ParaToDrawing(PptxDesign.ParaSpec ps)
+    {
+        var runProps = new D.RunProperties { FontSize = ps.FontHundredths };
+        if (ps.Bold)
+        {
+            runProps.Bold = true;
+        }
+
+        // RunProperties 자식 순서(스키마): fill(SolidFill) → latin(LatinFont) → ea(EastAsianFont).
+        if (ps.ColorHex is not null)
+        {
+            runProps.AppendChild(new D.SolidFill(new D.RgbColorModelHex { Val = ps.ColorHex }));
+        }
+
+        ApplyRunScript(runProps, ps.Text, ps.FontName);
+
+        var para = new D.Paragraph();
+        D.ParagraphProperties pPr;
+        if (ps.Bullet)
+        {
+            // 불릿: 줄간격 여유(120%) + 앞여백(적을수록 크게) + 본문색 불릿. 자식 순서: lnSpc → spcBef → buClr → buFont → buChar.
+            pPr = new D.ParagraphProperties(new D.LineSpacing(new D.SpacingPercent { Val = 120000 }));
+            if (ps.SpaceBeforePct > 0)
+            {
+                pPr.AppendChild(new D.SpaceBefore(new D.SpacingPercent { Val = ps.SpaceBeforePct }));
+            }
+
+            if (ps.ColorHex is not null)
+            {
+                pPr.AppendChild(new D.BulletColor(new D.RgbColorModelHex { Val = ps.ColorHex }));
+            }
+
+            pPr.AppendChild(new D.BulletFont { Typeface = "Arial" });
+            pPr.AppendChild(new D.CharacterBullet { Char = "•" });
+        }
+        else
+        {
+            pPr = new D.ParagraphProperties();
+            if (ps.SpaceBeforePct > 0)
+            {
+                pPr.AppendChild(new D.SpaceBefore(new D.SpacingPercent { Val = ps.SpaceBeforePct }));
+            }
+
+            if (ps.Align != PptxDesign.Align.Left)
+            {
+                pPr.Alignment = ps.Align == PptxDesign.Align.Center
+                    ? D.TextAlignmentTypeValues.Center
+                    : D.TextAlignmentTypeValues.Right;
+            }
+
+            pPr.AppendChild(new D.NoBullet());
+        }
+
+        para.AppendChild(pPr);
+        para.AppendChild(new D.Run(runProps, new D.Text(ps.Text)));
+        return para;
+    }
+
+    // 런에 스크립트별 폰트/언어를 적용(세 런 빌더 공용, DRY). 프루핑 언어 태그 + Latin(선택) + EA(감지 시).
+    // 자식 순서(스키마) fill→latin→ea 를 지키려면 호출 전에 SolidFill 을 먼저 append 해야 한다.
+    private static void ApplyRunScript(D.RunProperties runProps, string? text, string? latinFont)
+    {
+        var lang = FontResolver.DetectLang(text);
+        runProps.Language = FontResolver.BcpTag(lang);
+        if (!string.IsNullOrEmpty(latinFont))
+        {
+            runProps.AppendChild(new D.LatinFont { Typeface = latinFont });
+        }
+
+        // 런이 명시적 Latin 폰트를 가지면 테마 EA 로 폴백되지 않으므로, EA 감지 시 직접 지정.
+        if (lang is not null)
+        {
+            runProps.AppendChild(new D.EastAsianFont { Typeface = FontResolver.ResolveEastAsian(lang) });
+        }
     }
 
     private static Slide WrapSlide(ShapeTree tree) =>
@@ -631,7 +457,7 @@ public sealed class PptxCreateTool : ITool
     private const long EmuPerInch = 914400;
 
     // 자유 도형(다이어그램용). 좌표는 인치 → EMU. 선택적 채우기·중앙정렬 텍스트.
-    private static P.Shape CustomShape(uint id, ShapeIn sh)
+    private static P.Shape CustomShape(uint id, PptxDesign.ShapeSpec sh)
     {
         var x = (long)((sh.X ?? 0) * EmuPerInch);
         var y = (long)((sh.Y ?? 0) * EmuPerInch);
@@ -661,40 +487,11 @@ public sealed class PptxCreateTool : ITool
             body);
     }
 
-    // 정렬 지정 가능한 단일 문단(푸터·라벨 등). CenteredText 의 일반화.
-    private static D.Paragraph AlignedText(string text, int fontSizePt, bool bold, string? color, string? fontName, D.TextAlignmentTypeValues align)
-    {
-        var runProps = new D.RunProperties { Language = "en-US", FontSize = fontSizePt * 100 };
-        if (bold)
-        {
-            runProps.Bold = true;
-        }
-
-        if (color is not null)
-        {
-            runProps.AppendChild(new D.SolidFill(new D.RgbColorModelHex { Val = color }));
-        }
-
-        if (!string.IsNullOrEmpty(fontName))
-        {
-            runProps.AppendChild(new D.LatinFont { Typeface = fontName });
-        }
-
-        // East Asian(한/일/중): 런이 명시적 Latin 폰트를 가지면 테마 EA 폰트로 폴백되지 않으므로,
-        // 텍스트 스크립트에 맞는 EA 폰트를 감지 시에만 런에 직접 지정(언어별 폰트 매칭·설치 검증).
-        if (FontResolver.EastAsianFor(text) is { } eaFont)
-        {
-            runProps.AppendChild(new D.EastAsianFont { Typeface = eaFont });
-        }
-
-        var para = new D.Paragraph(new D.ParagraphProperties(new D.NoBullet()) { Alignment = align });
-        para.AppendChild(new D.Run(runProps, new D.Text(text)));
-        return para;
-    }
-
+    // 중앙 정렬 단일 문단(배지·자유도형 라벨). 씬 렌더 경로는 ParaToDrawing 을 쓰고,
+    // Circle/CustomShape 처럼 직접 만드는 곳만 이 헬퍼를 쓴다.
     private static D.Paragraph CenteredText(string text, int fontSizePt, bool bold, string? color, string? fontName = null)
     {
-        var runProps = new D.RunProperties { Language = "en-US", FontSize = fontSizePt * 100 };
+        var runProps = new D.RunProperties { FontSize = fontSizePt * 100 };
         if (bold)
         {
             runProps.Bold = true;
@@ -705,17 +502,7 @@ public sealed class PptxCreateTool : ITool
             runProps.AppendChild(new D.SolidFill(new D.RgbColorModelHex { Val = color }));
         }
 
-        if (!string.IsNullOrEmpty(fontName))
-        {
-            runProps.AppendChild(new D.LatinFont { Typeface = fontName });
-        }
-
-        // East Asian(한/일/중): 런이 명시적 Latin 폰트를 가지면 테마 EA 폰트로 폴백되지 않으므로,
-        // 텍스트 스크립트에 맞는 EA 폰트를 감지 시에만 런에 직접 지정(언어별 폰트 매칭·설치 검증).
-        if (FontResolver.EastAsianFor(text) is { } eaFont)
-        {
-            runProps.AppendChild(new D.EastAsianFont { Typeface = eaFont });
-        }
+        ApplyRunScript(runProps, text, fontName);
 
         var para = new D.Paragraph(new D.ParagraphProperties(new D.NoBullet()) { Alignment = D.TextAlignmentTypeValues.Center });
         para.AppendChild(new D.Run(runProps, new D.Text(text)));
@@ -801,26 +588,6 @@ public sealed class PptxCreateTool : ITool
             new P.TextBody(new D.BodyProperties(), new D.ListStyle(), new D.Paragraph()));
     }
 
-    // 불릿 수가 적을수록 문단 앞 여백(spaceBefore, %)을 키워 세로로 고르게 퍼뜨린다.
-    // (상단 앵커 유지 + 하단 데드스페이스 완화. 넘치면 normAutofit 이 폰트를 줄여 보호.)
-    private static int BulletSpaceBefore(int count) => count switch
-    {
-        <= 3 => 160000,  // 160%
-        <= 4 => 120000,  // 120%
-        <= 5 => 80000,   // 80%
-        <= 6 => 45000,   // 45%
-        _ => 20000,      // 20%
-    };
-
-    // 하단 푸터: 얇은 구분선 + "n / N" 페이지 번호(무채색). 콘텐츠 슬라이드의 바닥을 정돈해 준다.
-    private static void AppendFooter(ShapeTree tree, ref uint id, int index, int total, ThemePreset p)
-    {
-        const long footY = 6480000;
-        tree.AppendChild(AccentBar(id++, MarginX, footY, 460000, 26000, p.AccentHex));
-        tree.AppendChild(MakeShape(id++, "PageNo", SlideW - MarginX - 900000, footY - 120000, 900000, 300000,
-            new[] { AlignedText($"{index} / {total}", 11, false, p.FooterHex, p.BodyFont, D.TextAlignmentTypeValues.Right) }));
-    }
-
     // 채운 원 + 중앙 번호(프로세스 단계 배지 등).
     private static P.Shape Circle(uint id, long x, long y, long d, string fill, string text, int fontPt, string fontColor)
     {
@@ -839,167 +606,10 @@ public sealed class PptxCreateTool : ITool
                 CenteredText(text, fontPt, true, fontColor)));
     }
 
-    // ── stat: 2~4개의 큰 수치 콜아웃(KPI). 배경 카드 + 큰 값(accent) + 라벨. 세로 중앙 정렬. ──
-    private static void BuildStatRow(ShapeTree tree, ref uint id, long bodyTop, long bodyH, List<MetricIn> metrics, ThemePreset p)
-    {
-        var items = metrics.Take(4).ToList();
-        var n = items.Count;
-        const long gap = 360000;
-        var cardW = (ContentW - gap * (n - 1)) / n;
-        const long cardH = 2100000;
-        var cy = Math.Max(bodyTop, bodyTop + (bodyH - cardH) / 2);
-        for (var i = 0; i < n; i++)
-        {
-            var x = MarginX + i * (cardW + gap);
-            tree.AppendChild(Panel(id++, x, cy, cardW, cardH, p.PanelHex, p.BorderHex));
-            tree.AppendChild(MakeShape(id++, "Stat", x, cy + 320000, cardW, 900000,
-                new[] { CenteredText(items[i].Value ?? string.Empty, 44, true, p.AccentHex, p.TitleFont) }));
-            tree.AppendChild(MakeShape(id++, "StatLabel", x + 180000, cy + 1300000, cardW - 360000, 640000,
-                new[] { CenteredText(items[i].Label ?? string.Empty, p.SubtitlePt, false, p.SubtitleHex, p.BodyFont) }));
-        }
-    }
-
-    // ── cards: 2~4개의 타일(요점 카드). 4개는 2×2 그리드. 각 카드 = 패널 + accent 칩 + 헤딩 + 본문. ──
-    private static void BuildCardGrid(ShapeTree tree, ref uint id, long bodyTop, long bodyH, List<CardIn> cards, ThemePreset p)
-    {
-        var items = cards.Take(4).ToList();
-        var n = items.Count;
-        var cols = n <= 3 ? n : 2;
-        var rows = (n + cols - 1) / cols;
-        const long gap = 300000;
-        const long pad = 240000;
-        const long maxCardH = 1950000; // 내용(헤딩+1~2줄) 대비 과도한 카드 높이 방지.
-        var cardW = (ContentW - gap * (cols - 1)) / cols;
-        var cardH = Math.Min(maxCardH, (bodyH - gap * (rows - 1)) / rows);
-        var gridH = cardH * rows + gap * (rows - 1);
-        var gridTop = bodyTop + Math.Max(0, (bodyH - gridH) / 2); // 그리드를 본문 영역에 세로 중앙.
-        for (var i = 0; i < n; i++)
-        {
-            int r = i / cols, c = i % cols;
-            var x = MarginX + c * (cardW + gap);
-            var y = gridTop + r * (cardH + gap);
-            tree.AppendChild(Panel(id++, x, y, cardW, cardH, p.PanelHex, p.BorderHex));
-            tree.AppendChild(AccentBar(id++, x + pad, y + pad, 300000, 46000, p.AccentHex));
-            var paras = new List<D.Paragraph>();
-            if (!string.IsNullOrWhiteSpace(items[i].Heading))
-            {
-                paras.Add(TextParagraph(items[i].Heading!, p.SubtitlePt * 100, bold: true, bullet: false, color: p.AccentHex, fontName: p.BodyFont));
-            }
-
-            if (!string.IsNullOrWhiteSpace(items[i].Body))
-            {
-                paras.Add(TextParagraph(items[i].Body!, p.BodyPt * 100, bold: false, bullet: false, color: p.BodyHex, fontName: p.BodyFont, spaceBeforePct: 45000));
-            }
-
-            if (paras.Count == 0)
-            {
-                paras.Add(TextParagraph(string.Empty, p.BodyPt * 100, false, false, null));
-            }
-
-            tree.AppendChild(MakeShape(id++, "Card", x + pad, y + pad + 120000, cardW - 2 * pad, cardH - 2 * pad - 120000, paras));
-        }
-    }
-
-    // ── process: 2~5개 단계의 가로 흐름. 각 단계 = 패널 + 번호 배지(원) + 라벨 + 캡션, 사이에 › 화살표. ──
-    private static void BuildProcess(ShapeTree tree, ref uint id, long bodyTop, long bodyH, List<StepIn> steps, ThemePreset p)
-    {
-        var items = steps.Take(5).ToList();
-        var n = items.Count;
-        const long gap = 220000;
-        const long stepH = 2300000;
-        const long badge = 620000;
-        var stepW = (ContentW - gap * (n - 1)) / n;
-        var cy = Math.Max(bodyTop, bodyTop + (bodyH - stepH) / 2);
-        for (var i = 0; i < n; i++)
-        {
-            var x = MarginX + i * (stepW + gap);
-            tree.AppendChild(Panel(id++, x, cy, stepW, stepH, p.PanelHex, p.BorderHex));
-            tree.AppendChild(Circle(id++, x + (stepW - badge) / 2, cy + 230000, badge, p.AccentHex, (i + 1).ToString(), 22, "FFFFFF"));
-            tree.AppendChild(MakeShape(id++, "StepLabel", x + 120000, cy + 230000 + badge + 70000, stepW - 240000, 520000,
-                new[] { CenteredText(items[i].Label ?? string.Empty, p.SubtitlePt, true, p.TitleHex, p.BodyFont) }));
-            if (!string.IsNullOrWhiteSpace(items[i].Caption))
-            {
-                tree.AppendChild(MakeShape(id++, "StepCap", x + 120000, cy + 230000 + badge + 640000, stepW - 240000, 760000,
-                    new[] { CenteredText(items[i].Caption!, Math.Max(10, p.BodyPt - 1), false, p.BodyHex, p.BodyFont) }));
-            }
-
-            if (i < n - 1)
-            {
-                tree.AppendChild(MakeShape(id++, "Arrow", x + stepW - 40000, cy + (stepH / 2) - 220000, gap + 80000, 440000,
-                    new[] { CenteredText("›", 28, true, p.AccentHex, p.BodyFont) }));
-            }
-        }
-    }
-
-    private static D.Paragraph TextParagraph(string text, int fontSize, bool bold, bool bullet, string? color, string? fontName = null, int spaceBeforePct = 0)
-    {
-        var runProps = new D.RunProperties { Language = "en-US", FontSize = fontSize };
-        if (bold)
-        {
-            runProps.Bold = true;
-        }
-
-        // RunProperties 자식 순서(스키마): fill(SolidFill) → latin(LatinFont).
-        if (color is not null)
-        {
-            runProps.AppendChild(new D.SolidFill(new D.RgbColorModelHex { Val = color }));
-        }
-
-        if (!string.IsNullOrEmpty(fontName))
-        {
-            runProps.AppendChild(new D.LatinFont { Typeface = fontName });
-        }
-
-        // East Asian(한/일/중): 런이 명시적 Latin 폰트를 가지면 테마 EA 폰트로 폴백되지 않으므로,
-        // 텍스트 스크립트에 맞는 EA 폰트를 감지 시에만 런에 직접 지정(언어별 폰트 매칭·설치 검증).
-        if (FontResolver.EastAsianFor(text) is { } eaFont)
-        {
-            runProps.AppendChild(new D.EastAsianFont { Typeface = eaFont });
-        }
-
-        var para = new D.Paragraph();
-        // 본문 불릿: 줄간격 여유(120%)로 매달린 줄·과밀 완화. 불릿이 적을수록 spaceBefore(문단 앞 여백)를
-        // 키워 세로로 고르게 퍼뜨린다(상단 앵커 유지 + 하단 데드스페이스 완화). 불릿 색은 본문 색에 맞춘다
-        // (다크 배경에서 검정 불릿이 안 보이는 것 방지). 자식 순서: lnSpc → spcBef → buClr → buFont → buChar.
-        D.ParagraphProperties pPr;
-        if (bullet)
-        {
-            pPr = new D.ParagraphProperties(new D.LineSpacing(new D.SpacingPercent { Val = 120000 }));
-            if (spaceBeforePct > 0)
-            {
-                pPr.AppendChild(new D.SpaceBefore(new D.SpacingPercent { Val = spaceBeforePct }));
-            }
-
-            if (color is not null)
-            {
-                pPr.AppendChild(new D.BulletColor(new D.RgbColorModelHex { Val = color }));
-            }
-
-            pPr.AppendChild(new D.BulletFont { Typeface = "Arial" });
-            pPr.AppendChild(new D.CharacterBullet { Char = "•" });
-        }
-        else
-        {
-            pPr = new D.ParagraphProperties();
-            if (spaceBeforePct > 0)
-            {
-                pPr.AppendChild(new D.SpaceBefore(new D.SpacingPercent { Val = spaceBeforePct }));
-            }
-
-            pPr.AppendChild(new D.NoBullet());
-        }
-
-        para.AppendChild(pPr);
-        para.AppendChild(new D.Run(runProps, new D.Text(text)));
-        return para;
-    }
-
     // 표(graphicFrame + a:tbl). 헤더 행은 accent 배경 + 흰 볼드.
     // availHeight: 표에 허용된 세로 공간. 행이 많으면 행 높이·폰트를 줄여 슬라이드 밖으로 넘치지 않게 한다.
-    private static P.GraphicFrame BuildTable(uint id, long x, long y, long w, TableIn t, string accent, long availHeight)
+    private static P.GraphicFrame BuildTable(uint id, long x, long y, long w, List<string> headers, List<List<string>> rows, string accent, long availHeight)
     {
-        var headers = t.Headers ?? new List<string>();
-        var rows = t.Rows ?? new List<List<string>>();
         var ncols = Math.Max(headers.Count, rows.Count > 0 ? rows.Max(r => r.Count) : 0);
         if (ncols == 0)
         {
@@ -1011,10 +621,10 @@ public sealed class PptxCreateTool : ITool
         // 행 높이 적응: 가용 높이/행수. 기본보다 크게는 안 늘리고, 하한 아래로는 안 줄인다.
         var nrows = (headers.Count > 0 ? 1 : 0) + rows.Count;
         var rowH = nrows > 0
-            ? Math.Max(MinRowHeight, Math.Min(RowHeight, availHeight / nrows))
-            : RowHeight;
+            ? Math.Max(PptxDesign.MinRowHeight, Math.Min(PptxDesign.RowHeight, availHeight / nrows))
+            : PptxDesign.RowHeight;
         // 행 높이가 기본보다 작아지면 폰트도 같은 비율로 축소(하한 있음).
-        var fontScale = (double)rowH / RowHeight;
+        var fontScale = (double)rowH / PptxDesign.RowHeight;
 
         // No Style, No Grid 스타일 — 기본 격자선(스프레드시트 느낌)을 없애고, 밴딩·여백으로 깔끔하게.
         var table = new D.Table(
@@ -1065,12 +675,15 @@ public sealed class PptxCreateTool : ITool
     {
         var baseSize = header ? 1600 : 1400;
         var size = Math.Max(900, (int)(baseSize * fontScale)); // 축소 시 하한 9pt
-        var runProps = new D.RunProperties { Language = "en-US", FontSize = size };
+        var runProps = new D.RunProperties { FontSize = size };
         if (header)
         {
             runProps.Bold = true;
             runProps.AppendChild(new D.SolidFill(new D.RgbColorModelHex { Val = "FFFFFF" }));
         }
+
+        // Latin=null → 테마 minor Latin 상속(앱 언어=EA 면 그 폰트). EA 글리프는 스크립트 감지로 직접 지정.
+        ApplyRunScript(runProps, text, null);
 
         var body = new D.TextBody(
             new D.BodyProperties(),
@@ -1117,7 +730,8 @@ public sealed class PptxCreateTool : ITool
             new P.ApplicationNonVisualDrawingProperties());
 
     // 유효 pptx 에 필요한 최소 테마(색/폰트/포맷 스킴).
-    private static D.Theme MinimalTheme()
+    // themeEaFont 가 있으면(앱 언어=ko/ja/zh) major/minor 를 그 폰트로 통일 — Latin·EA 모두.
+    private static D.Theme MinimalTheme(string? themeEaFont = null)
     {
         var scheme = new D.ColorScheme(
             new D.Dark1Color(new D.SystemColor { Val = D.SystemColorValues.WindowText }),
@@ -1135,10 +749,13 @@ public sealed class PptxCreateTool : ITool
         { Name = "Office" };
 
         // EA(동아시아) 폰트를 명시 — 한글 텍스트가 Windows/PowerPoint 에서 일관되게 렌더되도록.
-        // Latin 은 템플릿별 런에서 지정하고, 한글 글리프는 이 EA 폰트를 따른다.
+        // 앱 언어가 EA 면 Latin 까지 그 폰트로 통일(themeEaFont), 아니면 라틴 기본값 유지.
+        var majorLatin = themeEaFont ?? "Calibri Light";
+        var minorLatin = themeEaFont ?? "Calibri";
+        var eaTypeface = themeEaFont ?? string.Empty;
         var fontScheme = new D.FontScheme(
-            new D.MajorFont(new D.LatinFont { Typeface = "Calibri Light" }, new D.EastAsianFont { Typeface = string.Empty }, new D.ComplexScriptFont { Typeface = string.Empty }),
-            new D.MinorFont(new D.LatinFont { Typeface = "Calibri" }, new D.EastAsianFont { Typeface = string.Empty }, new D.ComplexScriptFont { Typeface = string.Empty }))
+            new D.MajorFont(new D.LatinFont { Typeface = majorLatin }, new D.EastAsianFont { Typeface = eaTypeface }, new D.ComplexScriptFont { Typeface = string.Empty }),
+            new D.MinorFont(new D.LatinFont { Typeface = minorLatin }, new D.EastAsianFont { Typeface = eaTypeface }, new D.ComplexScriptFont { Typeface = string.Empty }))
         { Name = "Office" };
 
         var fmtScheme = new D.FormatScheme(

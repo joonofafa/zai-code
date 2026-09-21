@@ -41,6 +41,9 @@ public sealed class DocxCreateTool : ITool
           "properties": {
             "path": { "type": "string", "description": "Output .docx path (relative to workspace)" },
             "template": { "type": "string", "enum": ["report", "incident", "proposal"], "description": "Korean business document form: report, incident, or proposal. Produce the standard sections as heading blocks (see tool description). If no blocks are given, the section skeleton is scaffolded." },
+            "accent": { "type": "string", "description": "Brand heading color hex (from a template style skill). Colors headings to match the brand." },
+            "title_font": { "type": "string", "description": "Brand heading font name (from a template style skill)." },
+            "body_font": { "type": "string", "description": "Brand body font name (from a template style skill). Applied to all body text." },
             "title": { "type": "string", "description": "Document title (large bold heading, first line)" },
             "blocks": {
               "type": "array",
@@ -53,7 +56,8 @@ public sealed class DocxCreateTool : ITool
                   "text": { "type": "string", "description": "heading/paragraph text. Supports **bold** and *italic*." },
                   "items": { "type": "array", "items": { "type": "string" }, "description": "bullets/numbered: list items. Supports **bold**/*italic*." },
                   "header": { "type": "boolean", "description": "table only: render the first row as a bold shaded header. Default true." },
-                  "rows": { "type": "array", "items": { "type": "array", "items": { "type": "string" } }, "description": "table only: rows of cell text (row-major)." }
+                  "rows": { "type": "array", "items": { "type": "array", "items": { "type": "string" } }, "description": "table only: rows of cell text (row-major)." },
+                  "indent": { "type": "integer", "description": "paragraph/bullets/numbered: left indent level 0-3 (0.5 inch per level). Use 1 for sub-items nested under a numbered clause (Korean 가./나./다. under 1./2./3.). Default 0." }
                 },
                 "required": ["type"]
               }
@@ -88,15 +92,26 @@ public sealed class DocxCreateTool : ITool
         [property: JsonPropertyName("text")] string? Text,
         [property: JsonPropertyName("items")] List<string>? Items,
         [property: JsonPropertyName("header")] bool? Header,
-        [property: JsonPropertyName("rows")] List<List<string>>? Rows);
+        [property: JsonPropertyName("rows")] List<List<string>>? Rows,
+        [property: JsonPropertyName("indent")] int? Indent);
 
     private sealed record Input(
         [property: JsonPropertyName("path")] string? Path,
         [property: JsonPropertyName("title")] string? Title,
         [property: JsonPropertyName("template")] string? Template,
+        // 브랜드 테마(템플릿 스타일 스킬에서 전달). 헤딩 강조색·제목/본문 폰트에 적용.
+        [property: JsonPropertyName("accent")] string? Accent,
+        [property: JsonPropertyName("title_font")] string? TitleFont,
+        [property: JsonPropertyName("body_font")] string? BodyFont,
         [property: JsonPropertyName("blocks")] List<BlockIn>? Blocks,
         [property: JsonPropertyName("paragraphs")] List<string>? Paragraphs,
         [property: JsonPropertyName("images")] List<ImageIn>? Images);
+
+    // 요청당 브랜드 값(색·폰트). static 렌더 메서드들이 시그니처 변경 없이 읽도록 ThreadStatic 로 주입.
+    private sealed record Brand(string? Accent, string? TitleFont, string? BodyFont);
+
+    [ThreadStatic]
+    private static Brand? _brand;
 
     // 문서 유형별 표준 섹션(양식). 모델이 blocks 로 이 구조를 채우고, 비어 있으면 스캐폴딩된다.
     private static string[]? FormSections(string? template) => template?.Trim().ToLowerInvariant() switch
@@ -124,6 +139,11 @@ public sealed class DocxCreateTool : ITool
         {
             full = OpenXmlPaths.ResolveForWrite(context.WorkingDirectory, inp.Path, ".docx");
             Write(full, inp, context.WorkingDirectory);
+            // 테마 스탬프(WordEdit insert_table 헤더색 등 기본값용). 폰트는 브랜드 > 앱 언어 EA 폰트.
+            var eaFont = FontResolver.AppDefaultEastAsianFont();
+            DocThemeStamp.Stamp(full, new DocTheme(
+                DocThemeStamp.NormalizeHex(inp.Accent), null, null,
+                inp.TitleFont?.Trim() ?? eaFont, inp.BodyFont?.Trim() ?? eaFont));
         }
         catch (Exception ex)
         {
@@ -139,12 +159,35 @@ public sealed class DocxCreateTool : ITool
 
     private static void Write(string path, Input inp, string workingDir)
     {
-        // 원자적 생성: tmp 에 완전히 쓰고 rename — 중간에 실패해도 기존 파일을 덮어쓰지 않는다.
-        var tmp = path + ".tmp";
+        _brand = string.IsNullOrWhiteSpace(inp.Accent) && string.IsNullOrWhiteSpace(inp.TitleFont)
+                 && string.IsNullOrWhiteSpace(inp.BodyFont)
+            ? null
+            : new Brand(NormHex(inp.Accent), inp.TitleFont?.Trim(), inp.BodyFont?.Trim());
         try
         {
-            using (var doc = WordprocessingDocument.Create(tmp, WordprocessingDocumentType.Document))
-            {
+            WriteCore(path, inp, workingDir);
+        }
+        finally
+        {
+            _brand = null; // 스레드 재사용 시 다음 요청에 새지 않게 해제
+        }
+    }
+
+    // "#RRGGBB"/"RRGGBB" → Word 색 형식 "RRGGBB"(# 없음). 유효하지 않으면 null.
+    private static string? NormHex(string? v)
+    {
+        if (string.IsNullOrWhiteSpace(v))
+        {
+            return null;
+        }
+
+        var h = v.Trim().TrimStart('#').ToUpperInvariant();
+        return h.Length == 6 && h.All(Uri.IsHexDigit) ? h : null;
+    }
+
+    private static void WriteCore(string path, Input inp, string workingDir)
+    {
+        using var doc = WordprocessingDocument.Create(path, WordprocessingDocumentType.Document);
         var main = doc.AddMainDocumentPart();
         main.Document = new Document();
         var body = main.Document.AppendChild(new Body());
@@ -209,27 +252,23 @@ public sealed class DocxCreateTool : ITool
 
         // 페이지 설정(A4 세로 + 1" 여백) + 하단 중앙 페이지 번호 푸터. SectionProperties 는 body 의 마지막 자식.
         AppendPageSetup(main, body);
-            }
-
-            File.Move(tmp, path, overwrite: true);
-        }
-        catch
-        {
-            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
-            throw;
-        }
     }
 
-    // 문서 기본 서식(DocDefaults): Latin=Arial, 11pt. 한글(EastAsia) 폰트는 여기서 강제하지 않고
-    // 실제 한글이 든 런에만 Malgun Gothic 을 지정한다(비한국어 문서에 한국어 폰트를 넣지 않기 위함).
+    // 문서 기본 서식(DocDefaults): 11pt. 라틴 기본은 Arial 이나, 앱 언어가 동아시아면 그 언어 폰트로
+    // 통일(Latin·EastAsia 모두)해 숫자·영문까지 일관되게 한다. 비-EA 언어는 Arial + 런별 EA 감지(기존).
     private static void ApplyDefaults(MainDocumentPart main)
     {
+        var eaDefault = FontResolver.AppDefaultEastAsianFont();
+        var runFonts = eaDefault is not null
+            ? new RunFonts { Ascii = eaDefault, HighAnsi = eaDefault, ComplexScript = eaDefault, EastAsia = eaDefault }
+            : new RunFonts { Ascii = "Arial", HighAnsi = "Arial", ComplexScript = "Arial" };
+
         var stylePart = main.AddNewPart<StyleDefinitionsPart>();
         stylePart.Styles = new Styles(
             new DocDefaults(
                 new RunPropertiesDefault(
                     new RunPropertiesBaseStyle(
-                        new RunFonts { Ascii = "Arial", HighAnsi = "Arial", ComplexScript = "Arial" },
+                        runFonts,
                         new FontSize { Val = "22" },
                         new FontSizeComplexScript { Val = "22" }))));
     }
@@ -256,6 +295,8 @@ public sealed class DocxCreateTool : ITool
 
     private static void AppendBlock(Body body, BlockIn b)
     {
+        // 들여쓰기 레벨(0~3) — 번호 조항 아래 세부 항목(가./나. 등)을 시각적으로 종속시킨다. 1레벨 = 0.5".
+        var indent = Math.Clamp(b.Indent ?? 0, 0, 3);
         switch ((b.Type ?? "paragraph").Trim().ToLowerInvariant())
         {
             case "heading":
@@ -264,7 +305,7 @@ public sealed class DocxCreateTool : ITool
             case "bullets":
                 foreach (var it in b.Items ?? new List<string>())
                 {
-                    body.AppendChild(ListItem(it ?? string.Empty, "•  "));
+                    body.AppendChild(ListItem(it ?? string.Empty, "•  ", indent));
                 }
 
                 break;
@@ -272,7 +313,7 @@ public sealed class DocxCreateTool : ITool
                 var n = 1;
                 foreach (var it in b.Items ?? new List<string>())
                 {
-                    body.AppendChild(ListItem(it ?? string.Empty, $"{n++}.  "));
+                    body.AppendChild(ListItem(it ?? string.Empty, $"{n++}.  ", indent));
                 }
 
                 break;
@@ -280,7 +321,7 @@ public sealed class DocxCreateTool : ITool
                 body.AppendChild(BuildTable(b.Rows ?? new List<List<string>>(), b.Header ?? true));
                 break;
             default: // "paragraph"
-                body.AppendChild(BodyParagraph(b.Text ?? string.Empty));
+                body.AppendChild(BodyParagraph(b.Text ?? string.Empty, indent));
                 break;
         }
     }
@@ -301,9 +342,14 @@ public sealed class DocxCreateTool : ITool
         return p;
     }
 
-    private static Paragraph BodyParagraph(string text)
+    private static Paragraph BodyParagraph(string text, int indent = 0)
     {
         var p = new Paragraph();
+        if (indent > 0)
+        {
+            p.AppendChild(new ParagraphProperties(new Indentation { Left = (indent * 720).ToString() }));
+        }
+
         foreach (var run in InlineRuns(text))
         {
             p.AppendChild(run);
@@ -312,10 +358,10 @@ public sealed class DocxCreateTool : ITool
         return p;
     }
 
-    // 목록 항목: 접두어(• / 1.) + 왼쪽 들여쓰기(0.25"). 진짜 numbering 파트 대신 시각 표현.
-    private static Paragraph ListItem(string text, string prefix)
+    // 목록 항목: 접두어(• / 1.) + 왼쪽 들여쓰기(기본 0.25" + indent 레벨당 0.5"). 진짜 numbering 파트 대신 시각 표현.
+    private static Paragraph ListItem(string text, string prefix, int indent = 0)
     {
-        var props = new ParagraphProperties(new Indentation { Left = "360" });
+        var props = new ParagraphProperties(new Indentation { Left = (360 + indent * 720).ToString() });
         var p = new Paragraph(props);
         p.AppendChild(TextRun(prefix));
         foreach (var run in InlineRuns(text))
@@ -395,8 +441,14 @@ public sealed class DocxCreateTool : ITool
     // 캡션: 이탤릭·가운데정렬.
     private static Paragraph Caption(string text)
     {
-        var fonts = new RunFonts { Ascii = FontResolver.LatinFont, HighAnsi = FontResolver.LatinFont, ComplexScript = FontResolver.LatinFont };
-        if (FontResolver.EastAsianFor(text) is { } ea)
+        var eaDefault = FontResolver.AppDefaultEastAsianFont();
+        var latin = eaDefault ?? FontResolver.LatinFont;
+        var fonts = new RunFonts { Ascii = latin, HighAnsi = latin, ComplexScript = latin };
+        if (eaDefault is not null)
+        {
+            fonts.EastAsia = eaDefault;
+        }
+        else if (FontResolver.EastAsianFor(text) is { } ea)
         {
             fonts.EastAsia = ea;
         }
@@ -432,12 +484,26 @@ public sealed class DocxCreateTool : ITool
             }
 
             var rp = new RunProperties();
-            // Latin=Arial 는 항상. 텍스트 스크립트(한/일/중)에 맞는 EA 폰트는 감지 시에만 — 언어별 폰트 매칭.
-            // rPr 자식 순서상 rFonts 는 맨 앞에 온다.
-            var fonts = new RunFonts { Ascii = FontResolver.LatinFont, HighAnsi = FontResolver.LatinFont, ComplexScript = FontResolver.LatinFont };
-            if (FontResolver.EastAsianFor(segment) is { } ea)
+            var isHeading = sizeHalfPt is not null;
+
+            // 우선순위: 브랜드 폰트(제목엔 title, 본문엔 body) > 앱 언어 기본 EA 폰트 > (Latin=Arial + 런별 EA 감지).
+            // 앞의 둘은 Latin·EA 모두에 적용해 숫자·영문까지 하나의 폰트로 통일한다.
+            var brandFont = isHeading
+                ? (_brand?.TitleFont ?? _brand?.BodyFont)
+                : (_brand?.BodyFont ?? _brand?.TitleFont);
+            var uniform = !string.IsNullOrWhiteSpace(brandFont) ? brandFont : FontResolver.AppDefaultEastAsianFont();
+            RunFonts fonts;
+            if (!string.IsNullOrWhiteSpace(uniform))
             {
-                fonts.EastAsia = ea;
+                fonts = new RunFonts { Ascii = uniform, HighAnsi = uniform, ComplexScript = uniform, EastAsia = uniform };
+            }
+            else
+            {
+                fonts = new RunFonts { Ascii = FontResolver.LatinFont, HighAnsi = FontResolver.LatinFont, ComplexScript = FontResolver.LatinFont };
+                if (FontResolver.EastAsianFor(segment) is { } ea)
+                {
+                    fonts.EastAsia = ea;
+                }
             }
 
             rp.AppendChild(fonts);
@@ -449,6 +515,12 @@ public sealed class DocxCreateTool : ITool
             if (segItalic)
             {
                 rp.AppendChild(new Italic());
+            }
+
+            // 헤딩은 브랜드 강조색으로(rPr 순서상 color 는 b/i 뒤, sz 앞).
+            if (isHeading && _brand?.Accent is { } accent)
+            {
+                rp.AppendChild(new Color { Val = accent });
             }
 
             if (sizeHalfPt is int sz)
@@ -463,7 +535,19 @@ public sealed class DocxCreateTool : ITool
                 run.AppendChild(rp);
             }
 
-            run.AppendChild(new Text(segment) { Space = SpaceProcessingModeValues.Preserve });
+            // 텍스트 내 개행(\n)은 줄바꿈(w:br)으로 — 모델이 한 항목에 여러 줄(가./나./다.)을 넣는 경우
+            // 렌더에서 뭉개지지 않게 한다. 한 Run 안에 Text/Break 를 교차 배치.
+            var lines = segment.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+            for (var li = 0; li < lines.Length; li++)
+            {
+                if (li > 0)
+                {
+                    run.AppendChild(new Break());
+                }
+
+                run.AppendChild(new Text(lines[li]) { Space = SpaceProcessingModeValues.Preserve });
+            }
+
             runs.Add(run);
         }
 

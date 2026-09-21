@@ -110,64 +110,42 @@ public sealed class XlsxEditTool : ITool
 
     private static int Apply(string path, List<CellEdit> edits)
     {
-        // 원본 보호: 임시 복사본에서 수정한 뒤 원자적 교체 — 수정/저장 중 실패해도 원본이 깨지지 않는다.
-        var tmp = path + ".tmp";
-        File.Copy(path, tmp, overwrite: true);
-        var count = 0;
-        try
+        using var doc = SpreadsheetDocument.Open(path, isEditable: true);
+        var wbPart = doc.WorkbookPart ?? throw new InvalidOperationException("no workbook part");
+        var sheets = wbPart.Workbook.Descendants<Sheet>().ToList();
+        if (sheets.Count == 0)
         {
-            using (var doc = SpreadsheetDocument.Open(tmp, isEditable: true))
-            {
-                var wbPart = doc.WorkbookPart ?? throw new InvalidOperationException("no workbook part");
-                var sheets = wbPart.Workbook.Descendants<Sheet>().ToList();
-                if (sheets.Count == 0)
-                {
-                    throw new InvalidOperationException("workbook has no sheets");
-                }
-
-                foreach (var e in edits)
-                {
-                    var m = RefRe.Match(e.Cell!.Trim());
-                    if (!m.Success)
-                    {
-                        continue; // 잘못된 참조는 건너뛴다.
-                    }
-
-                    var cellRef = m.Groups[1].Value.ToUpperInvariant() + m.Groups[2].Value;
-                    var rowIdx = uint.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture);
-
-                    var target = string.IsNullOrWhiteSpace(e.Sheet)
-                        ? sheets[0]
-                        : sheets.FirstOrDefault(s => string.Equals(s.Name?.Value, e.Sheet, StringComparison.OrdinalIgnoreCase));
-                    if (target?.Id?.Value is not { } relId || wbPart.GetPartById(relId) is not WorksheetPart wsPart)
-                    {
-                        continue;
-                    }
-
-                    var cell = GetOrCreateCell(wsPart.Worksheet, cellRef, rowIdx);
-                    SetValue(cell, e.Value ?? string.Empty);
-                    count++;
-                }
-
-                if (count > 0)
-                {
-                    wbPart.Workbook.Save();
-                }
-            }
-
-            if (count > 0)
-            {
-                File.Move(tmp, path, overwrite: true);
-            }
-            else
-            {
-                try { File.Delete(tmp); } catch { } // 변경이 없으면 원본을 그대로 둔다.
-            }
+            throw new InvalidOperationException("workbook has no sheets");
         }
-        catch
+
+        var count = 0;
+        foreach (var e in edits)
         {
-            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
-            throw;
+            var m = RefRe.Match(e.Cell!.Trim());
+            if (!m.Success)
+            {
+                continue; // 잘못된 참조는 건너뛴다.
+            }
+
+            var cellRef = m.Groups[1].Value.ToUpperInvariant() + m.Groups[2].Value;
+            var rowIdx = uint.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture);
+
+            var target = string.IsNullOrWhiteSpace(e.Sheet)
+                ? sheets[0]
+                : sheets.FirstOrDefault(s => string.Equals(s.Name?.Value, e.Sheet, StringComparison.OrdinalIgnoreCase));
+            if (target?.Id?.Value is not { } relId || wbPart.GetPartById(relId) is not WorksheetPart wsPart)
+            {
+                continue;
+            }
+
+            var cell = GetOrCreateCell(wsPart.Worksheet, cellRef, rowIdx);
+            SetValue(cell, e.Value ?? string.Empty);
+            count++;
+        }
+
+        if (count > 0)
+        {
+            wbPart.Workbook.Save();
         }
 
         return count;

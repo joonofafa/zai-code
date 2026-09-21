@@ -118,4 +118,17 @@ public sealed class PptxLayoutCheckTests : IDisposable
         var issues = InspectAll(path);
         Assert.Contains(issues, i => i.Kind == "offslide");
     }
+
+    [Theory]
+    [InlineData("94%", 44)]                 // 짧은 값은 44pt 유지
+    [InlineData("90분 → 5분", 36)]          // 4장 카드(폭≈2.4M EMU)에서 화살표 값은 축소
+    [InlineData("1,234,567,890원", 24)]      // 매우 길면 하한
+    public void FitFontPt_ShrinksLongStatValues(string value, int expectedMax)
+    {
+        // 4장 카드 안쪽 폭: (ContentW - 3*gap)/4 - 2*180000
+        long cardW = (PptxDesign.ContentW - 360000 * 3) / 4 - 360000;
+        var pt = PptxDesign.FitFontPt(value, cardW, 44, 24);
+        Assert.True(pt <= expectedMax, $"{value}: {pt}pt");
+        Assert.InRange(pt, 24, 44);
+    }
 }
