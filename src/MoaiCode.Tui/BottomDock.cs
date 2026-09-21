@@ -153,7 +153,9 @@ public sealed class BottomDock
         }
 
         var inputRow0 = scrollBottom + 2;
-        var statusRow = inputRow0 + inputRows;
+        // 입력행은 inputRow0..inputRow0+inputRows-1 이므로, 그 아래 구분선(statusRow-1)이
+        // 마지막 입력행을 덮어쓰지 않으려면 statusRow 는 입력행 끝에서 한 줄 더 아래여야 한다.
+        var statusRow = inputRow0 + inputRows + 1;
 
         // 구분선(입력창 위): 옅은 가로선 — Claude Code 스타일. 행 전체를 연한 회색 '─' 로.
         sb.Append($"\x1b[{scrollBottom + 1};1H\x1b[2K").Append(Separator(w));
