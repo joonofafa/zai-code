@@ -15,6 +15,9 @@ try
     draw.Invoke(dock, new object[] { buf, 0, null });      // 최초 설치
     captured.Clear();
     draw.Invoke(dock, new object[] { buf, 0, null });      // 재그리기(설치 후 steady-state)
+    captured.Clear();
+    buf.Append("hello 안녕");                              // 타이핑한 내용이 있는 상태
+    draw.Invoke(dock, new object[] { buf, buf.Length, null });
 }
 finally { Console.SetOut(origOut); }
 
@@ -88,10 +91,12 @@ for (var r = H - 6; r < H; r++) Console.WriteLine($"{r + 1,3}|{Row(r)}|");
 // ── 검증 ──
 var statusIdx = Enumerable.Range(0, H).FirstOrDefault(r => Row(r).Contains("STATUS-LINE"), -1);
 var promptIdx = Enumerable.Range(0, H).FirstOrDefault(r => Row(r).Contains("❯"), -1);
+var typedIdx = Enumerable.Range(0, H).FirstOrDefault(r => Row(r).Contains("hello 안녕"), -1);
 var sepBelow = statusIdx >= 0 && Row(statusIdx - 1).Contains('─') ? statusIdx - 1 : -1;
 var sepAbove = promptIdx >= 0 && Row(promptIdx - 1).Contains('─') ? promptIdx - 1 : -1;
-Console.WriteLine($"\nsepAbove={sepAbove + 1} prompt={promptIdx + 1} sepBelow={sepBelow + 1} status={statusIdx + 1}");
-var ok = promptIdx >= 0 && sepAbove == promptIdx - 1 && sepBelow == promptIdx + 1 && statusIdx == promptIdx + 2;
+Console.WriteLine($"\nsepAbove={sepAbove + 1} prompt={promptIdx + 1} sepBelow={sepBelow + 1} status={statusIdx + 1} typed={typedIdx + 1}");
+var ok = promptIdx >= 0 && sepAbove == promptIdx - 1 && sepBelow == promptIdx + 1 && statusIdx == promptIdx + 2
+    && typedIdx == promptIdx;   // 타이핑한 내용이 ❯ 행(입력행)에 보여야 함
 Console.WriteLine(ok ? "PASS: [sep / ❯ input / sep / status] layout intact — 입력행이 구분선에 덮이지 않음"
                     : "FAIL: layout broken — 입력행이 구분선에 덮혔거나 순서 깨짐");
 return ok ? 0 : 1;
