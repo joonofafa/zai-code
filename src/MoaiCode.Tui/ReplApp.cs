@@ -635,7 +635,42 @@ public sealed class ReplApp
         var toggle = L10n.Get("repl.status.toggle");
         var model = ModelStatusLabel();
         var context = ContextLabel();
-        return $"{ansi}{modeTxt}\x1b[0m\x1b[38;5;249m ({toggle}) · {model}{(context.Length > 0 ? $" · {context}" : "")}\x1b[0m";
+        var path = PathLabel();
+        return $"{ansi}{modeTxt}\x1b[0m\x1b[38;5;249m ({toggle}) · {model}{(context.Length > 0 ? $" · {context}" : "")}{(path.Length > 0 ? $" · {path}" : "")}\x1b[0m";
+    }
+
+    // 상태줄 Path 표기: 현재 작업 디렉터리. 홈은 '~' 로 줄여 보이고, 앞 세그먼트(모드·모델·Context)와
+    // 합쳐 터미널 폭을 넘으면 안쪽(오른쪽) 세그먼트를 우선 보존하며 경로 앞쪽을 '…' 로 자른다.
+    private string PathLabel()
+    {
+        string dir;
+        try
+        {
+            dir = Environment.CurrentDirectory;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!string.IsNullOrEmpty(home) && dir.StartsWith(home, StringComparison.Ordinal))
+        {
+            dir = "~" + dir[home.Length..];
+        }
+
+        // 상태줄에서 경로가 차지할 수 있는 최대 칸 수: 폭에서 고정 세그먼트들을 빼고 여유 2칸.
+        var budget = Math.Max(12, BarWidth() - LineEditor.DisplayWidth(
+            $"{L10n.Get(_ctx.State.Mode switch
+            {
+                AgentMode.Plan => "repl.mode.plan",
+                AgentMode.AutoAct => "repl.mode.autoAct",
+                AgentMode.Analysis => "repl.mode.analysis",
+                _ => "repl.mode.act",
+            })} ({L10n.Get("repl.status.toggle")}) · {ModelStatusLabel()} · {ContextLabel()}") - 2);
+
+        var label = L10n.Get("repl.status.path", dir);
+        return ClampToWidth(label, budget, keepEnd: true);
     }
 
     // 상태줄 Context 표기: 추정 컨텍스트 백분율 + 컨텍스트 창 크기(Claude Code 와 동일 형식).

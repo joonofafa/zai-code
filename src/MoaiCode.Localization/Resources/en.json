@@ -86,6 +86,7 @@
   "repl.mode.analysis": "Analysis Mode",
   "repl.status.toggle": "Toggle: Shift+Tab",
   "repl.status.context": "Context ({0}%/{1})",
+  "repl.status.path": "Path ({0})",
   "repl.typeahead.hint": "Typing queues it as your next request.",
   "paste.token": "[Paste #{0} · {1} lines]",
   "session.none": "No saved sessions.",
