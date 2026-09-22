@@ -44,13 +44,18 @@ public sealed class BottomDock
     // 있어 위 영역 스트리밍 출력에 안 씻긴다. 이 모드에선 Draw 가 (1) 스크롤 영역을 재설정하지 않고
     // (2) 실제 커서 대신 저장/복원(7/8)으로 그려 출력 커서(영역 하단)를 보존하며 (3) 가짜 캐럿 블록을 쓴다.
     private bool _turnMode;
-    // 리사이즈 재설치: 설치 경로의 스크롤업(예약 줄 확보)을 건너뛴다. 호출부가 옛 박스 자리를
-    // 미리 지워 예약 줄이 이미 확보된 상태라, 또 스크롤하면 빈 띠가 중간에 남는다. 1회용.
-    private bool _skipInstallScroll;
-    // 마지막으로 커서를 둔 행(1-기준). 리사이즈 후 CPR(ESC[6n) 실측과 비교해 터미널의
-    // 성장 모델을 판별한다. 프롬프트=편집 위치(Draw 가 지정), 턴=영역 하단 파킹(스트리밍
-    // 출력은 커서 행을 바꾸지 않는다 — 개행 시 영역이 스크롤될 뿐).
+    // 리사이즈 재설치 스크롤량 오버라이드: OnResize 가 CPR 실측으로 계산해 Draw 설치 경로에
+    // 전달한다(1회용). null 이면 Draw 가 직접 CPR 으로 정확히 필요한 만큼만 스크롤한다.
+    private int? _installScrollOverride;
+    // 마지막으로 커서를 둔 행(1-기준)과 그때 composer 박스 상단 행(1-기준). 커서는 항상
+    // 박스 안(프롬프트=편집 위치) 또는 박스 바로 위(턴=영역 하단 파킹)에 있으므로, 리사이즈
+    // 후 CPR(ESC[6n) 실측 커서 행과의 차이가 곧 박스 전체의 평행이동량이다(모델 프리 판별).
     private int _lastCursorRow;
+    private int _lastBoxTop;
+    // 화면 안 대화 본문의 마지막(꼬리) 행(1-기준). 재설치 스크롤량은 이 꼬리가 새 박스와
+    // 겹치는 만큼만이면 정확하다 — 박스/커서 위치 기준으로 계산하면 창을 덜 채운 화면에서
+    // 빈 행을 스크롤백으로 밀어 넣고, 이후 창을 키울 때 그 공백이 돌아와 "공란"이 된다.
+    private int _lastConvTail;
     // 테스트 주입용 CPR 프로브(실 터미널 응답 대신 성장 모델을 시뮬레이션). null 이면 실경로.
     internal Func<int?>? CursorRowProbeForTest;
     private readonly object _drawLock = new();
@@ -135,19 +140,31 @@ public sealed class BottomDock
         {
             // 신규 설치(입력 대기 시작): 하단에 reserved 줄 공간 확보 — 화면을 위로 스크롤해
             // 기존 출력은 스크롤백으로 보존하고, 그 빈 자리에 박스를 그린다(직전 출력을 덮지 않게).
-            // 단 _skipInstallScroll(리사이즈 재설치)면 스크롤하지 않는다 — 호출부(OnResize)가 옛 박스
-            // 자리를 미리 지워 예약 줄을 확보해 뒀다. 여기서 또 스크롤하면 지운 빈 띠가 화면 중간으로
-            // 밀려 올라가 대화와 composer 사이에 공백이 누적된다(리사이즈 반복 시 커지던 원인).
-            if (!_skipInstallScroll)
+            // 스크롤량은 "대화 꼬리가 새 박스와 겹치는 만큼"만. 신규 설치(직전 출력 바로 뒤)면 CPR 로
+            // 커서 행(=꼬리)을 실측하고, 리사이즈 재설치면 OnResize 가 CPR 시프트로 보정해 둔
+            // _lastConvTail 을 쓴다(오버라이드). 무조건 reserved 행을 올리던 종전 동작은 창을 덜 채운
+            // 화면에서 빈 줄을 스크롤백으로 밀어 넣어, 창을 키울 때마다 그 공백이 다시 끌려와
+            // "키운 만큼의 공란"으로 보였다. CPR 무응답이면 커서가 마지막 행(h)에 있다고 간주.
+            int scroll;
+            if (_installScrollOverride is { } so)
             {
-                sb.Append($"\x1b[{h};1H");
-                for (var k = 0; k < reserved; k++) sb.Append('\n');
+                scroll = so;
+                _installScrollOverride = null;
             }
+            else
+            {
+                var cur = QueryCursorRow() ?? h;
+                _lastConvTail = Math.Max(1, cur);
+                scroll = Math.Clamp(_lastConvTail + reserved - h, 0, reserved);
+            }
+
+            sb.Append($"\x1b[{h};1H");
+            for (var k = 0; k < scroll; k++) sb.Append('\n');
 
             sb.Append($"\x1b[1;{scrollBottom}r");
             _reserved = reserved;
             _installed = true;
-            _skipInstallScroll = false;
+            _lastConvTail = Math.Max(1, _lastConvTail - scroll);   // 스크롤로 올라간 뒤의 꼬리 위치
         }
         else if (reserved != _reserved)
         {
@@ -229,11 +246,15 @@ public sealed class BottomDock
             }
 
             sb.Append("\u001b8");   // 출력 커서 복원
+            _lastBoxTop = scrollBottom + 1;
+            _lastConvTail = scrollBottom;   // 턴: echo/스트리밍이 영역 하단(파킹 줄)까지 대화를 채운다
         }
         else
         {
             sb.Append($"\x1b[{curRow};{curCol}H").Append("\x1b[?25h");
-            _lastCursorRow = curRow;   // 프롬프트: 커서를 편집 위치에 둠 — 리사이즈 CPR 판별 기준
+            _lastCursorRow = curRow;      // 프롬프트: 커서를 편집 위치에 둠 — 리사이즈 CPR 판별 기준
+            _lastBoxTop = scrollBottom + 1;   // 박스 상단(구분선 행) — CPR 시프트 공식의 앵커
+            _lastConvTail = Math.Min(_lastConvTail, scrollBottom);   // 박스 위 꼬리는 영역 하단 이상 못 넘는다
         }
 
         lock (_drawLock)
@@ -558,24 +579,23 @@ public sealed class BottomDock
     // 지우는 방식이 핵심: ED(2J/ED0) 는 데스크톱 터미널이 창이 커질 때 스크롤백에서 끌어올린 대화
     // 줄까지 지워 복구 불가로 만든다. 대신 행 단위 지움(2K)을 쓴다.
     //
-    // 옛 composer 위치는 터미널의 성장 모델에 따라 갈린다 — grow 시:
-    //   (a) 하단 고정(스크롤백을 위에서 당겨 옛 하단=새 하단으로 평행이동): 옛 박스는 정확히
-    //       새 박스 위치(새 하단)로 이동 → 추가 지움 불필요(Draw 가 제자리 덮어쓴다). 여기서
-    //       옛 박스 행을 지우면 평행이동해 온 대화 꼬리를 지워먹는다(옛 union 밴드의 문제).
-    //   (b) 상단 고정(내용 제자리, 아래에 빈 줄 추가): 옛 박스는 옛 행에 그대로 → 옛 박스 행만
-    //       정확히 지운다(대화는 옛 박스 위에 있으므로 무사).
-    // 어느 쪽인지 CPR(ESC[6n) 커서 실측으로 판별한다 — 직전 커서 행이 grow 만큼 아래로 갔으면 (a),
-    // 제자리면 (b). shrink 는 두 모델 모두 새 박스 상단부터 지우는 밴드가 안전(대화 꼬리는 새
-    // 박스 상단 위). CPR 무응답·변칙(예상 밖 값)은 폴백으로 동일 밴드.
+    // v3(모델 프리): 커서는 항상 composer 박스 "안"(프롬프트=편집 위치) 또는 "바로 위"(턴=영역
+    // 하단 파킹)에 있다. 터미널이 리사이즈 때 화면 내용을 균일 평행이동시키므로(스크롤백 인출,
+    // 잘림, reflow 모두 커서와 내용이 함께 이동), CPR 실측 커서 행의 이동량 shift = 실측 −
+    // 직전 커서 행이 곧 박스 전체의 이동량이다. 유령 박스 현재 위치 = _lastBoxTop + shift —
+    // 그 구간만 지우므로 대화 본문(박스 위)은 어떤 터미널 모델에서도 절대 지워지지 않는다.
+    // 성장 모델 2종 분류(v2)는 tmux 실측에서 오분류해 대화를 지워먹었다 — 폐기.
+    // CPR 무응답 시에는 아무것도 지우지 않는다: 잘못 추정한 밴드 지우기는 데이터 유실이지만,
+    // 유령 잔상은 화면 위에 남는 사실상 화장적 문제일 뿐이다(데이터 안전 최우선).
     //
-    // 재설치는 스크롤 없이 제자리(_skipInstallScroll) — 박스 위치는 지우기/이동으로 이미 확보됐다.
-    // 예전엔 설치 경로의 강제 스크롤업이 지워진 옛 박스 자리(공백)을 화면 중간으로 밀어 올려
-    // 리사이즈 반복마다 공백 띠가 누적됐다.
+    // 재설치 스크롤량은 "대화 꼬리(_lastConvTail)가 새 박스와 겹치는 만큼"만 — 꼬리 역시
+    // shift 로 평행이동 보정한다. 무조건 reserved 행을 올리면 빈 행이 스크롤백으로 밀려 들어가
+    // 창을 키울 때마다 돌아와 "키운 만큼의 공란"이 됐었다.
     private void OnResize(StringBuilder buf, int pos)
     {
         var w = Width();
         var h = Height();
-        var (first, last) = ResizeEraseBand(w, h);
+        var (first, last, shift) = ResizeEraseBand(w, h);
 
         var sb = new StringBuilder("\x1b[r");                  // 스크롤 영역 해제
         for (var row = Math.Max(1, first); row <= last; row++)
@@ -586,29 +606,41 @@ public sealed class BottomDock
         Console.Write(sb.ToString());
         _installed = false;
         _reserved = 0;
-        _skipInstallScroll = true;
-        Draw(buf, pos);   // Draw 가 새 크기로 재설치(스크롤 없이 예약 줄 재확보 + composer 재그림)
+        if (shift is { } s)
+        {
+            // 평행이동 보정된 꼬리 기준으로 재설치 스크롤량 확정(Draw 설치 경로에 1회 전달).
+            // shift 측정 불가(CPR 무응답)면 오버라이드 없음 — Draw 가 다시 CPR 을 시도하고
+            // 그마저 실패하면 커서=맨 아래 가정(종전의 안전 폴백, scroll=reserved).
+            _lastConvTail = Math.Clamp(_lastConvTail + s, 1, h);
+            var r0 = Math.Max(4, _reserved);
+            _installScrollOverride = Math.Clamp(_lastConvTail + r0 - h, 0, r0);
+        }
+        Draw(buf, pos);   // Draw 가 새 크기로 재설치(예약 줄 재확보 + composer 재그림)
     }
 
-    // 리사이즈 시 지울 행 밴드(1-기준 포함). (0,0)=추가 지움 없음(모델 A grow — Draw 가 제자리 덮어씀).
-    // 폭이 변한 경우 reflow 여유로 마진 4행.
-    private (int First, int Last) ResizeEraseBand(int w, int h)
+    // 리사이즈 시 지울 행 밴드(1-기준 포함)와 CPR 이 보고한 실제 평행이동량 shift.
+    // 유령 박스의 현재 위치 = _lastBoxTop + shift(커서와 박스는 함께 이동). 그 구간만 지운다.
+    // shift 측정 불가(CPR 무응답)면 지우지 않는다(0,0,null) — 데이터 안전 최우선.
+    private (int First, int Last, int? Shift) ResizeEraseBand(int w, int h)
     {
-        var d = h - _lastH;
         var margin = w != _lastW ? 4 : 0;   // 폭 변경 시에만 wrap reflow 여유
-        if (d > 0 && margin == 0)
+        if (margin > 0 || h == _lastH)
         {
-            var probe = QueryCursorRow();
-            if (probe is { } row)
-            {
-                if (row == _lastCursorRow + d) return (0, 0);          // 모델 A: 옛 박스→새 박스 위치
-                if (row == _lastCursorRow)                             // 모델 B: 옛 박스 제자리 → 그 행만
-                    return (_lastH - _reserved + 1, _lastH);
-                // 변칙(예상 밖 위치 — reflow 등) → 폴백
-            }
+            return (0, 0, null);   // 폭 변경/reflow — 유령 위치 예측 불가, 지우지 않는다
         }
 
-        return (Math.Max(1, Math.Min(_lastH, h) - _reserved + 1 - margin), h);
+        var probe = QueryCursorRow();
+        if (probe is not { } row)
+        {
+            return (0, 0, null);   // CPR 무응답 — 지우지 않는다(데이터 안전)
+        }
+
+        var shift = row - _lastCursorRow;
+        var ghostTop = _lastBoxTop + shift;
+        var ghostBottom = ghostTop + Math.Max(1, _reserved) - 1;
+        var first = Math.Max(1, ghostTop);
+        var last = Math.Min(h, ghostBottom);
+        return first > last ? (0, 0, shift) : (first, last, shift);
     }
 
     // 커서 행 실측(CPR). 실경로는 공용 리더의 DSR 질의, 스모크에선 모델 시뮬레이션 프로브.
@@ -635,9 +667,9 @@ public sealed class BottomDock
             return;
         }
 
-        // 옛 composer 잔상 지우기 — OnResize 와 같은 CPR 판별 밴드(ResizeEraseBand): grow 면 커서
-        // 실측으로 모델을 가려 정확한 옛 박스만 지우고, shrink/무응답은 새 박스 상단부터 지운다.
-        var (first, last) = ResizeEraseBand(w, h);
+        // 옛 composer 잔상 지우기 — OnResize 와 같은 CPR 시프트 밴드(ResizeEraseBand): 유령 박스의
+        // 실측 위치(_lastBoxTop+shift)만 지운다. CPR 무응답·폭 변경은 지우지 않는다(데이터 안전).
+        var (first, last, shift) = ResizeEraseBand(w, h);
 
         var sb = new StringBuilder();
         for (var row = Math.Max(1, first); row <= last; row++)
@@ -656,6 +688,11 @@ public sealed class BottomDock
             Console.Write(sb.ToString());
         }
         _lastCursorRow = regionBottom;   // 재파킹된 커서 행(이후 CPR 판별 기준)
+        if (shift is { } s)
+        {
+            // 꼬리도 같은 평행이동량으로 보정해 둔다(이후 재설치 스크롤 계산의 기준).
+            _lastConvTail = Math.Clamp(_lastConvTail + s, 1, regionBottom);
+        }
 
         _lastW = w;
         _lastH = h;
