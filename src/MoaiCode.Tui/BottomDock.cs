@@ -230,6 +230,18 @@ public sealed class BottomDock
         sb.Append($"\x1b[{statusRow - 1};1H\x1b[2K").Append(Separator(w));
         sb.Append($"\x1b[{statusRow};1H\x1b[2K").Append(statusOverride ?? _status());
 
+        if (_turnMode && statusRow < h)
+        {
+            // 턴 모드에선 예약 높이(_reserved)를 제출 전 입력 wrap 만큼 유지한 채 inputRows 만
+            // 1로 클램프해 그린다 — 상태줄이 h 보다 위(statusRow)로 당겨지는데, 그 아래 예약
+            // 영역 행들에 낡은 입력행·낡은 상태줄이 그대로 남는다(상태줄 이중 표시의 원인).
+            // scrollBottom+1..h 는 composer 전용 영역이라 과감히 지운다.
+            for (var row = statusRow + 1; row <= h; row++)
+            {
+                sb.Append($"\x1b[{row};1H\x1b[2K");
+            }
+        }
+
         // 커서를 편집 위치로(절대 좌표) + 커서 표시(입력 차례). 처리 중엔 숨겨져 있다가 여기서 다시 보임.
         // 커서 (행,열)도 그리기와 같은 규칙(SplitByCells, 와이드문자 straddle 반영)으로 계산한다.
         // naive 나눗셈(curOff/w)은 straddle 로 비는 칸을 무시해 커서가 어긋난다.
