@@ -110,4 +110,47 @@ public class TabInputPipelineTests
         dock.HandleEvent(new KeyEvent(new ConsoleKeyInfo('\t', ConsoleKey.Tab, true, false, false)));
         Assert.Equal(1, cycled);
     }
+
+    // CPR: DSR(ESC[6n) 질의에 대한 터미널 응답 ESC[<row>;<col>R 을 별도 이벤트로 파싱(키로 오인 금지).
+    [Fact]
+    public void Parser_turns_CPR_into_CursorReportEvent()
+    {
+        var evs = Drain([0x1b, (byte)'[', (byte)'2', (byte)'8', (byte)';', (byte)'1', (byte)'R'], 1);
+        var cpr = Assert.IsType<CursorReportEvent>(Assert.Single(evs));
+        Assert.Equal(28, cpr.Row);
+        Assert.Equal(1, cpr.Col);
+    }
+
+    [Fact]
+    public void Parser_leaves_CPR_before_key_events_intact()
+    {
+        var bytes = new List<byte> { 0x1b, (byte)'[', (byte)'5', (byte)';', (byte)'7', (byte)'R' }
+            .Concat(Encoding.UTF8.GetBytes("hi")).ToArray();
+        var evs = Drain(bytes, 3);
+        Assert.IsType<CursorReportEvent>(evs[0]);
+        Assert.Equal('h', Assert.IsType<KeyEvent>(evs[1]).Key.KeyChar);
+        Assert.Equal('i', Assert.IsType<KeyEvent>(evs[2]).Key.KeyChar);
+    }
+
+    // CPR 미형식(파라미터 1개)은 키로도 오인하지 않고 조용히 무시된다 — 다른 CSI 와 동일하게.
+    [Fact]
+    public void Parser_ignores_malformed_CPR()
+    {
+        var evs = Drain([0x1b, (byte)'[', (byte)'R'], 1);
+        Assert.Empty(evs);
+    }
+
+    // DSR 질의 → 응답 대기 왕복: 미리 넣어둔 응답을 읽어 (row,col) 로 반환하고, 응답 뒤에 온
+    // 사용자 키는 큐로 되돌려 순서를 보존한다(리사이즈 처리 중 타이핑 유실 방지).
+    [Fact]
+    public void QueryCursor_returns_report_and_defers_later_events()
+    {
+        var resp = new byte[] { 0x1b, (byte)'[', (byte)'2', (byte)'8', (byte)';', (byte)'1', (byte)'R' }
+            .Concat(Encoding.UTF8.GetBytes("xy")).ToArray();
+        using var input = new TerminalInput(new MemoryStream(resp));
+        var got = input.QueryCursor(300);
+        Assert.Equal((28, 1), got);
+        Assert.Equal('x', Assert.IsType<KeyEvent>(input.ReadEvent()).Key.KeyChar);
+        Assert.Equal('y', Assert.IsType<KeyEvent>(input.ReadEvent()).Key.KeyChar);
+    }
 }

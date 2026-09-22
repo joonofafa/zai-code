@@ -276,6 +276,68 @@ public sealed class TerminalInput : IDisposable
         get { lock (_lock) { return _events.Count > 0; } }
     }
 
+    /// <summary>
+    /// DSR(ESC[6n) 질의로 터미널에 실제 커서 위치를 물어 (row, col) 1-기준으로 반환.
+    /// 응답까지 최대 <paramref name="timeoutMs"/> 기다리고, 그사이 온 다른 이벤트는 순서를
+    /// 보존해 큐 앞으로 되돌린다(리사이즈 직후라 사용자 키가 올 틈이 없어 실질 충돌 없음).
+    /// 무응답 터미널이면 null — 호출처는 폴백 추정으로 판별.
+    /// </summary>
+    public (int Row, int Col)? QueryCursor(int timeoutMs = 150)
+    {
+        var deferred = new List<InputEvent>();
+        (int Row, int Col)? result = null;
+        try
+        {
+            Console.Out.Write("\x1b[6n");
+            Console.Out.Flush();
+
+            var deadline = Environment.TickCount64 + timeoutMs;
+            while (true)
+            {
+                var remaining = (int)Math.Min(deadline - Environment.TickCount64, 20);
+                if (remaining <= 0)
+                {
+                    break;
+                }
+
+                var ev = TryReadEvent(remaining);
+                if (ev is CursorReportEvent cpr)
+                {
+                    result = (cpr.Row, cpr.Col);
+                    break;
+                }
+
+                if (ev != null)
+                {
+                    deferred.Add(ev);   // 응답 앞에 온 키는 나중에 큐 앞으로 복원
+                }
+            }
+        }
+        catch
+        {
+            // stdout 이나 stdin 이 물러있는 특수 환경 — 폴백 추정에 맡긴다
+        }
+
+        if (deferred.Count > 0)
+        {
+            lock (_lock)
+            {
+                foreach (var ev in _events)
+                {
+                    deferred.Add(ev);
+                }
+
+                _events.Clear();
+                foreach (var ev in deferred)
+                {
+                    _events.Enqueue(ev);
+                }
+            }
+        }
+
+        return result;
+    }
+
     public void Dispose()
     {
         _stopped = true;

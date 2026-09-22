@@ -21,7 +21,6 @@ public sealed class BottomDock
     private IReadOnlyList<string> _slash = Array.Empty<string>();  // ghost 자동완성용 명령 목록
     private bool _shell;   // '!' 셸 모드: 입력창 빨강 배경 + '❯'/'!' 미표시. 버퍼엔 '!'를 넣지 않는다.
     private int _lastW, _lastH;   // 마지막으로 그린 터미널 크기(리사이즈 감지용)
-    private int _ghostRows;       // 축소로 스크롤백에 밀려난 composer 잔상 줄 수(재성장 시 되돌아옴 — 지워야 할 대상)
 
     // 입력 상태(영구): 프롬프트 편집과 턴 중 편집이 같은 버퍼·히스토리를 공유해 입력창이 항상 동일하게
     // 유지되도록 필드로 둔다(예전엔 ReadLine 지역변수였음).
@@ -45,6 +44,15 @@ public sealed class BottomDock
     // 있어 위 영역 스트리밍 출력에 안 씻긴다. 이 모드에선 Draw 가 (1) 스크롤 영역을 재설정하지 않고
     // (2) 실제 커서 대신 저장/복원(7/8)으로 그려 출력 커서(영역 하단)를 보존하며 (3) 가짜 캐럿 블록을 쓴다.
     private bool _turnMode;
+    // 리사이즈 재설치: 설치 경로의 스크롤업(예약 줄 확보)을 건너뛴다. 호출부가 옛 박스 자리를
+    // 미리 지워 예약 줄이 이미 확보된 상태라, 또 스크롤하면 빈 띠가 중간에 남는다. 1회용.
+    private bool _skipInstallScroll;
+    // 마지막으로 커서를 둔 행(1-기준). 리사이즈 후 CPR(ESC[6n) 실측과 비교해 터미널의
+    // 성장 모델을 판별한다. 프롬프트=편집 위치(Draw 가 지정), 턴=영역 하단 파킹(스트리밍
+    // 출력은 커서 행을 바꾸지 않는다 — 개행 시 영역이 스크롤될 뿐).
+    private int _lastCursorRow;
+    // 테스트 주입용 CPR 프로브(실 터미널 응답 대신 성장 모델을 시뮬레이션). null 이면 실경로.
+    internal Func<int?>? CursorRowProbeForTest;
     private readonly object _drawLock = new();
     private int _animShade = BrainstormPalette[0];
     private static readonly int[] BrainstormPalette = { 17, 18, 19, 20, 19, 18 }; // 256색 파랑 음영(숨쉬기)
@@ -127,11 +135,19 @@ public sealed class BottomDock
         {
             // 신규 설치(입력 대기 시작): 하단에 reserved 줄 공간 확보 — 화면을 위로 스크롤해
             // 기존 출력은 스크롤백으로 보존하고, 그 빈 자리에 박스를 그린다(직전 출력을 덮지 않게).
-            sb.Append($"\x1b[{h};1H");
-            for (var k = 0; k < reserved; k++) sb.Append('\n');
+            // 단 _skipInstallScroll(리사이즈 재설치)면 스크롤하지 않는다 — 호출부(OnResize)가 옛 박스
+            // 자리를 미리 지워 예약 줄을 확보해 뒀다. 여기서 또 스크롤하면 지운 빈 띠가 화면 중간으로
+            // 밀려 올라가 대화와 composer 사이에 공백이 누적된다(리사이즈 반복 시 커지던 원인).
+            if (!_skipInstallScroll)
+            {
+                sb.Append($"\x1b[{h};1H");
+                for (var k = 0; k < reserved; k++) sb.Append('\n');
+            }
+
             sb.Append($"\x1b[1;{scrollBottom}r");
             _reserved = reserved;
             _installed = true;
+            _skipInstallScroll = false;
         }
         else if (reserved != _reserved)
         {
@@ -217,6 +233,7 @@ public sealed class BottomDock
         else
         {
             sb.Append($"\x1b[{curRow};{curCol}H").Append("\x1b[?25h");
+            _lastCursorRow = curRow;   // 프롬프트: 커서를 편집 위치에 둠 — 리사이즈 CPR 판별 기준
         }
 
         lock (_drawLock)
@@ -269,6 +286,8 @@ public sealed class BottomDock
             Console.Write($"\x1b[{scrollBottom};1H\r\n{echo}\r\n");
         }
 
+        _lastCursorRow = scrollBottom;   // 턴: 커서는 영역 하단에 park — 이후 스트리밍도 행은 불변
+
         _buf.Clear();
         _pos = 0;
         _shell = false;
@@ -278,14 +297,6 @@ public sealed class BottomDock
 
     /// <summary>턴 종료 — 턴 모드 해제. 다음 ReadLine 의 Draw 가 실제 커서로 정상 렌더한다.</summary>
     public void EndTurnMode() => _turnMode = false;
-
-    /// <summary>
-    /// 턴/에코 중 스크롤 영역에 새 출력이 흘렀음을 알린다. 축소로 밀려난 잔상(_ghostRows)은 새 출력
-    /// 밑에 묻혀 재성장해도 화면으로 돌아오지 않는다. 정확한 묻힌 줄 수는 wrap 때문에 셀 수 없어
-    /// 누적을 전부 무효화한다 — 되돌아온 <b>대화 본문</b>을 잔상으로 착각해 지우는 유실(불가결)보다
-    /// 잔상이 남는 화면 잔재(미관)가 훨씬 안전하다.
-    /// </summary>
-    public void NoteScrollOutput() => _ghostRows = 0;
 
     /// <summary>턴 중 여부(ReplApp 이 이벤트 라우팅 판단에 사용).</summary>
     public bool InTurn => _turnMode;
@@ -545,26 +556,29 @@ public sealed class BottomDock
 
     // 리사이즈 처리: 터미널이 DECSTBM 영역을 리셋해 이전 입력창이 화면 중간에 잔상으로 남는다.
     // 지우는 방식이 핵심: ED(2J/ED0) 는 데스크톱 터미널이 창이 커질 때 스크롤백에서 끌어올린 대화
-    // 줄까지 지워 복구 불가로 만든다. 대신 옛 composer 가 있던 행들만 행 단위 지움(2K)을 쓴다.
-    // 리사이즈 후 옛 하단 내용은 새 하단에 붙는다(성장=위에 줄 추가, 축소=아래 줄은 스크롤백으로
-    // 밀림) — 즉 옛 좌표를 (newH - oldH) 만큼 평행이동한 행이 옛 composer 의 새 위치다. 거기에
-    // reflow 여유 마진을 얹어 지운다.
+    // 줄까지 지워 복구 불가로 만든다. 대신 행 단위 지움(2K)을 쓴다.
+    //
+    // 옛 composer 위치는 터미널의 성장 모델에 따라 갈린다 — grow 시:
+    //   (a) 하단 고정(스크롤백을 위에서 당겨 옛 하단=새 하단으로 평행이동): 옛 박스는 정확히
+    //       새 박스 위치(새 하단)로 이동 → 추가 지움 불필요(Draw 가 제자리 덮어쓴다). 여기서
+    //       옛 박스 행을 지우면 평행이동해 온 대화 꼬리를 지워먹는다(옛 union 밴드의 문제).
+    //   (b) 상단 고정(내용 제자리, 아래에 빈 줄 추가): 옛 박스는 옛 행에 그대로 → 옛 박스 행만
+    //       정확히 지운다(대화는 옛 박스 위에 있으므로 무사).
+    // 어느 쪽인지 CPR(ESC[6n) 커서 실측으로 판별한다 — 직전 커서 행이 grow 만큼 아래로 갔으면 (a),
+    // 제자리면 (b). shrink 는 두 모델 모두 새 박스 상단부터 지우는 밴드가 안전(대화 꼬리는 새
+    // 박스 상단 위). CPR 무응답·변칙(예상 밖 값)은 폴백으로 동일 밴드.
+    //
+    // 재설치는 스크롤 없이 제자리(_skipInstallScroll) — 박스 위치는 지우기/이동으로 이미 확보됐다.
+    // 예전엔 설치 경로의 강제 스크롤업이 지워진 옛 박스 자리(공백)을 화면 중간으로 밀어 올려
+    // 리사이즈 반복마다 공백 띠가 누적됐다.
     private void OnResize(StringBuilder buf, int pos)
     {
+        var w = Width();
         var h = Height();
-        var delta = h - _lastH;                                 // 리사이즈로 인한 세로 이동량
-        var first = Math.Max(1, _lastH + delta - _reserved + 1 - 6);   // 마진 포함 옛 composer 의 새 상단(구분선 2줄 반영)
-        var last = Math.Min(h, _lastH + delta);                 // 옛 화면 하단의 새 위치
-        // 되돌아온 잔상 밴드: 축소 때 스크롤백으로 밀려난 composer 줄이 성장으로 화면에 되돌아온 영역.
-        // 되돌아온 만큼 위로 확장해 지운다(ED 금지 — 스크롤백 본문 보존). 턴 중 경로(HandleResizeInTurn)와
-        // 같은 원리를 프롬프트 경로에도 적용 — 여기 없어서 축소→재성장 시 이중 상태줄 잔상이 남았다.
-        var returned = Math.Min(_ghostRows, Math.Max(0, delta));        if (returned > 0)
-        {
-            first = Math.Max(1, first - returned);
-        }
+        var (first, last) = ResizeEraseBand(w, h);
 
         var sb = new StringBuilder("\x1b[r");                  // 스크롤 영역 해제
-        for (var row = first; row <= last; row++)
+        for (var row = Math.Max(1, first); row <= last; row++)
         {
             sb.Append($"\x1b[{row};1H\x1b[2K");
         }
@@ -572,8 +586,41 @@ public sealed class BottomDock
         Console.Write(sb.ToString());
         _installed = false;
         _reserved = 0;
-        _ghostRows = 0;   // 잔상 밴드를 지웠으니 누적 초기화(프롬프트 경로는 재설치 경로)
-        Draw(buf, pos);   // Draw 가 새 크기로 재설치(스크롤로 예약 줄 확보 + composer 재그림)
+        _skipInstallScroll = true;
+        Draw(buf, pos);   // Draw 가 새 크기로 재설치(스크롤 없이 예약 줄 재확보 + composer 재그림)
+    }
+
+    // 리사이즈 시 지울 행 밴드(1-기준 포함). (0,0)=추가 지움 없음(모델 A grow — Draw 가 제자리 덮어씀).
+    // 폭이 변한 경우 reflow 여유로 마진 4행.
+    private (int First, int Last) ResizeEraseBand(int w, int h)
+    {
+        var d = h - _lastH;
+        var margin = w != _lastW ? 4 : 0;   // 폭 변경 시에만 wrap reflow 여유
+        if (d > 0 && margin == 0)
+        {
+            var probe = QueryCursorRow();
+            if (probe is { } row)
+            {
+                if (row == _lastCursorRow + d) return (0, 0);          // 모델 A: 옛 박스→새 박스 위치
+                if (row == _lastCursorRow)                             // 모델 B: 옛 박스 제자리 → 그 행만
+                    return (_lastH - _reserved + 1, _lastH);
+                // 변칙(예상 밖 위치 — reflow 등) → 폴백
+            }
+        }
+
+        return (Math.Max(1, Math.Min(_lastH, h) - _reserved + 1 - margin), h);
+    }
+
+    // 커서 행 실측(CPR). 실경로는 공용 리더의 DSR 질의, 스모크에선 모델 시뮬레이션 프로브.
+    private int? QueryCursorRow()
+    {
+        if (CursorRowProbeForTest is { } probe)
+        {
+            return probe();
+        }
+
+        try { return Input.TerminalInput.Shared?.QueryCursor(150)?.Row; }
+        catch { return null; }
     }
 
     /// <summary>
@@ -588,29 +635,12 @@ public sealed class BottomDock
             return;
         }
 
-        // 옛 composer 잔상을 (newH-oldH) 평행이동 위치에서 행 단위로 지운다(ED 금지 — 스크롤백 보존).
-        var delta = h - _lastH;
-        var first = Math.Max(1, _lastH + delta - _reserved + 1 - 6);   // 마진 포함 옛 composer 의 새 상단(구분선 2줄 반영)
-        var last = Math.Min(h, _lastH + delta);
-        // 축소했다가 다시 키우면, 축소 때 스크롤백으로 밀려난 옛 composer 행이 화면으로 되돌아온다.
-        // 되돌아온 줄 수 = min(누적 밀려남 _ghostRows, 이번 성장량 delta) — 정확히 그만큼만 위로
-        // 확장해 지운다. 옛 플래그 방식(_shrunkRecently + delta 1회분)은 축소 반복 시 지움이 부족했고
-        // (잔상 잔존), 되돌아온 줄이 대화 본문일 때도 지워 유실을 냈다. 누적 계산이 둘 다 해결한다.
-        var returned = Math.Min(_ghostRows, Math.Max(0, delta));
-        if (returned > 0)
-        {
-            first = Math.Max(1, first - returned);
-            _ghostRows -= returned;
-        }
-
-        if (delta < 0)
-        {
-            // 축소: 화면 하단에 고정돼 있던 composer 줄이 스크롤백으로 밀려난 줄 수를 누적.
-            _ghostRows += -delta;
-        }
+        // 옛 composer 잔상 지우기 — OnResize 와 같은 CPR 판별 밴드(ResizeEraseBand): grow 면 커서
+        // 실측으로 모델을 가려 정확한 옛 박스만 지우고, shrink/무응답은 새 박스 상단부터 지운다.
+        var (first, last) = ResizeEraseBand(w, h);
 
         var sb = new StringBuilder();
-        for (var row = first; row <= last; row++)
+        for (var row = Math.Max(1, first); row <= last; row++)
         {
             sb.Append($"\x1b[{row};1H\x1b[2K");
         }
@@ -625,6 +655,7 @@ public sealed class BottomDock
         {
             Console.Write(sb.ToString());
         }
+        _lastCursorRow = regionBottom;   // 재파킹된 커서 행(이후 CPR 판별 기준)
 
         _lastW = w;
         _lastH = h;

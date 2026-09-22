@@ -19,6 +19,13 @@ public sealed record FocusEvent(bool Gained) : InputEvent;
 /// <summary>Ctrl+C(0x03). raw 모드에선 OS 시그널이 안 오므로 파서가 이벤트로 올려 취소 로직에 연결한다.</summary>
 public sealed record CancelEvent : InputEvent;
 
+/// <summary>
+/// 커서 위치 보고(ESC[&lt;row&gt;;&lt;col&gt;R) — DSR(ESC[6n) 질의에 대한 터미널 응답. 키가 아니라
+/// 질의-응답 프로토콜이라 별도 이벤트로 내보낸다. TUI 는 보통 무시하지만(키 루프에서 스킵),
+/// 리사이즈 처리가 실제 커서 위치로 터미널 성장 모델을 판별할 때 소비한다.
+/// </summary>
+public sealed record CursorReportEvent(int Row, int Col) : InputEvent;
+
 public enum MouseAction { Press, Release, Move, WheelUp, WheelDown }
 
 /// <summary>

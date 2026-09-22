@@ -228,6 +228,19 @@ public sealed class VtParser
             return f + 1;
         }
 
+        // CPR 커서 위치 보고: ESC[<row>;<col>R — DSR(ESC[6n) 질의에 대한 응답. 키가 아니라 별도 이벤트로.
+        if (final == 'R')
+        {
+            var cpr = paramStr.Split(';');
+            if (cpr.Length == 2
+                && int.TryParse(cpr[0], out var crow)
+                && int.TryParse(cpr[1], out var ccol))
+            {
+                outEvents.Add(new CursorReportEvent(crow, ccol));
+                return f + 1;
+            }
+        }
+
         EmitCsiKey(outEvents, paramStr, final);
         return f + 1;
     }
