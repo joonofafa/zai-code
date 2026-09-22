@@ -203,16 +203,15 @@ public class TabInputPipelineTests
         var stream = new TimedStream();
         using var input = new TerminalInput(stream);
 
-        // 쿼리 시작을 보장한 뒤(폴링으로 QueryCursor 진입 확인) 응답 푸시 — 고정 지연 없이 결정적.
-        var busy = true;
+        // QueryCursor 는 시작 시 큐의 낡은 CPR 을 선배수(drain)하므로 응답은 drain 이후에 도착해야
+        // 한다. drain 은 메서드 첫머리(락 + 빈 큐 LINQ)라 호출 즉시(µs) 끝나고, 타임아웃은 2000ms —
+        // 30ms 뒤 푸시는 양쪽 마진이 수십 배여야 흔들리지 않는다(편차가 나도 항상 창 안).
         var push = Task.Run(async () =>
         {
-            while (busy) { await Task.Yield(); }
-            await Task.Yield();
+            await Task.Delay(30);
             stream.Push(resp);
         });
         var got = input.QueryCursor(2000);
-        busy = false;
         Assert.Equal((28, 1), got);
         Assert.Equal('x', Assert.IsType<KeyEvent>(input.ReadEvent()).Key.KeyChar);
         Assert.Equal('y', Assert.IsType<KeyEvent>(input.ReadEvent()).Key.KeyChar);
@@ -232,20 +231,22 @@ public class TabInputPipelineTests
         // 1차: 응답 없이 타임아웃 → 무응답(null).
         Assert.Null(input.QueryCursor(80));
 
-        // 2차 직전에야 1차의 낡은 응답이 도착(큐에 적재).
+        // 1차의 낡은 응답이 도착해 큐에 적재됐음를 상태로 확인(고정 sleep 아님).
         stream.Push(stale);
-        await Task.Delay(50);
+        for (var i = 0; i < 400 && !input.Available; i++)
+        {
+            await Task.Delay(5);
+        }
+        Assert.True(input.Available, "stale report should be queued before the second query");
 
-        // 2차: 낡은 (9,1) 이 선배수되고, 새 응답 (5,7) 이 정확히 반환된다.
-        var busy = true;
+        // 2차: 시작 시 낡은 (9,1) 이 선배수되고, 창 안에 도착한 새 응답 (5,7) 이 정확히 반환된다.
+        // (1차와 같은 이유로 drain(µs) 이후·타임아웃(2000ms) 이전의 30ms 고정 지연은 마진 충분.)
         var push = Task.Run(async () =>
         {
-            while (busy) { await Task.Yield(); }
-            await Task.Yield();
+            await Task.Delay(30);
             stream.Push(fresh);
         });
         var got = input.QueryCursor(2000);
-        busy = false;
         Assert.Equal((5, 7), got);
         await push;
     }

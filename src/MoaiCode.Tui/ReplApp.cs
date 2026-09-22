@@ -933,6 +933,10 @@ public sealed class ReplApp
         }
     }
 
+    // 스피너가 마지막으로 프레임을 그린 절대 행(1-기준). 리사이즈로 ActivityRow 가 옮겨가도
+    // 낡은 행의 프레임을 다음 프레임에서 지우기 위한 셀프 클린업 앵커. 0 = 아직 안 그림.
+    private int _spinnerRow;
+
     private void DrawSpinner(int frame, string label, double seconds)
     {
         var spin = SpinnerFrames[frame % SpinnerFrames.Length];
@@ -944,18 +948,33 @@ public sealed class ReplApp
             {
                 // 입력바 활성: 커서 위치와 무관하게 바로 위 행(h-1)에 절대좌표로 그린다.
                 var h = BarHeight();
+                EraseStaleSpinnerFrame(h - 1);
                 Console.Write($"\u001b7\u001b[{h - 1};1H\u001b[2K\u001b[38;5;39m{spin} {label} ({seconds:0}s)\u001b[0m\u001b8");
+                _spinnerRow = h - 1;
             }
             else if (_dock is { InTurn: true })
             {
                 // 고정 composer: 스피너를 입력창 바로 위 고정 행에 절대좌표로 그린다(파킹 커서 옆 아님).
                 var row = _dock.ActivityRow;
+                EraseStaleSpinnerFrame(row);
                 Console.Write($"\u001b7\u001b[{row};1H\u001b[2K\u001b[38;5;39m{spin} {label} ({seconds:0}s)\u001b[0m\u001b8");
+                _spinnerRow = row;
             }
             else
             {
                 Console.Write($"\r\u001b[2K\u001b[38;5;39m{spin} {label} ({seconds:0}s)\u001b[0m");
+                _spinnerRow = 0;   // 인라인 경로는 CR+2K 로 항상 제자리 지움 — 앵커 불필요
             }
+        }
+    }
+
+    // 직전 프레임이 그려진 행이 현재 그릴 행과 다르면(리사이즈로 스피너 행이 이동) 낡은 행을 지운다.
+    // 스피너 행은 매 프레임 2K 로 다시 그려지는 크롬이므로 지워도 데이터가 아니다.
+    private void EraseStaleSpinnerFrame(int nextRow)
+    {
+        if (_spinnerRow > 0 && _spinnerRow != nextRow)
+        {
+            Console.Write($"\u001b7\u001b[{_spinnerRow};1H\u001b[2K\u001b8");
         }
     }
 
@@ -966,15 +985,20 @@ public sealed class ReplApp
             if (_barActive)
             {
                 var h = BarHeight();
+                EraseStaleSpinnerFrame(h - 1);
                 Console.Write($"\u001b7\u001b[{h - 1};1H\u001b[2K\u001b8");
+                _spinnerRow = 0;
             }
             else if (_dock is { InTurn: true })
             {
+                EraseStaleSpinnerFrame(_dock.ActivityRow);
                 Console.Write($"\u001b7\u001b[{_dock.ActivityRow};1H\u001b[2K\u001b8");
+                _spinnerRow = 0;
             }
             else
             {
                 Console.Write("\r\u001b[2K");
+                _spinnerRow = 0;
             }
         }
     }

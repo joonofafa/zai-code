@@ -611,7 +611,7 @@ public sealed class BottomDock
     {
         var w = Width();
         var h = Height();
-        var (first, last, shift) = ResizeEraseBand(w, h);
+        var (first, last, shift, _) = ResizeEraseBand(w, h);
 
         // CPR 질의(최대 150ms 블록) 도중 다음 리사이즈가 또 오면 기하가 어긋난다 — 낡은 크기로
         // 계산한 밴드를 지워 실제 콘텐츠 위에 빈 행을 만들고, 이후 grow 가 그 빈 행을 끌어당겨
@@ -650,29 +650,33 @@ public sealed class BottomDock
         Draw(buf, pos);   // Draw 가 새 크기로 재설치(예약 줄 재확보 + composer 재그림)
     }
 
-    // 리사이즈 시 지울 행 밴드(1-기준 포함)와 CPR 이 보고한 실제 평행이동량 shift.
+    // 리사이즈 시 지울 행 밴드(1-기준 포함), CPR 이 보고한 평행이동량 shift, 커서 실측 행.
     // 유령 박스의 현재 위치 = _lastBoxTop + shift(커서와 박스는 함께 이동). 그 구간만 지운다.
-    // shift 측정 불가(CPR 무응답)면 지우지 않는다(0,0,null) — 데이터 안전 최우선.
-    private (int First, int Last, int? Shift) ResizeEraseBand(int w, int h)
+    // shift 측정 불가(CPR 무응답)면 지우지 않는다(0,0,null,null) — 데이터 안전 최우선.
+    private (int First, int Last, int? Shift, int? CursorRow) ResizeEraseBand(int w, int h)
     {
         var margin = w != _lastW ? 4 : 0;   // 폭 변경 시에만 wrap reflow 여유
         if (margin > 0 || h == _lastH)
         {
-            return (0, 0, null);   // 폭 변경/reflow — 유령 위치 예측 불가, 지우지 않는다
+            return (0, 0, null, null);   // 폭 변경/reflow — 유령 위치 예측 불가, 지우지 않는다
         }
 
         var probe = QueryCursorRow();
         if (probe is not { } row)
         {
-            return (0, 0, null);   // CPR 무응답 — 지우지 않는다(데이터 안전)
+            return (0, 0, null, null);   // CPR 무응답 — 지우지 않는다(데이터 안전)
         }
 
         var shift = row - _lastCursorRow;
         var ghostTop = _lastBoxTop + shift;
         var ghostBottom = ghostTop + Math.Max(1, _reserved) - 1;
-        var first = Math.Max(1, ghostTop);
-        var last = Math.Min(h, ghostBottom);
-        return first > last ? (0, 0, shift) : (first, last, shift);
+        // 턴 모드에서 커서(park) 행은 박스 바로 위 = 스피너 행이다(불변식: _lastBoxTop == _lastCursorRow+1).
+        // 스피너는 매 프레임 2K 로 이 행을 지우고 다시 그리는 크롬이라 데이터가 아니다 — 밴드에 포함해
+        // 지우지 않으면 리사이즈마다 옛 스피너 프레임("⠦ 생각 중 (7s)")이 화면에 남는다.
+        // (프롬프트 모드에선 커서가 박스 안이라 유니온은 항상 무해하다.)
+        var first = Math.Max(1, Math.Min(ghostTop, row));
+        var last = Math.Min(h, Math.Max(ghostBottom, row));
+        return first > last ? (0, 0, shift, row) : (first, last, shift, row);
     }
 
     // 커서 행 실측(CPR). 실경로는 공용 리더의 DSR 질의, 스모크에선 모델 시뮬레이션 프로브.
@@ -701,7 +705,7 @@ public sealed class BottomDock
 
         // 옛 composer 잔상 지우기 — OnResize 와 같은 CPR 시프트 밴드(ResizeEraseBand): 유령 박스의
         // 실측 위치(_lastBoxTop+shift)만 지운다. CPR 무응답·폭 변경은 지우지 않는다(데이터 안전).
-        var (first, last, shift) = ResizeEraseBand(w, h);
+        var (first, last, shift, cursorRow) = ResizeEraseBand(w, h);
 
         // CPR 질의(최대 150ms 블록) 도중 다음 리사이즈가 또 오면 낡은 기하로 지우게 된다 —
         // 이번 사이클은 건너뛴다(40ms 폴이 다음 크기로 다시 시작한다).
@@ -718,15 +722,26 @@ public sealed class BottomDock
 
         var regionBottom = Math.Max(1, h - _reserved);
         sb.Append($"\x1b[1;{regionBottom}r");   // 새 크기로 스크롤 영역 재설정(DECSTBM 은 커서를 홈(1,1)에 둔다)
-        // 재정렬: 영역 재설정까지 거치면 출력 커서가 홈(1,1)에 남아, 다음 출력이 대화 본문 위를
-        // 화면 맨 위부터 덮어썼다. 새 영역 하단에 재파킹한다 — \r\n 로 영역을 1줄 스크롤해 파킹 줄의
-        // 기존 내용은 위로 밀어 보존하고, 이후 출력은 빈 밑줄에서 이어진다(본문 유실 0).
-        sb.Append($"\x1b[{regionBottom};1H\r\n");
+        // 재파킹: CPR 커서 실측 행이 있으면 그 행으로 절대이동한다(스크롤 0 — 빈 행이 대화 흐름에
+        // 주입되지 않는다). 실측이 새 영역 밖(하단 잘림)이거나 무응답일 때만 예전의 \r\n 파킹 스크롤로
+        // 대체한다. 스톰(연속 리사이즈)에서 \r\n 이 사이클마다 빈 행 1개씩을 주입해 "세로 공란"이
+        // 누적됐었다 — 드래그 한 번에 수십 사이클이 돌아 수십 줄 공란이 만들어졌다.
+        var parked = false;
+        if (cursorRow is { } cr && cr >= 1 && cr <= regionBottom)
+        {
+            sb.Append($"\x1b[{cr};1H");
+            _lastCursorRow = cr;
+            parked = true;
+        }
+        if (!parked)
+        {
+            sb.Append($"\x1b[{regionBottom};1H\r\n");
+            _lastCursorRow = regionBottom;
+        }
         lock (_drawLock)
         {
             Console.Write(sb.ToString());
         }
-        _lastCursorRow = regionBottom;   // 재파킹된 커서 행(이후 CPR 판별 기준)
         if (shift is { } s)
         {
             // 꼬리도 같은 평행이동량으로 보정해 둔다(이후 재설치 스크롤 계산의 기준).
