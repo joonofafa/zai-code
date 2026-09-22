@@ -154,6 +154,10 @@ public sealed class BottomDock
             else
             {
                 var cur = QueryCursorRow() ?? h;
+                if (Height() != h || Width() != w)
+                {
+                    return;   // CPR 대기(≤150ms) 중 또 리사이즈 — 낡은 기하로 스크롤하면 공란이 된다
+                }
                 _lastConvTail = Math.Max(1, cur);
                 scroll = Math.Clamp(_lastConvTail + reserved - h, 0, reserved);
             }
@@ -609,6 +613,15 @@ public sealed class BottomDock
         var h = Height();
         var (first, last, shift) = ResizeEraseBand(w, h);
 
+        // CPR 질의(최대 150ms 블록) 도중 다음 리사이즈가 또 오면 기하가 어긋난다 — 낡은 크기로
+        // 계산한 밴드를 지워 실제 콘텐츠 위에 빈 행을 만들고, 이후 grow 가 그 빈 행을 끌어당겨
+        // "세로 공란"이 된다(연속 리사이즈 실측). 크기가 바뀌었으면 이번 사이클은 건너뛴다
+        // (40ms 폴이 다음 크기로 다시 시작한다).
+        if (Width() != w || Height() != h)
+        {
+            return;
+        }
+
         var sb = new StringBuilder("\x1b[r");                  // 스크롤 영역 해제
         for (var row = Math.Max(1, first); row <= last; row++)
         {
@@ -621,11 +634,18 @@ public sealed class BottomDock
         if (shift is { } s)
         {
             // 평행이동 보정된 꼬리 기준으로 재설치 스크롤량 확정(Draw 설치 경로에 1회 전달).
-            // shift 측정 불가(CPR 무응답)면 오버라이드 없음 — Draw 가 다시 CPR 을 시도하고
-            // 그마저 실패하면 커서=맨 아래 가정(종전의 안전 폴백, scroll=reserved).
             _lastConvTail = Math.Clamp(_lastConvTail + s, 1, h);
             var r0 = Math.Max(4, _reserved);
             _installScrollOverride = Math.Clamp(_lastConvTail + r0 - h, 0, r0);
+        }
+        else
+        {
+            // CPR 무응답(shift 측정 불가) — 재설치 스크롤을 0으로 둔다. Draw 의 신규 설치 경로가
+            // 다시 CPR 을 시도하지만 그마저 무응답이면 커서=맨 아래(h) 가정의 과다 스크롤이
+            // 실행돼, 화면을 덜 채운 상태에선 빈 행을 스크롤백으로 밀어 넣고 다음 grow 때 그
+            // 공백이 돌아와 "공란 누적"이 된다. 스크롤 0이면 박스가 대화 위에 겹칠 뿐 데이터는
+            // 유실되지 않는다 — 사용자가 계속 타이핑하면 출력이 밀려나 자연 복구된다.
+            _installScrollOverride = 0;
         }
         Draw(buf, pos);   // Draw 가 새 크기로 재설치(예약 줄 재확보 + composer 재그림)
     }
@@ -682,6 +702,13 @@ public sealed class BottomDock
         // 옛 composer 잔상 지우기 — OnResize 와 같은 CPR 시프트 밴드(ResizeEraseBand): 유령 박스의
         // 실측 위치(_lastBoxTop+shift)만 지운다. CPR 무응답·폭 변경은 지우지 않는다(데이터 안전).
         var (first, last, shift) = ResizeEraseBand(w, h);
+
+        // CPR 질의(최대 150ms 블록) 도중 다음 리사이즈가 또 오면 낡은 기하로 지우게 된다 —
+        // 이번 사이클은 건너뛴다(40ms 폴이 다음 크기로 다시 시작한다).
+        if (Width() != w || Height() != h)
+        {
+            return;
+        }
 
         var sb = new StringBuilder();
         for (var row = Math.Max(1, first); row <= last; row++)

@@ -3,6 +3,7 @@ using System.Text;
 using MoaiCode.Tui;
 using MoaiCode.Tui.Input;
 using Xunit;
+using System.Threading.Tasks;
 
 namespace MoaiCode.Core.Tests;
 
@@ -140,17 +141,112 @@ public class TabInputPipelineTests
         Assert.Empty(evs);
     }
 
-    // DSR 질의 → 응답 대기 왕복: 미리 넣어둔 응답을 읽어 (row,col) 로 반환하고, 응답 뒤에 온
+    // DSR 질의 → 응답 대기 왕복: 쿼리 후 도착한 응답을 읽어 (row,col) 로 반환하고, 응답 뒤에 온
     // 사용자 키는 큐로 되돌려 순서를 보존한다(리사이즈 처리 중 타이핑 유실 방지).
+    // 응답은 쿼리 시작 "후"에 도착해야 한다 — QueryCursor 는 시작 시 큐에 남은 CPR(타임아웃으로
+    // 포기한 낡은 응답)을 선배수해 버리므로, 미리 넣어두면 스테일로 간주돼 버려진다.
+    private sealed class TimedStream : Stream
+    {
+        private readonly object _sync = new();
+        private readonly Queue<byte> _buf = new();
+        private bool _eof;
+
+        public void Push(byte[] data)
+        {
+            lock (_sync)
+            {
+                foreach (var b in data)
+                {
+                    _buf.Enqueue(b);
+                }
+                Monitor.PulseAll(_sync);
+            }
+        }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            lock (_sync)
+            {
+                while (_buf.Count == 0 && !_eof)
+                {
+                    Monitor.Wait(_sync);
+                }
+                if (_buf.Count == 0)
+                {
+                    return 0;
+                }
+                var n = Math.Min(count, _buf.Count);
+                for (var i = 0; i < n; i++)
+                {
+                    buffer[offset + i] = _buf.Dequeue();
+                }
+                return n;
+            }
+        }
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
     [Fact]
-    public void QueryCursor_returns_report_and_defers_later_events()
+    public async Task QueryCursor_returns_report_and_defers_later_events()
     {
         var resp = new byte[] { 0x1b, (byte)'[', (byte)'2', (byte)'8', (byte)';', (byte)'1', (byte)'R' }
             .Concat(Encoding.UTF8.GetBytes("xy")).ToArray();
-        using var input = new TerminalInput(new MemoryStream(resp));
-        var got = input.QueryCursor(300);
+        var stream = new TimedStream();
+        using var input = new TerminalInput(stream);
+
+        // 쿼리 시작을 보장한 뒤(폴링으로 QueryCursor 진입 확인) 응답 푸시 — 고정 지연 없이 결정적.
+        var busy = true;
+        var push = Task.Run(async () =>
+        {
+            while (busy) { await Task.Yield(); }
+            await Task.Yield();
+            stream.Push(resp);
+        });
+        var got = input.QueryCursor(2000);
+        busy = false;
         Assert.Equal((28, 1), got);
         Assert.Equal('x', Assert.IsType<KeyEvent>(input.ReadEvent()).Key.KeyChar);
         Assert.Equal('y', Assert.IsType<KeyEvent>(input.ReadEvent()).Key.KeyChar);
+        await push;
+    }
+
+    // 타임아웃으로 포기한 뒤 늦게 도착한 CPR 은 다음 쿼리가 읽지 못하게 선배수돼야 한다
+    // (빠른 연속 리사이즈에서 낡은 응답이 shift 계산을 오염시키는 것 방지).
+    [Fact]
+    public async Task QueryCursor_discards_stale_report_from_previous_timeout()
+    {
+        var stale = new byte[] { 0x1b, (byte)'[', (byte)'9', (byte)';', (byte)'1', (byte)'R' };
+        var fresh = new byte[] { 0x1b, (byte)'[', (byte)'5', (byte)';', (byte)'7', (byte)'R' };
+        var stream = new TimedStream();
+        using var input = new TerminalInput(stream);
+
+        // 1차: 응답 없이 타임아웃 → 무응답(null).
+        Assert.Null(input.QueryCursor(80));
+
+        // 2차 직전에야 1차의 낡은 응답이 도착(큐에 적재).
+        stream.Push(stale);
+        await Task.Delay(50);
+
+        // 2차: 낡은 (9,1) 이 선배수되고, 새 응답 (5,7) 이 정확히 반환된다.
+        var busy = true;
+        var push = Task.Run(async () =>
+        {
+            while (busy) { await Task.Yield(); }
+            await Task.Yield();
+            stream.Push(fresh);
+        });
+        var got = input.QueryCursor(2000);
+        busy = false;
+        Assert.Equal((5, 7), got);
+        await push;
     }
 }

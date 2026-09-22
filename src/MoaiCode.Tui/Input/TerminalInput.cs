@@ -284,6 +284,22 @@ public sealed class TerminalInput : IDisposable
     /// </summary>
     public (int Row, int Col)? QueryCursor(int timeoutMs = 150)
     {
+        // 선배수: 앞선 쿼리가 타임아웃으로 포기한 뒤 늦게 도착한 낡은 CPR 응답을 버린다. 이걸
+        // 안 하면 빠른 연속 리사이즈에서 다음 쿼리가 옛 응답을 읽어 엉뚱한 shift 를 계산한다
+        // (공란 누적 버그의 실측 원인). DSR 응답은 사용자 입력이 아니므로 버려도 안전하다.
+        lock (_lock)
+        {
+            var kept = _events.Where(e => e is not CursorReportEvent).ToArray();
+            if (kept.Length != _events.Count)
+            {
+                _events.Clear();
+                foreach (var e in kept)
+                {
+                    _events.Enqueue(e);
+                }
+            }
+        }
+
         var deferred = new List<InputEvent>();
         (int Row, int Col)? result = null;
         try
