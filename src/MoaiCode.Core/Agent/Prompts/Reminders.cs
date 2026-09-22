@@ -153,6 +153,16 @@ public static class Reminders
         "If something is incomplete, state your findings so far and the remaining unknowns.\n" +
         "</system-reminder>";
 
+    // MaxTurnsFinalAnswer 재시도용: 직전 시도가 출력 한도(reasoning 소진)로 텍스트 0자로 끝났다.
+    // 긴 추론 대신 즉시 짧은 결론부터 내놓도록 강제한다(장황한 reasoning 으로 다시 잘리는 것 방지).
+    public const string MaxTurnsFinalAnswerRetry =
+        "<system-reminder>\n" +
+        "Your previous final-answer attempt produced NO visible text (it was cut off during reasoning " +
+        "by the output token limit). Do NOT think at length. Skip extensive reasoning entirely and " +
+        "write the answer IMMEDIATELY: 3-8 sentences, conclusion first, based only on what you already " +
+        "know. No tools, no preamble, no recap.\n" +
+        "</system-reminder>";
+
     // 성공한 '동일' 읽기 호출 반복 시 1회 주입 — 제자리걸음/토큰낭비 억제.
     public static string DuplicateToolCall(string tool) =>
         "<system-reminder>\n" +

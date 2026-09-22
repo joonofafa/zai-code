@@ -731,31 +731,50 @@ public sealed class QueryEngine
 
         _messages.Add(new UserMessage(Reminders.MaxTurnsFinalAnswer));
 
-        var assistantText = new StringBuilder();
         Usage lastUsage = new(0, 0);
-
         EnsureToolResultsPaired(); // 손상된 짝(고아 tool_use)이 있어도 마무리 호출이 400 나지 않게.
 
-        // 툴 미제공 → 모델은 텍스트로만 마무리한다.
-        await foreach (var ev in _model.StreamAsync(_messages, Array.Empty<ITool>(), ct)
-                           .WithCancellation(ct).ConfigureAwait(false))
+        // 빈 응답 재시도: glm 계열은 reasoning 이 먼저 흐르는데 출력 한도(length)로 content 도달 전에
+        // 잘리면 TextDelta 가 0개다(78ca7a7 가드가 잘린 reasoning 노출을 막음 — 정확한 동작). 메인 루프라면
+        // OutputLimitRecovery 로 이어받지만 이 경로엔 그 회복이 없어 "최대 턴 끝나면 답 없이 멈춤"이 됐다.
+        // 최종 답변은 툴이 없으므로 빈 텍스트 = 실패 — 짧게 다시 쓰라고 재요청한다(상한 3회).
+        const int MaxFinalAnswerRetries = 3;
+        for (var attempt = 0; ; attempt++)
         {
-            switch (ev)
-            {
-                case TextDelta d:
-                    assistantText.Append(d.Text);
-                    yield return ev;
-                    break;
-                case TurnCompleted c:
-                    lastUsage = c.Usage;
-                    break;
-            }
-        }
+            var assistantText = new StringBuilder();
+            var stopReason = "end_turn";
 
-        var cleanText = ThinkFilter.Strip(assistantText.ToString());
-        if (cleanText.Length > 0)
-        {
-            _messages.Add(new AssistantMessage(new List<ContentBlock> { new TextBlock(cleanText) }));
+            // 툴 미제공 → 모델은 텍스트로만 마무리한다.
+            await foreach (var ev in _model.StreamAsync(_messages, Array.Empty<ITool>(), ct)
+                               .WithCancellation(ct).ConfigureAwait(false))
+            {
+                switch (ev)
+                {
+                    case TextDelta d:
+                        assistantText.Append(d.Text);
+                        yield return ev;
+                        break;
+                    case TurnCompleted c:
+                        lastUsage = c.Usage;
+                        stopReason = c.StopReason;
+                        break;
+                }
+            }
+
+            var cleanText = ThinkFilter.Strip(assistantText.ToString());
+            if (cleanText.Length > 0)
+            {
+                _messages.Add(new AssistantMessage(new List<ContentBlock> { new TextBlock(cleanText) }));
+                break;
+            }
+
+            _log($"final answer empty (attempt={attempt + 1}/{MaxFinalAnswerRetries} stop={stopReason})");
+            if (attempt >= MaxFinalAnswerRetries - 1)
+            {
+                break;
+            }
+
+            _messages.Add(new UserMessage(Reminders.MaxTurnsFinalAnswerRetry));
         }
 
         CumulativeUsage = AddUsage(CumulativeUsage, lastUsage);

@@ -412,6 +412,61 @@ public class OutputRecoveryTests
         Assert.Contains(engine.Messages, m =>
             m is UserMessage u && u.Text.Contains("cut off"));  // 복구 리마인더 주입
     }
+
+    // max_turns 도달 후 최종 답변 시도가 출력 한도로 content 0자로 끝나는 glm 패턴:
+    // 재시도(짧게 쓰라는 누지)로 살아나야 한다 — 예전엔 침묵 종료됐다.
+    private sealed class MaxTurnsEmptyThenDoneModel : IChatModel
+    {
+        public int Calls;
+        private int _calls;
+
+        public async IAsyncEnumerable<StreamEvent> StreamAsync(
+            IReadOnlyList<Message> messages, IReadOnlyList<ITool> tools,
+            [EnumeratorCancellation] CancellationToken ct = default)
+        {
+            await Task.Yield();
+            _calls++;
+            Calls = _calls;
+            if (_calls <= 2)
+            {
+                // 텍스트 없이 length 컷 — 78ca7a7 가드가 reasoning 노출을 막는 상황과 동일.
+                yield return new TurnCompleted(new Usage(1, 1), "length");
+            }
+            else
+            {
+                yield return new TextDelta("final answer");
+                yield return new TurnCompleted(new Usage(1, 1), "stop");
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Max_turns_final_answer_retries_when_empty()
+    {
+        var engine = new QueryEngine(
+            new MaxTurnsEmptyThenDoneModel(), Array.Empty<ITool>(), maxTurns: 1, extendTurns: false);
+        engine.Seed(new[] { new SystemMessage("sys") });
+
+        var text = "";
+        var hitMaxTurns = false;
+        await foreach (var ev in engine.SubmitAsync("go"))
+        {
+            switch (ev)
+            {
+                case TextDelta d:
+                    text += d.Text;
+                    break;
+                case TurnCompleted c when c.StopReason == "max_turns":
+                    hitMaxTurns = true;
+                    break;
+            }
+        }
+
+        Assert.True(hitMaxTurns);
+        Assert.Contains("final answer", text);   // 침묵 종료되지 않고 답을 냄
+        Assert.Contains(engine.Messages, m =>
+            m is UserMessage u && u.Text.Contains("NO visible text"));  // 재시도 누지 주입 확인
+    }
 }
 
 public class SubAgentPromptTests
