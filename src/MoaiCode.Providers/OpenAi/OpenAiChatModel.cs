@@ -260,8 +260,12 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl
 
         // 빈 응답 폴백: content 도 툴콜도 없는데 reasoning 만 왔다면(추론 모델), 그 reasoning 을
         // 답변으로 방출한다. 안 그러면 "빈 응답 → 넛지 반복 → 답변 없음"이 된다.
+        // 단 stop=length 로 잘린 응답은 제외 — reasoning 이 먼저 흐르는 모델(glm 계열)에서
+        // 토큰 한도 컷 시 content 도달 전에 잘리면, 잘린 reasoning 원문을 답변으로 흘려보내
+        // 화면에 추론이 그대로 노출되는 사고가 있었다(2026-09-21). 이어쓰기 누지에 맡긴다.
         var hasTools = toolAccum.Values.Any(b => !string.IsNullOrEmpty(b.Name));
-        if (!emittedContent && !hasTools && reasoning.Length > 0)
+        if (!emittedContent && !hasTools && reasoning.Length > 0
+            && !string.Equals(stopReason, "length", StringComparison.OrdinalIgnoreCase))
         {
             yield return new TextDelta(reasoning.ToString());
         }

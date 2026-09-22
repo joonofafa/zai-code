@@ -182,6 +182,24 @@ public class OpenAiChatModelTests
     }
 
     [Fact]
+    public async Task Truncated_reasoning_only_response_does_not_emit_reasoning()
+    {
+        // stop=length 로 잘렸으면 reasoning 폴백을 끈다 — 잘린 추론 원문이 답변으로 노출되는 사고 방지.
+        var sse =
+            "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"reasoning_content\":\"Let me analyze the resize flow \"},\"index\":0}]}\n" +
+            "\n" +
+            "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"carefully...\"},\"index\":0}]}\n" +
+            "\n" +
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"length\",\"index\":0}]}\n" +
+            "\n" +
+            "data: [DONE]\n\n";
+
+        var events = await Collect(sse);
+        Assert.Empty(events.OfType<TextDelta>());
+        Assert.Equal("length", events.OfType<TurnCompleted>().Single().StopReason);
+    }
+
+    [Fact]
     public async Task Includes_reasoning_effort_when_env_is_set()
     {
         var prev = Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT");
