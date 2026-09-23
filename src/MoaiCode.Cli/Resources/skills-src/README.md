@@ -5,9 +5,14 @@
 추적하기 위한 것입니다.
 
 ## 현재 자체 저작 스킬
-- `org-data-query` — 데이터함(OrgDatas) 읽기전용 SELECT 워크플로 (스키마 먼저 조회, 한글 식별자 따옴표 금지)
 - `xunit-test-writer` — 변경 코드 xUnit 테스트 작성/보강
 - `business-report` — 데이터/조직문서 → 네이티브 Docx/XlsxCreate 보고서 생성
+- `code-review` — 정확성·보안·호환성·성능·테스트 관점의 변경사항 검토 (v5)
+- `systematic-debugging` — 재현→원인 분리→근본 원인→최소 수정→검증 절차 (v5)
+- `source-driven-development` — 낯선 API는 설치된 소스·공식 문서로 검증 후 작성 (v5)
+
+> 원문 아이디어(addyosmani/agent-skills, obra/superpowers, getsentry/skills)의 원칙을 참고했으나
+> 본문은 zaiCode 용도로 자체 저작(영문) — 외부 원문 미포함, 라이선스 의무 없음.
 
 > `bundled-skills.zip` 에는 이 외에 awesome-claude-skills 큐레이션(pdf, mcp-builder, changelog-generator,
 > webapp-testing, skill-creator)도 들어 있으며, 그 원본은 여기서 관리하지 않고 zip 안에만 있습니다(라이선스 포함).
