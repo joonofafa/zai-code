@@ -1,6 +1,7 @@
 ---
 name: code-review
 description: Use when asked to review code changes — a diff, a pull request, a commit, or code the agent just wrote. Covers correctness, security, performance, compatibility, and test coverage.
+license: zaiCode original — principles referenced from getsentry/skills code-review (Apache-2.0); no verbatim content
 ---
 
 # Code review

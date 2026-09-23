@@ -1,6 +1,7 @@
 ---
 name: source-driven-development
 description: Use when working with a library, framework, or API you are not fully sure about — verify usage against official documentation or the installed source before writing code, instead of relying on memory.
+license: zaiCode original — principles referenced from addyosmani/agent-skills source-driven-development (MIT); no verbatim content
 ---
 
 # Source-driven development

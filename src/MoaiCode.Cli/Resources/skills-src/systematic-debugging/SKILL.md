@@ -1,6 +1,7 @@
 ---
 name: systematic-debugging
 description: Use when fixing any bug, crash, test failure, or unexpected behavior — reproduce first, find the root cause, then fix. Also use when a fix attempt has already failed once.
+license: zaiCode original — principles referenced from obra/superpowers systematic-debugging (MIT); no verbatim content
 ---
 
 # Systematic debugging

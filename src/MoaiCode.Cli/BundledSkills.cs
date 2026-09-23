@@ -9,7 +9,7 @@ namespace MoaiCode.Cli;
 /// </summary>
 public static class BundledSkills
 {
-    private const string Version = "7";              // 번들 내용 갱신 시 올림 → 재추출 (v7: Apache-2.0 공개 스킬 3종 재수록 — LICENSE.txt 동봉, license frontmatter 표기)
+    private const string Version = "8";              // 번들 내용 갱신 시 올림 → 재추출 (v8: 자체 저작 3종에 원칙 참조 출처 license 표기 추가)
     private const string ResourceName = "bundled-skills.zip";
 
     public static string Dir => Path.Combine(

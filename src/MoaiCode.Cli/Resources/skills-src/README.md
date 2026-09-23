@@ -11,6 +11,10 @@
 - `systematic-debugging` — 재현→원인 분리→근본 원인→최소 수정→검증 절차 (v5)
 - `source-driven-development` — 낯선 API는 설치된 소스·공식 문서로 검증 후 작성 (v5)
 
+> - `code-review` — 원칙 참조: [getsentry/skills](https://github.com/getsentry/skills) code-review (Apache-2.0) — 본문 자체 저작, 원문 미포함
+> - `systematic-debugging` — 원칙 참조: [obra/superpowers](https://github.com/obra/superpowers) systematic-debugging (MIT) — 본문 자체 저작, 원문 미포함
+> - `source-driven-development` — 원칙 참조: [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) source-driven-development (MIT) — 본문 자체 저작, 원문 미포함
+>
 > 원문 아이디어(addyosmani/agent-skills, obra/superpowers, getsentry/skills)의 원칙을 참고했으나
 > 본문은 zaiCode 용도로 자체 저작(영문) — 외부 원문 미포함, 라이선스 의무 없음.
 
