@@ -27,6 +27,10 @@ public sealed class QueryEngine
     private readonly int _compactTokens;
     private const int MaxContextRecoveries = 3;
 
+    // 페이즈 경계 컴팩션 게이트: 경계 도달 시에도 토큰 사용이 이 선(창의 30%) 미만이면
+    // 컨텍스트가 작아 압축 손실/비용이 이득보다 크다 — 하베스트·압축을 건너뛰고 턴 예산 리셋만.
+    private readonly int _phaseCompactFloorTokens;
+
     // 스트림이 응답 도중에 끊겼을 때(transient), 부분 응답을 버리고 같은 요청을 재전송하는 최대 횟수.
     // (RetryingChatModel 은 아직 아무것도 출력 안 된 pre-yield 끊김만 재시도하므로, mid-stream 은 여기서.)
     private const int MaxStreamRetries = 3;
@@ -89,6 +93,7 @@ public sealed class QueryEngine
         _maxTurns = maxTurns;
         _workingDirectory = workingDirectory ?? Directory.GetCurrentDirectory();
         _compactTokens = Math.Max(1_000, contextWindowTokens * 70 / 100);
+        _phaseCompactFloorTokens = Math.Max(500, contextWindowTokens * 30 / 100);
         _extendTurns = extendTurns;
         _pendingTasks = pendingTasks;
         _maxToolResultChars = maxToolResultChars;
@@ -596,12 +601,22 @@ public sealed class QueryEngine
             if (_lastSeenPhase is not null && curPhase != _lastSeenPhase)
             {
                 _log($"phase boundary: {_lastSeenPhase} -> {(curPhase?.ToString() ?? "done")}");
-                if (_harvestMemories)
+                // 게이트: 토큰 사용이 낮으면 압축·하베스트(각 모델 호출 1회 + 문맥 손실)가 이득보다
+                // 손해다 — 예산 리셋만 하고 문맥은 그대로 보존해 다음 페이즈가 직전 결정사항을 잇게 한다.
+                var phaseCompact = EstimateTokens(_messages) >= _phaseCompactFloorTokens;
+                if (phaseCompact)
                 {
-                    await HarvestMemoriesAsync(ct).ConfigureAwait(false);
-                }
+                    if (_harvestMemories)
+                    {
+                        await HarvestMemoriesAsync(ct).ConfigureAwait(false);
+                    }
 
-                await CompactCoreAsync(8, ct).ConfigureAwait(false);
+                    await CompactCoreAsync(8, ct).ConfigureAwait(false);
+                }
+                else
+                {
+                    _log($"phase boundary: context {EstimateTokens(_messages)} tok < floor {_phaseCompactFloorTokens} tok -> skip compact/harvest");
+                }
 
                 if (curPhase is not null)
                 {
@@ -616,7 +631,9 @@ public sealed class QueryEngine
                     }
 
                     yield return new StreamNotice(
-                        $"Phase {_lastSeenPhase} complete — memory harvested, context compacted, turn budget reset. Starting phase {curPhase}.");
+                        phaseCompact
+                            ? $"Phase {_lastSeenPhase} complete — memory harvested, context compacted, turn budget reset. Starting phase {curPhase}."
+                            : $"Phase {_lastSeenPhase} complete — context still small ({EstimateTokens(_messages)} tok), kept intact. Turn budget reset. Starting phase {curPhase}.");
                 }
             }
 

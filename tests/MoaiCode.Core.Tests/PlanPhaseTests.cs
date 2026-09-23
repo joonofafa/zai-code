@@ -170,6 +170,36 @@ public class QueryEnginePhaseBoundaryTests
         }
     }
 
+    // 모델 호출 수를 세는 ToolThenDoneModel(하베스트/요약 같은 부수 모델 호출 관측용).
+    // 첫 턴 툴 호출 전에 페이즈 홀더를 2로 전진 — SubmitAsync 진입 시 1로 동기화됐으므로 경계 1→2 감지.
+    private sealed class CountingModel(int[]? phaseHolder = null) : IChatModel
+    {
+        private int _n;
+        public int Calls { get; private set; }
+
+        public async IAsyncEnumerable<StreamEvent> StreamAsync(
+            IReadOnlyList<Message> messages, IReadOnlyList<ITool> tools,
+            [EnumeratorCancellation] CancellationToken ct = default)
+        {
+            await Task.Yield();
+            Calls++;
+            if (_n++ == 0)
+            {
+                if (phaseHolder is not null)
+                {
+                    phaseHolder[0] = 2;
+                }
+                using var d = JsonDocument.Parse("{}");
+                yield return new ToolCallRequested(new ToolUseBlock("c1", "Advance", d.RootElement.Clone()));
+                yield return new TurnCompleted(new Usage(1, 1), "tool_calls");
+                yield break;
+            }
+
+            yield return new TextDelta("done");
+            yield return new TurnCompleted(new Usage(1, 1), "stop");
+        }
+    }
+
     [Fact]
     public async Task Crossing_phase_boundary_emits_notice_and_reanchor_reminder()
     {
@@ -193,5 +223,67 @@ public class QueryEnginePhaseBoundaryTests
         // 다음 페이즈 재고정 리마인더가 대화에 주입됐다.
         var reminders = engine.Messages.OfType<UserMessage>().Select(m => m.Text);
         Assert.Contains(reminders, t => t == Reminders.PhaseAdvanced);
+    }
+
+    [Fact]
+    public async Task Phase_boundary_below_floor_skips_compact_and_keeps_context()
+    {
+        // 문맥을 작게 유지(시스템 프롬프트만) → 바닥(창의 30%) 미달 → 경계에서 압축·하베스트 스킵.
+        var phase = new[] { 1 };
+        var model = new CountingModel(phase);
+        var engine = new QueryEngine(
+            model,
+            new ITool[] { new AdvanceTool(phase) },
+            currentPhase: () => phase[0]);
+        engine.Seed(new[] { new SystemMessage("sys") });
+
+        var sawSkipNotice = false;
+        await foreach (var ev in engine.SubmitAsync("go"))
+        {
+            if (ev is StreamNotice sn && sn.Text.Contains("kept intact"))
+            {
+                sawSkipNotice = true;
+            }
+        }
+
+        // 모델 호출 = 본체 2회(툴 호출 턴 + 종료 턴)만 — 요약/하베스트 호출이 없다.
+        Assert.Equal(2, model.Calls);
+        Assert.True(sawSkipNotice, "skip-path notice should say context was kept intact");
+        // 진짜 대화 내용이 그대로 살아 있다(요약으로 대체 안 됨).
+        Assert.DoesNotContain(engine.Messages, m => m is UserMessage u && u.Text.Contains("[Summary of earlier conversation]"));
+    }
+
+    [Fact]
+    public async Task Phase_boundary_at_or_above_floor_compacts_and_harvests()
+    {
+        // 시스템 프롬프트(보호 구간) + 시드 밖 실제 UserMessage 2만자(5,000 tok ≥ 바닥)로 압축 경로 유도.
+        var phase = new[] { 1 };
+        var model = new CountingModel(phase);
+        var engine = new QueryEngine(
+            model,
+            new ITool[] { new AdvanceTool(phase) },
+            contextWindowTokens: 10_000,
+            currentPhase: () => phase[0]);
+        engine.Seed(new[] { new SystemMessage("sys") });
+        engine.Restore(Enumerable.Range(0, 6).SelectMany(i => new Message[]
+        {
+            new UserMessage($"earlier context {i} " + new string('x', 3_000)),
+            new AssistantMessage(new List<ContentBlock> { new TextBlock($"ok {i}") }),
+        }).ToList());
+
+        var sawCompactNotice = false;
+        await foreach (var ev in engine.SubmitAsync("go"))
+        {
+            if (ev is StreamNotice sn && sn.Text.Contains("context compacted"))
+            {
+                sawCompactNotice = true;
+            }
+        }
+
+        // 모델 호출 = 본체 2회 + 요약 1회 이상(하베스트는 기본 off).
+        Assert.True(model.Calls >= 3, $"expected compaction summary call, got {model.Calls}");
+        Assert.True(sawCompactNotice, "compact-path notice should report compaction");
+        // 오래된 구간이 요약으로 대체됐다.
+        Assert.Contains(engine.Messages, m => m is UserMessage u && u.Text.Contains("[Summary of earlier conversation]"));
     }
 }

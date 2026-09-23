@@ -180,12 +180,13 @@ public static class Reminders
         "</system-reminder>";
 
     // 페이즈 경계: 한 페이즈의 모든 태스크가 완료되어 다음 페이즈로 넘어갈 때 주입.
-    // 직전 페이즈 요약은 이미 압축·하베스트됐으니, 다음 페이즈에 집중하도록 재고정한다.
+    // 문맥이 클 경우 직전 페이즈는 이미 압축·하베스트됐다(작으면 그대로 보존). 어느 쪽이든
+    // 다음 페이즈에 집중하도록 재고정한다.
     public const string PhaseAdvanced =
         "<system-reminder>\n" +
-        "The previous phase is complete and its context was compacted (durable facts saved to memory). " +
-        "Call TaskList to see the current phase, then execute ONLY that phase's tasks — mark each in_progress " +
-        "before starting and completed as you finish. Do not jump ahead to later phases.\n" +
+        "The previous phase is complete. Call TaskList to see the current phase, then execute ONLY " +
+        "that phase's tasks — mark each in_progress before starting and completed as you finish. " +
+        "Do not jump ahead to later phases.\n" +
         "</system-reminder>";
 
     // 실패 루프 후 상위 모델 티어로 승격했을 때 주입 — 더 강한 모델로 같은 문제를 다시 시도하도록.
