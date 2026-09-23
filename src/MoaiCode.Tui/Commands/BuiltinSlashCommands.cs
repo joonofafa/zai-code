@@ -230,8 +230,9 @@ internal sealed class McpCommand : ISlashCommand
                 : L10n.Get("slash.mcp.list", string.Join(", ", ctx.McpServers))));
 }
 
-// /license: 로드된 스킬별 라이선스 표기. bundled 스킬은 zaiCode 자체 저작, user/plugin 스킬은
-// SKILL.md frontmatter 의 license: 값을 그대로 보여준다(없으면 unknown).
+// /license: 로드된 스킬별 라이선스 표기. SKILL.md frontmatter 의 license: 값을 그대로 보여주고
+// (bundled 포함 — Apache-2.0 등 외부 라이선스 스킬이 번들에 포함될 수 있다), 없으면
+// bundled 는 자체 저작 문구, user/plugin 은 unknown 으로 표기한다.
 internal sealed class LicenseCommand : ISlashCommand
 {
     public string Name => "license";
@@ -251,7 +252,9 @@ internal sealed class LicenseCommand : ISlashCommand
                 L10n.Get("slash.license.row"),
                 r.Name,
                 r.Source,
-                r.Source == "bundled" ? L10n.Get("slash.license.bundled") : r.License ?? L10n.Get("slash.license.unknown")))
+                r.License is not null
+                    ? r.License
+                    : r.Source == "bundled" ? L10n.Get("slash.license.bundled") : L10n.Get("slash.license.unknown")))
             .ToList();
         return Task.FromResult(new SlashResult(
             L10n.Get("slash.license.header") + "\n" + string.Join("\n", lines)));

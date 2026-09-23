@@ -1,6 +1,6 @@
 # Bundled skill sources
 
-이 폴더는 **moai-code가 자체 저작한 기본 번들 스킬의 원본(SKILL.md)**입니다. 빌드 시 실제로 배포되는 것은
+이 폴더는 **zaiCode가 자체 저작한 기본 번들 스킬의 원본(SKILL.md)**입니다. 빌드 시 실제로 배포되는 것은
 같은 디렉터리의 `bundled-skills.zip`(임베디드 리소스)이며, 이 폴더는 그 zip 을 다시 만들 수 있게 소스를
 추적하기 위한 것입니다.
 
@@ -14,8 +14,18 @@
 > 원문 아이디어(addyosmani/agent-skills, obra/superpowers, getsentry/skills)의 원칙을 참고했으나
 > 본문은 zaiCode 용도로 자체 저작(영문) — 외부 원문 미포함, 라이선스 의무 없음.
 
-> `bundled-skills.zip` 에는 이 외에 awesome-claude-skills 큐레이션(pdf, mcp-builder, changelog-generator,
-> webapp-testing, skill-creator)도 들어 있으며, 그 원본은 여기서 관리하지 않고 zip 안에만 있습니다(라이선스 포함).
+## Vendored 공개 스킬 (v7~, zip 안에만 보관)
+
+다음 3종은 [anthropics/skills](https://github.com/anthropics/skills)의 **Apache-2.0** 스킬을
+원문 그대로 벤더링한 것입니다. 각 디렉터리에 원문 `LICENSE.txt`(Apache-2.0 전문)가 동봉되어 있고,
+`SKILL.md` frontmatter의 `license:` 값이 `/license` 명령에 표시됩니다.
+
+- `mcp-builder` — MCP 서버 구축 가이드 (Python/Node)
+- `skill-creator` — 스킬 작성·개선·벤치마크 도구
+- `webapp-testing` — Playwright 웹앱 테스트 툴킷
+
+> 동일 원본 repo의 `pdf` 스킬은 Anthropic 독점 라이선스(재배포 금지), `changelog-generator`는
+> 라이선스 미표기로 권리 확인 불가 — 두 종은 **번들에서 제외**했다.
 
 ## 스킬 추가/수정 후 zip 재생성
 1. 이 폴더 아래 `<skill-name>/SKILL.md` 를 추가·수정한다.

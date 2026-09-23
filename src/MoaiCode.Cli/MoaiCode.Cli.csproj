@@ -4,6 +4,8 @@
     <AssemblyName>zaiCode</AssemblyName>
     <!-- Z.ai Code 1.2.0 — moai-code 에서 갈라져 나온 z.ai 전용 단일 코딩 에이전트.
          (조직 서버 연동·GUI 제거, WebSearch=Gemini grounding, stream-json 프로토콜)
+         1.2.7: Apache-2.0 공개 스킬 3종(mcp-builder·skill-creator·webapp-testing) 번들 복원 —
+               LICENSE.txt 동봉·license frontmatter /license 표기, BundledSkills v7
          1.2.6: /license 슬래시 명령 — 스킬별 라이선스 표시(bundled=자체 저작, user/plugin=
                frontmatter license:), Skill 레코드 license 메타 추가, zip 루트 README 제거
          1.2.5: 기본 번들 스킬 3종 추가(code-review·systematic-debugging·
@@ -17,7 +19,7 @@
          1.2.0: 세션/메모리 프로젝트별 스코핑, 백그라운드 셸(run_in_background·BashOutput/KillShell),
                입력바 표시폭 클램프(한글 wrap 잔상 제거)
          1.1.0: GEMINI 키 저장소 복원, 붙여넣기 홍수 수정, 큐잉 플래시 피드백, 턴 중 Shift+Tab -->
-    <Version>1.2.6</Version>
+    <Version>1.2.7</Version>
     <!-- 멀티타깃: win-* RID 는 net10.0-windows(Office COM 툴 포함), 나머지는 net10.0. -->
     <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
     <!-- 크로스 게시 대상 (Linux에서 win-x64 self-contained exe 생성 가능) -->
@@ -32,7 +34,7 @@
     <InternalsVisibleTo Include="MoaiCode.Core.Tests" />
   </ItemGroup>
   <ItemGroup>
-    <!-- 기본 번들 스킬(awesome-claude-skills 큐레이션). 첫 실행 시 ~/.moai/bundled-skills 로 추출. -->
+    <!-- 기본 번들 스킬(자체 저작 5종 + Apache-2.0 공개 스킬 3종). 첫 실행 시 ~/.zaicode/bundled-skills 로 추출. -->
     <EmbeddedResource Include="Resources/bundled-skills.zip" LogicalName="bundled-skills.zip" />
   </ItemGroup>
   <ItemGroup>
