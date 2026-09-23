@@ -279,6 +279,10 @@ public static class AppBootstrap
             // /install·/uninstall: Windows 셸 통합(PATH + 탐색기 우클릭 메뉴).
             InstallIntegration: () => WindowsIntegration.Install(L10n.Get("slash.install.menuLabel")),
             UninstallIntegration: WindowsIntegration.Uninstall,
+            // /license: 스킬별 라이선스(이름·출처·라이선스) 조회.
+            GetSkillLicenses: () => SkillCatalog.DiscoverAll(cwd)
+                .Select(x => (x.Skill.Name, x.Source, x.Skill.License))
+                .ToList(),
             PlanTree: () => MoaiCode.Tools.Tasks.PlanRender.PlainTree(taskStore.Phases()));
 
         return new AppRuntime(

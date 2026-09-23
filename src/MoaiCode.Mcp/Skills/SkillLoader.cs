@@ -84,6 +84,7 @@ public static class SkillLoader
         var (meta, body) = FrontmatterParser.Parse(content);
         var name = meta.TryGetValue("name", out var n) && n.Length > 0 ? n : fallbackName;
         var desc = meta.TryGetValue("description", out var d) ? d : "";
-        return new Skill(name, desc, body, path);
+        var license = meta.TryGetValue("license", out var l) && l.Length > 0 ? l : null;
+        return new Skill(name, desc, body, path, license);
     }
 }

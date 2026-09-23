@@ -230,6 +230,34 @@ internal sealed class McpCommand : ISlashCommand
                 : L10n.Get("slash.mcp.list", string.Join(", ", ctx.McpServers))));
 }
 
+// /license: 로드된 스킬별 라이선스 표기. bundled 스킬은 zaiCode 자체 저작, user/plugin 스킬은
+// SKILL.md frontmatter 의 license: 값을 그대로 보여준다(없으면 unknown).
+internal sealed class LicenseCommand : ISlashCommand
+{
+    public string Name => "license";
+    public string Description => L10n.Get("slash.license.description");
+
+    public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
+    {
+        var rows = ctx.GetSkillLicenses?.Invoke();
+        if (rows is null || rows.Count == 0)
+        {
+            return Task.FromResult(new SlashResult(L10n.Get("slash.license.none")));
+        }
+
+        var lines = rows
+            .OrderBy(r => r.Source).ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(r => string.Format(
+                L10n.Get("slash.license.row"),
+                r.Name,
+                r.Source,
+                r.Source == "bundled" ? L10n.Get("slash.license.bundled") : r.License ?? L10n.Get("slash.license.unknown")))
+            .ToList();
+        return Task.FromResult(new SlashResult(
+            L10n.Get("slash.license.header") + "\n" + string.Join("\n", lines)));
+    }
+}
+
 // /plan: 현재 실행 계획(Phase 트리)을 표시.
 internal sealed class PlanCommand : ISlashCommand
 {

@@ -61,6 +61,8 @@ public sealed record SlashContext(
     // /install·/uninstall: Windows 셸 통합(PATH + 탐색기 우클릭 메뉴) 설치/제거.
     Func<string>? InstallIntegration = null,
     Func<string>? UninstallIntegration = null,
+    // /license: 스킬별 라이선스 조회(이름·출처·라이선스). Cli가 SkillCatalog 기반으로 주입.
+    Func<IReadOnlyList<(string Name, string Source, string? License)>>? GetSkillLicenses = null,
     // /plan: 현재 실행 계획(Phase 트리) 평문 렌더를 반환. Cli 가 taskStore 기반으로 주입(Tui→Tools 결합 회피).
     Func<string>? PlanTree = null);
 

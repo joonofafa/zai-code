@@ -9,7 +9,7 @@ namespace MoaiCode.Cli;
 /// </summary>
 public static class BundledSkills
 {
-    private const string Version = "5";              // 번들 내용 갱신 시 올림 → 재추출 (v5: code-review·systematic-debugging·source-driven-development 추가)
+    private const string Version = "6";              // 번들 내용 갱신 시 올림 → 재추출 (v6: zip 루트 README.md 제거 — 단일 파일 스킬로 오인 로드 방지)
     private const string ResourceName = "bundled-skills.zip";
 
     public static string Dir => Path.Combine(
