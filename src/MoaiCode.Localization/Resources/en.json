@@ -470,6 +470,8 @@
   "providers.streamEndedEarly": "The response stream was cut off before completion: {0}",
   "providers.streamIdleTimeout": "No data received from the stream for {0}s (idle timeout — the server or gateway stalled). Retrying if possible.",
   "providers.echoOffline": "EchoChatModel (offline · ZAI_API_KEY not set)",
+  "providers.gatewayConnectionFailed": "Gateway connection failed: {0}",
+  "providers.modelResponseError": "Model response error — {0}",
   "config.connectFailed": "Connection failed: {0}",
   "config.parseFailed": "Response parse failed: {0}",
   "persistence.checkpointDisabledFmt": "zaiCode: checkpoint exceeded {0:0}s, disabling it for this session (workspace is very large). To turn off, set MOAI_CHECKPOINTS=0.",

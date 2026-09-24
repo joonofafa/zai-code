@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using MoaiCode.Core.Agent;
 using MoaiCode.Core.Messages;
 using MoaiCode.Core.Tools;
+using MoaiCode.Localization;
 using MoaiCode.Providers.Http;
 
 namespace MoaiCode.Providers.OpenAi;
@@ -153,7 +154,7 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl
         catch (Exception ex) when (ProviderException.IsNetworkFailure(ex))
         {
             // 연결 자체 실패(끊김/타임아웃/소켓) → transient 로 변환해 재시도 계층이 처리.
-            throw new ProviderException($"게이트웨이 연결 실패: {ex.Message}", ErrorCategory.NetworkTransient, ex);
+            throw new ProviderException(L10n.Get("providers.gatewayConnectionFailed", ex.Message), ErrorCategory.NetworkTransient, ex);
         }
 
         using var _resp = resp;
@@ -205,7 +206,7 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl
                 // 예전엔 choices 가 없어 그냥 skip → 빈 응답으로 삼켜졌다. 이제 예외로 노출한다.
                 if (root.TryGetProperty("error", out var errEl) && errEl.ValueKind != JsonValueKind.Null)
                 {
-                    throw new ProviderException(ErrorStatus(errEl), "모델 응답 오류 — " + ExtractErrorMessage(errEl));
+                    throw new ProviderException(ErrorStatus(errEl), L10n.Get("providers.modelResponseError", ExtractErrorMessage(errEl)));
                 }
 
                 if (root.TryGetProperty("usage", out var u) && u.ValueKind == JsonValueKind.Object)
