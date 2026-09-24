@@ -133,11 +133,10 @@ internal sealed class ThemeCommand : ISlashCommand
 
     public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
-        if (args.Length == 0)
+        // 인자 없음: 현재 테마 표시 + 즉시 선택기 오픈(/model 과 동일 UX). 'select'는 현재 표시만 생략.
+        if (args.Length == 0 || string.Equals(args[0], "select", StringComparison.OrdinalIgnoreCase))
         {
-            var t = TuiTheme.CurrentTheme;
-            return Task.FromResult(new SlashResult(
-                L10n.Get("slash.theme.current", t.DisplayName, t.Id)));
+            return Task.FromResult(SelectInteractive(ctx, showCurrent: args.Length == 0));
         }
 
         if (args.Length != 1)
@@ -162,26 +161,6 @@ internal sealed class ThemeCommand : ISlashCommand
             return Task.FromResult(new SlashResult(L10n.Get("slash.theme.unsupported")));
         }
 
-        if (string.Equals(args[0], "select", StringComparison.OrdinalIgnoreCase))
-        {
-            if (Console.IsInputRedirected)
-            {
-                return Task.FromResult(new SlashResult(L10n.Get("slash.theme.noSelectNonInteractive")));
-            }
-
-            var options = TuiTheme.Themes.Select(t => t.DisplayName).ToList();
-            var currentIdx = TuiTheme.Themes.ToList().FindIndex(t => t.Id == TuiTheme.Current);
-            var pick = SelectList.Prompt(L10n.Get("slash.theme.pickTitle"), options, Math.Max(0, currentIdx));
-            if (pick < 0)
-            {
-                return Task.FromResult(new SlashResult(L10n.Get("common.unchanged")));
-            }
-
-            var chosen = TuiTheme.Themes[pick];
-            persist(chosen.Id);
-            return Task.FromResult(new SlashResult(L10n.Get("slash.theme.changed", chosen.DisplayName, chosen.Id)));
-        }
-
         // 직접 id 지정 — TuiTheme.Normalize 가 알 수 없는 값을 기본 테마로 폴백하므로
         // 존재 검사를 먼저 해서 오타를 usage 로 안내한다.
         var id = args[0].Trim().ToLowerInvariant().Replace("_", "-");
@@ -195,6 +174,41 @@ internal sealed class ThemeCommand : ISlashCommand
         persist(id);
         var info = TuiTheme.Themes.First(t => t.Id == id);
         return Task.FromResult(new SlashResult(L10n.Get("slash.theme.changed", info.DisplayName, info.Id)));
+    }
+
+    /// <summary>/theme·/theme select 공통: 현재 테마 표시(옵션) 후 선택기 오픈. 취소·비대화형은 안내문.</summary>
+    private static SlashResult SelectInteractive(SlashContext ctx, bool showCurrent)
+    {
+        if (Console.IsInputRedirected)
+        {
+            // 비대화형: 현재 테마만 보여주고 id 직접 지정을 안내.
+            var cur = TuiTheme.CurrentTheme;
+            var shown = showCurrent ? L10n.Get("slash.theme.current", cur.DisplayName, cur.Id) + Environment.NewLine : "";
+            return new SlashResult(shown + L10n.Get("slash.theme.noSelectNonInteractive"));
+        }
+
+        if (ctx.PersistTheme is null)
+        {
+            return new SlashResult(L10n.Get("slash.theme.unsupported"));
+        }
+
+        if (showCurrent)
+        {
+            var t = TuiTheme.CurrentTheme;
+            Spectre.Console.AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]{Spectre.Console.Markup.Escape(L10n.Get("slash.theme.current", t.DisplayName, t.Id))}[/]");
+        }
+
+        var options = TuiTheme.Themes.Select(t => t.DisplayName).ToList();
+        var currentIdx = TuiTheme.Themes.ToList().FindIndex(t => t.Id == TuiTheme.Current);
+        var pick = SelectList.Prompt(L10n.Get("slash.theme.pickTitle"), options, Math.Max(0, currentIdx));
+        if (pick < 0)
+        {
+            return new SlashResult(L10n.Get("common.unchanged"));
+        }
+
+        var chosen = TuiTheme.Themes[pick];
+        ctx.PersistTheme(chosen.Id);
+        return new SlashResult(L10n.Get("slash.theme.changed", chosen.DisplayName, chosen.Id));
     }
 }
 

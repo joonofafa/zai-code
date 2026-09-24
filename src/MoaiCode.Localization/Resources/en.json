@@ -29,7 +29,7 @@
   "slash.language.unsupported": "Unsupported language: {0}",
   "slash.language.usage": "Usage: /language [ko|en]",
   "slash.language.available": "Supported languages: {0}",
-  "slash.theme.description": "Show or change the TUI color theme (example: /theme select)",
+  "slash.theme.description": "Show or change the TUI color theme (opens the picker)",
   "slash.theme.current": "theme: {0} ({1})",
   "slash.theme.changed": "Theme changed: {0} ({1})",
   "slash.theme.usage": "Usage: /theme [select|list|carbon-dark|violet-dark|zen-dark|paper-light|solar-light|ivory-light]",

@@ -29,7 +29,7 @@
   "slash.language.unsupported": "지원하지 않는 언어: {0}",
   "slash.language.usage": "사용법: /language [ko|en]",
   "slash.language.available": "지원 언어: {0}",
-  "slash.theme.description": "TUI 색 테마 보기/변경 (예: /theme select)",
+  "slash.theme.description": "TUI 색 테마 보기/변경 (선택창을 엽니다)",
   "slash.theme.current": "테마: {0} ({1})",
   "slash.theme.changed": "테마 변경: {0} ({1})",
   "slash.theme.usage": "사용법: /theme [select|list|carbon-dark|violet-dark|zen-dark|paper-light|solar-light|ivory-light]",

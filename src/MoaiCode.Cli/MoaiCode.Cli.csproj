@@ -4,6 +4,8 @@
     <AssemblyName>zaiCode</AssemblyName>
     <!-- Z.ai Code 1.2.0 — moai-code 에서 갈라져 나온 z.ai 전용 단일 코딩 에이전트.
          (조직 서버 연동·GUI 제거, WebSearch=Gemini grounding, stream-json 프로토콜)
+         1.2.15: /theme 무인자 실행 UX 개선 — 현재 테마 표시 후 즉시 선택기 오픈(/model 과
+               동일 패턴), select 서브커맨드는 유지(현재 표시만 생략), 비대화형은 안내문
          1.2.14: 시맨틱 멀티 테마 6종(Dark 3: carbon/violet/zen, Light 3: paper/solar/ivory) —
                TuiTheme 단일 지점 팔레트+Role 토큰, /theme 명령(list·select·id), 설정 영속
                (settings.json theme 키), 전 컴포넌트 하드코딩 색 → 토큰 치환,
@@ -40,7 +42,7 @@
          1.2.0: 세션/메모리 프로젝트별 스코핑, 백그라운드 셸(run_in_background·BashOutput/KillShell),
                입력바 표시폭 클램프(한글 wrap 잔상 제거)
          1.1.0: GEMINI 키 저장소 복원, 붙여넣기 홍수 수정, 큐잉 플래시 피드백, 턴 중 Shift+Tab -->
-    <Version>1.2.14</Version>
+    <Version>1.2.15</Version>
     <!-- 멀티타깃: win-* RID 는 net10.0-windows(Office COM 툴 포함), 나머지는 net10.0. -->
     <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
     <!-- 크로스 게시 대상 (Linux에서 win-x64 self-contained exe 생성 가능) -->
