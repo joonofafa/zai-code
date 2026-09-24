@@ -4,6 +4,9 @@
     <AssemblyName>zaiCode</AssemblyName>
     <!-- Z.ai Code 1.2.0 — moai-code 에서 갈라져 나온 z.ai 전용 단일 코딩 에이전트.
          (조직 서버 연동·GUI 제거, WebSearch=Gemini grounding, stream-json 프로토콜)
+         1.2.10: 슬래시 명령형 에이전트 턴(/init, /review 등) 중에도 하단 입력창 유지 —
+               BottomDock.ReinstallForTurn(): SubmitPrompt 커맨드가 모델 턴을 돌리기 전
+               해제된 컴퍼저를 재설치
          1.2.9: BottomDock v4 플로팅 컴퍼저 제거 — 입력창을 창 하단에 고정(세로 긴 창에서
                입력창이 콘텐츠 꼬리 밑에 떠 보이지 않던 문제), 턴 중에도 컴퍼저 유지;
                자체 저작 스킬 2종(xunit-test-writer·cross-layer-change-review) 번들 등재(BundledSkills v10)
@@ -24,7 +27,7 @@
          1.2.0: 세션/메모리 프로젝트별 스코핑, 백그라운드 셸(run_in_background·BashOutput/KillShell),
                입력바 표시폭 클램프(한글 wrap 잔상 제거)
          1.1.0: GEMINI 키 저장소 복원, 붙여넣기 홍수 수정, 큐잉 플래시 피드백, 턴 중 Shift+Tab -->
-    <Version>1.2.9</Version>
+    <Version>1.2.10</Version>
     <!-- 멀티타깃: win-* RID 는 net10.0-windows(Office COM 툴 포함), 나머지는 net10.0. -->
     <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
     <!-- 크로스 게시 대상 (Linux에서 win-x64 self-contained exe 생성 가능) -->
