@@ -295,8 +295,10 @@ public sealed class ReplApp
         }
 
         // 프롬프트형 커맨드(/init, /review)는 결과 프롬프트로 에이전트 턴을 실행.
+        // 슬래시 처리로 해체된 컴퍼저를 이 턴 동안 유지되게 다시 설치한다(하단 고정 유지).
         if (!string.IsNullOrEmpty(result.SubmitPrompt))
         {
+            _dock?.ReinstallForTurn();
             await ConsumeTurnAsync(result.SubmitPrompt, ct).ConfigureAwait(false);
         }
 

@@ -335,6 +335,29 @@ public sealed class BottomDock
     /// <summary>턴 종료 — 턴 모드 해제. 다음 ReadLine 의 Draw 가 실제 커서로 정상 렌더한다.</summary>
     public void EndTurnMode() => _turnMode = false;
 
+    /// <summary>
+    /// 프롬프트형 커맨드(/init·/review 등)로 해체된 컴퍼저를, 그 결과 프롬프트로 도는 모델 턴 동안
+    /// 유지하기 위해 다시 설치한다. 신규 설치 경로와 동일하게 CPR 로 대화 꼬리를 실측해 꼬리가 박스와
+    /// 겹치는 만큼만 스크롤한다(echo 없음 — 명령 echo 는 이미 일반 흐름으로 출력됐다). 이후 출력 커서를
+    /// 영역 하단에 park 하고 턴 모드로 전환해 스트리밍이 컴퍼저 위에서 스크롤되게 한다.
+    /// </summary>
+    public void ReinstallForTurn()
+    {
+        _turnMode = false;
+        _buf.Clear();
+        _pos = 0;
+        _shell = false;
+        Draw(_buf, _pos);   // 신규 설치 경로: CPR 실측 스크롤 + DECSTBM + 박스 렌더
+        var scrollBottom = Math.Max(1, Height() - _reserved);
+        lock (_drawLock)
+        {
+            Console.Write($"\x1b[{scrollBottom};1H");   // 출력 커서 park(스트리밍 시작 위치)
+        }
+        _lastCursorRow = scrollBottom;
+        _turnMode = true;
+        Draw(_buf, _pos);   // 턴 모드 재그림(save/restore — 출력 커서 보존)
+    }
+
     /// <summary>턴 중 여부(ReplApp 이 이벤트 라우팅 판단에 사용).</summary>
     public bool InTurn => _turnMode;
 
