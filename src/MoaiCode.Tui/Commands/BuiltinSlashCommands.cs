@@ -36,8 +36,7 @@ internal sealed class ModelCommand : ISlashCommand
     public string Name => "model";
     public string Description => L10n.Get("slash.model.description");
 
-    // 라이브 세션의 모델을 선택한다. 공용 ModelPicker(로그인 화면과 공유): "모델별 업무 분할(Y/n)"
-    // → 예=하/중/상 티어, 아니오=단일 모델. 저장 방식만 콜백으로 주입한다.
+    // 라이브 세션의 모델을 선택한다. 공용 ModelPicker(로그인 화면과 공유): 단일 모델 선택.
     public async Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
         var mc = ctx.Models;
@@ -273,8 +272,7 @@ internal sealed class PlanCommand : ISlashCommand
     }
 }
 
-// /brainstorming [화두]: 화두를 Q&A로 구체화한 뒤 에이전트가 플랜을 생성한다. 최대 20턴.
-// 티어 설정(MOAI_MODEL_HIGH) 시 세션 동안 High 모델을 사용(플랜 품질). 다시 입력하면 토글 오프.
+// /brainstorming [화두]: 화두를 Q&A로 구체화한 뒤 에이전트가 플랜을 생성한다. 최대 20턴. 다시 입력하면 토글 오프.
 internal sealed class BrainstormCommand : ISlashCommand
 {
     internal const int MaxTurns = 20;

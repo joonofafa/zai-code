@@ -21,7 +21,7 @@ public static class SettingsLoader
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
         var settings = Settings.Default;
-        // ~/.claude 는 Claude Code(별개 제품)의 설정 파일 — 공유 설정은 받되 model/티어는 상속하지 않는다
+        // ~/.claude 는 Claude Code(별개 제품)의 설정 파일 — 공유 설정은 받되 model 은 상속하지 않는다
         // (Claude Code 모델명 "opus[1m]" 등이 moai 게이트웨이로 새어 404 나던 문제 방지). 모델은 ~/.moai + env 만.
         settings = ApplyLayer(
             settings,
