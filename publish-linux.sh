@@ -27,6 +27,16 @@ TMP="dist/.${RID}.building.$$"
 cleanup() { rm -rf "${TMP}"; }
 trap cleanup EXIT
 
+# 게시 전 게이트: dock(컴퍼저) 스모크 — 최근 커밋의 상당수가 컴퍼저·리사이즈 잔상 수정이라
+# 회귀를 자동 검증한다. 실패하면 기존 게시본을 유지하고 중단.
+if [ -x "tests/run-dock-smoke.sh" ]; then
+  echo "── 게시 전 게이트: dock 스모크 하네스 ──"
+  if ! bash tests/run-dock-smoke.sh; then
+    echo "❌ dock 스모크 실패 — 게시를 중단합니다. 기존 게시본은 유지됩니다." >&2
+    exit 1
+  fi
+fi
+
 rm -rf "${TMP}"
 dotnet publish src/MoaiCode.Cli/MoaiCode.Cli.csproj \
   -c Release \
