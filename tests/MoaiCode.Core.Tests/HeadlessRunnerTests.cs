@@ -11,6 +11,8 @@ namespace MoaiCode.Core.Tests;
 /// moai run(비대화형)의 stdout 회귀 테스트. 예전엔 TextDelta 를 그대로 흘려보내
 /// 추론 마커(__THINKING_STATUS__:…)가 답변과 한 줄로 붙어 파이프 출력을 오염시켰다.
 /// </summary>
+// Console.SetOut 스왑이 LineEditorWrapTests 와 경합해 간헐 실패(8회 중 1~2회)했으니 직렬화.
+[Collection("EnvMutating")]
 public sealed class HeadlessRunnerTests
 {
     /// <summary>마커가 델타 경계에 걸쳐 쪼개져 오는 실제 스트리밍 형태를 재현.</summary>

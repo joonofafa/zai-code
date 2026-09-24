@@ -11,7 +11,9 @@ namespace MoaiCode.Core.Tests;
 /// Tab 자동완성·Shift+Tab 모드전환이 실환경에서 먹지 않는 문제의 유실 지점을 좁히는 테스트.
 /// pty 하네스는 입력 전송 방식에 따라 결과가 갈려 신뢰할 수 없으므로, stdin 스트림을 주입해
 /// 리더→파서→BottomDock 을 그대로 태운다(터미널 없이 앱 내부만 검증).
+/// QueryCursor 테스트가 Console.Out 에 DSR(ESC[6n) 을 직접 쓰므로 다른 콘솔 스왑 테스트와 직렬화.
 /// </summary>
+[Collection("EnvMutating")]
 public class TabInputPipelineTests
 {
     private static readonly string[] Slash = ["clear", "model", "resume"];

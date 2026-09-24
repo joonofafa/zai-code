@@ -5,6 +5,8 @@ using Xunit;
 
 namespace MoaiCode.Core.Tests;
 
+// ApplyEnv 테스트가 MOAI_/ZAI_REASONING_EFFORT 환경변수를 조작하므로 직렬화한다.
+[Collection("EnvMutating")]
 public class SettingsLoaderTests
 {
     [Fact]

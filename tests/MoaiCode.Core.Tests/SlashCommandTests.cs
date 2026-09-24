@@ -9,6 +9,8 @@ using Xunit;
 
 namespace MoaiCode.Core.Tests;
 
+// MOAI_/ZAI_REASONING_EFFORT 환경변수를 조작해 OpenAiChatModelTests 등과 경합하므로 직렬화한다.
+[Collection("EnvMutating")]
 public class SlashCommandTests : IDisposable
 {
     private readonly string _dir;
