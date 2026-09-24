@@ -7,6 +7,7 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Tools;
+using MoaiCode.Core.Web;
 using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Web;
@@ -121,13 +122,7 @@ public sealed class WebFetchTool : ITool
     private static async Task<(string Body, string FinalUrl, string Status)> FetchAsync(
         Uri uri, int maxLength, CancellationToken ct)
     {
-        using var handler = new SocketsHttpHandler
-        {
-            AllowAutoRedirect = false, // 리다이렉트마다 SSRF 재검증을 위해 수동 처리
-            AutomaticDecompression = DecompressionMethods.All,
-            // Proxy 미지정 → HttpClient.DefaultProxy(사내망 프록시 설정) 자동 사용
-        };
-        using var client = new HttpClient(handler);
+        using var client = ToolHttp.CreateDownloader();
         client.DefaultRequestHeaders.UserAgent.ParseAdd("MoAI-Code/0.1 (+webfetch)");
         client.DefaultRequestHeaders.Accept.ParseAdd("text/html,application/xhtml+xml,text/plain,application/json;q=0.9,*/*;q=0.8");
 

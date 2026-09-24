@@ -7,6 +7,7 @@ using System.Text.Json.Serialization;
 using MoaiCode.Core;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Tools;
+using MoaiCode.Core.Web;
 using MoaiCode.Localization;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Metadata;
@@ -191,8 +192,7 @@ public sealed class ImageAnalysisTool : ITool
     private static async Task<string> AskAsync(
         string baseUrl, string key, byte[] bytes, string mediaType, string prompt, CancellationToken ct)
     {
-        using var handler = new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.All };
-        using var client = new HttpClient(handler);
+        using var client = ToolHttp.CreateApi();
         client.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key);
 
@@ -360,12 +360,7 @@ public sealed class ImageAnalysisTool : ITool
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(DownloadTimeout);
 
-        using var handler = new SocketsHttpHandler
-        {
-            AllowAutoRedirect = false, // 리다이렉트마다 SSRF 재검증
-            AutomaticDecompression = DecompressionMethods.All,
-        };
-        using var client = new HttpClient(handler);
+        using var client = ToolHttp.CreateDownloader();
         client.DefaultRequestHeaders.UserAgent.ParseAdd("MoAI-Code/0.1 (+imagefetch)");
         client.DefaultRequestHeaders.Accept.ParseAdd("image/*,*/*;q=0.8");
 

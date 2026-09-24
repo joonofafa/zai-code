@@ -11,6 +11,7 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using MoaiCode.Core.Tools;
+using MoaiCode.Core.Web;
 using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Media;
@@ -181,8 +182,7 @@ public sealed class ImageCreateTool : ITool
     private static async Task<GenResponse?> CallAsync(
         string url, string key, string prompt, string? model, CancellationToken ct)
     {
-        using var handler = new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.All };
-        using var client = new HttpClient(handler);
+        using var client = ToolHttp.CreateApi();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
 
         object payload = string.IsNullOrWhiteSpace(model)

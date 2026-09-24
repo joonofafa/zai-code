@@ -7,6 +7,7 @@ using System.Text.Json.Serialization;
 using MoaiCode.Core;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Tools;
+using MoaiCode.Core.Web;
 using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Web;
@@ -107,8 +108,7 @@ public sealed class WebSearchTool : ITool
 
     private static async Task<string> CallAsync(string baseUrl, string key, Input inp, CancellationToken ct)
     {
-        using var handler = new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.All };
-        using var client = new HttpClient(handler);
+        using var client = ToolHttp.CreateApi();
         client.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key);
 

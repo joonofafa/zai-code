@@ -10,6 +10,7 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using MoaiCode.Core.Tools;
+using MoaiCode.Core.Web;
 using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Media;
@@ -181,12 +182,7 @@ public sealed class ImageFetchTool : ITool
 
     private static async Task<(byte[] Bytes, string MediaType)> DownloadAsync(Uri uri, CancellationToken ct)
     {
-        using var handler = new SocketsHttpHandler
-        {
-            AllowAutoRedirect = false, // 리다이렉트마다 SSRF 재검증
-            AutomaticDecompression = DecompressionMethods.All,
-        };
-        using var client = new HttpClient(handler);
+        using var client = ToolHttp.CreateDownloader();
         client.DefaultRequestHeaders.UserAgent.ParseAdd("MoAI-Code/0.1 (+imagefetch)");
         client.DefaultRequestHeaders.Accept.ParseAdd("image/*,*/*;q=0.8");
 
