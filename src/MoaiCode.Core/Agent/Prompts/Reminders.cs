@@ -88,7 +88,7 @@ public static class Reminders
         "NEW final line, give your single best recommended answer as: [[SUGGEST]] <concise answer> (one line, " +
         "no markdown) — it becomes a faint default the user can accept with Tab. Do NOT dump a full plan " +
         "early. When the requirements are concrete enough, synthesize ONE actionable, phased implementation " +
-        "plan by calling the PlanCreate tool (phases with tasks; tag task difficulty), then briefly summarize " +
+        "plan by calling the PlanCreate tool (phases with tasks), then briefly summarize " +
         "it and stop — do not begin implementing.";
 
     // 매 브레인스토밍 턴 짧은 넛지(컴팩션 후에도 '한 번에 하나' + 제안 마커 규칙 유지)
@@ -187,13 +187,6 @@ public static class Reminders
         "The previous phase is complete. Call TaskList to see the current phase, then execute ONLY " +
         "that phase's tasks — mark each in_progress before starting and completed as you finish. " +
         "Do not jump ahead to later phases.\n" +
-        "</system-reminder>";
-
-    // 실패 루프 후 상위 모델 티어로 승격했을 때 주입 — 더 강한 모델로 같은 문제를 다시 시도하도록.
-    public const string EscalatedModel =
-        "<system-reminder>\n" +
-        "This task hit repeated failures, so it was escalated to a stronger model. Re-examine the failure with " +
-        "fresh reasoning and try a corrected approach — do not blindly repeat the exact call that failed.\n" +
         "</system-reminder>";
 
     // 툴 실패 루프 가드 (query/toolFailureLoopGuard.ts)
