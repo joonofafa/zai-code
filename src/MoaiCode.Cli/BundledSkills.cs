@@ -3,13 +3,13 @@ using System.IO.Compression;
 namespace MoaiCode.Cli;
 
 /// <summary>
-/// 바이너리에 임베드된 기본 스킬(자체 저작 5종 + Apache-2.0 공개 스킬 3종)을 첫 실행 시
+/// 바이너리에 임베드된 기본 스킬(자체 저작 7종 + Apache-2.0 공개 스킬 2종)을 첫 실행 시
 /// ~/.zaicode/bundled-skills 로 추출한다. 사용자 스킬 디렉터리(~/.claude/skills 등)와 분리되어
 /// 있어 버전 갱신 시 안전하게 재추출 가능. SkillLoader 가 이 경로를 최저 우선순위로 로드.
 /// </summary>
 public static class BundledSkills
 {
-    private const string Version = "8";              // 번들 내용 갱신 시 올림 → 재추출 (v8: 자체 저작 3종에 원칙 참조 출처 license 표기 추가)
+    private const string Version = "10";             // 번들 내용 갱신 시 올림 → 재추출 (v10: cross-layer-change-review 자체 저작 번들 등재, xunit-test-writer license 표기)
     private const string ResourceName = "bundled-skills.zip";
 
     public static string Dir => Path.Combine(

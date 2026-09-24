@@ -52,10 +52,6 @@ public sealed class BottomDock
     // 후 CPR(ESC[6n) 실측 커서 행과의 차이가 곧 박스 전체의 평행이동량이다(모델 프리 판별).
     private int _lastCursorRow;
     private int _lastBoxTop;
-    // 플로팅 컴퍼저: 콘텐츠가 화면보다 짧을 때 박스를 바닥이 아니라 대화 꼬리 바로 밑에
-    // 띄운다(스크롤 영역 없음). 도킹 시점의 꼬리 행(=박스 상단−1)을 기억해 재그리기에 쓴다.
-    private bool _floating;
-    private int _floatingScrollBottom;
     // 화면 안 대화 본문의 마지막(꼬리) 행(1-기준). 재설치 스크롤량은 이 꼬리가 새 박스와
     // 겹치는 만큼만이면 정확하다 — 박스/커서 위치 기준으로 계산하면 창을 덜 채운 화면에서
     // 빈 행을 스크롤백으로 밀어 넣고, 이후 창을 키울 때 그 공백이 돌아와 "공란"이 된다.
@@ -127,26 +123,10 @@ public sealed class BottomDock
         // 턴 모드에선 스크롤 영역을 고정한다(재설정 금지) — 현재 예약 높이 안에서만 그린다.
         if (_turnMode)
         {
-            if (_floating)
-            {
-                // 플로팅 턴: 박스는 꼬리(=echo 파킹) 위치 그대로. 도킹 판정만 — 콘텐츠가 자라
-                // 박스가 화면 밖으로 내려가면 이번 프레임부터 도킹으로 전환해 바닥 고정.
-                reserved = _reserved;
-                scrollBottom = Math.Max(1, _floatingScrollBottom);
-                inputRows = Math.Min(inputRows, Math.Max(1, reserved - 3));
-                if (scrollBottom + reserved > h)
-                {
-                    _floating = false;
-                    scrollBottom = Math.Max(1, h - reserved);
-                }
-            }
-            else
-            {
-                reserved = _reserved;
-                scrollBottom = h - reserved;
-                if (scrollBottom < 1) scrollBottom = 1;
-                inputRows = Math.Min(inputRows, Math.Max(1, reserved - 3));
-            }
+            reserved = _reserved;
+            scrollBottom = h - reserved;
+            if (scrollBottom < 1) scrollBottom = 1;
+            inputRows = Math.Min(inputRows, Math.Max(1, reserved - 3));
         }
 
         var sb = new StringBuilder();
@@ -182,41 +162,13 @@ public sealed class BottomDock
                 scroll = Math.Clamp(_lastConvTail + reserved - h, 0, reserved);
             }
 
-            // 플로팅 판정: 콘텐츠(꼬리) + 박스가 화면 안에 다 들어가면 바닥이 아니라 꼬리 바로
-            // 밑에 띄운다(스크롤 0, 스크롤 영역 없음 — 전체 화면 정상 스크롤). 무조건 바닥에
-            // 붙이면 짧은 대화에서 꼬리~바닥 빈 벽이 "세로 공란"처럼 보인다(Claude Code 는
-            // 콘텐츠 바로 밑에 띄운다). 들어가지 않으면 도킹(기존 동작: 스크롤 영역 + 바닥 고정).
-            if (_lastConvTail + reserved <= h - 1)
-            {
-                scroll = 0;
-                sb.Append("\x1b[r");   // 스크롤 영역 없음(전체 화면)
-                _floating = true;
-                _floatingScrollBottom = Math.Max(1, _lastConvTail);
-                scrollBottom = _floatingScrollBottom;   // 박스 좌표(구분선/입력/상태)도 꼬리 기준으로
-            }
-            else
-            {
-                _floating = false;
-                sb.Append($"\x1b[{h};1H");
-                for (var k = 0; k < scroll; k++) sb.Append('\n');
-                sb.Append($"\x1b[1;{scrollBottom}r");
-            }
+            sb.Append($"\x1b[{h};1H");
+            for (var k = 0; k < scroll; k++) sb.Append('\n');
+            sb.Append($"\x1b[1;{scrollBottom}r");
 
             _reserved = reserved;
             _installed = true;
             _lastConvTail = Math.Max(1, _lastConvTail - scroll);   // 스크롤로 올라간 뒤의 꼬리 위치
-        }
-        else if (_floating && !_turnMode)
-        {
-            // 플로팅 유지 중 재그리기(편집·펄스): 박스를 꼬리 바로 밑에 다시 그린다.
-            // inputRows 가 늘어 박스가 화면을 넘치면 도킹으로 전환한다(다음 Draw 부터 바닥 고정).
-            if (_floatingScrollBottom + reserved > h)
-            {
-                _floating = false;
-                _installed = false;   // 다음 Draw 를 신규 설치 경로로 — 도킹 설치(스크롤 확보)
-                return;
-            }
-            scrollBottom = Math.Max(1, _floatingScrollBottom);
         }
         else if (reserved != _reserved)
         {
@@ -319,10 +271,6 @@ public sealed class BottomDock
             _lastCursorRow = curRow;      // 프롬프트: 커서를 편집 위치에 둠 — 리사이즈 CPR 판별 기준
             _lastBoxTop = scrollBottom + 1;   // 박스 상단(구분선 행) — CPR 시프트 공식의 앵커
             _lastConvTail = Math.Min(_lastConvTail, scrollBottom);   // 박스 위 꼬리는 영역 하단 이상 못 넘는다
-            if (_floating)
-            {
-                _floatingScrollBottom = scrollBottom;   // 편집으로 꼬리 기준 위치 동기화
-            }
         }
 
         lock (_drawLock)
@@ -339,7 +287,7 @@ public sealed class BottomDock
     // 하단 박스를 지우고 입력한 명령을 일반 흐름으로 echo. 하단 고정은 다음 ReadLine 의 Draw 가 다시 세운다.
     private void SubmitAndTeardown(string text, bool shell = false)
     {
-        var boxTop = _floating ? Math.Max(1, _floatingScrollBottom + 1) : Math.Max(1, Height() - _reserved + 1);   // 도킹=h-reserved+1, 플로팅=꼬리 바로 밑
+        var boxTop = Math.Max(1, Height() - _reserved + 1);   // 박스 상단 = h-reserved+1
         var sb = new StringBuilder();
         sb.Append("\x1b[r");                                   // 스크롤 영역 해제(전체 화면 정상)
         sb.Append($"\x1b[{boxTop};1H\x1b[J");                  // 박스 있던 자리부터 이하 전체 지움
@@ -362,15 +310,6 @@ public sealed class BottomDock
     /// </summary>
     public void KeepComposerForTurn(string text, bool shell = false)
     {
-        // 플로팅(콘텐츠가 화면을 덜 채운 상태): 컴퍼저를 유지한 채 턴을 돌면 스트리밍 순차
-        // 출력이 컴퍼저를 덮는다(스크롤 영역이 없어 분리가 불가). 제출 시 컴퍼저를 숨기고
-        // 일반 대화 흐름으로 echo — 턴 중 고정 편집은 도킹 모드에서만. 턴 종료 후 다음
-        // ReadLine 의 Draw 가 CPR 실측 꼬리 바로 밑에 컴퍼저를 재부착한다(플로팅/도킹 재판정).
-        if (_floating)
-        {
-            SubmitAndTeardown(text, shell);
-            return;
-        }
         var h = Height();
         var scrollBottom = Math.Max(1, h - _reserved);
         // 채팅처럼 우측 정렬 버블로 echo(스크롤 영역 폭 기준).
@@ -403,7 +342,7 @@ public sealed class BottomDock
     public void RedrawInTurn() { if (_turnMode) Draw(_buf, _pos); }
 
     /// <summary>턴 중 스피너/활동 표시를 그릴 행(입력창 바로 위 = 스크롤 영역 마지막 줄). 절대좌표.</summary>
-    public int ActivityRow => _floating ? Math.Max(1, _floatingScrollBottom) : Math.Max(1, Height() - _reserved);
+    public int ActivityRow => Math.Max(1, Height() - _reserved);
 
     /// <summary>현재 입력 초안 텍스트.</summary>
     public string CurrentText => _buf.ToString();
@@ -691,7 +630,6 @@ public sealed class BottomDock
 
         Console.Write(sb.ToString());
         _installed = false;
-        _floating = false;   // 재설치가 새로 플로팅/도킹 판정 — Draw 설치 경로에서 다시 정한다
         _reserved = 0;
         if (shift is { } s)
         {
@@ -780,32 +718,6 @@ public sealed class BottomDock
         for (var row = Math.Max(1, first); row <= last; row++)
         {
             sb.Append($"\x1b[{row};1H\x1b[2K");
-        }
-
-        if (_floating)
-        {
-            // 플로팅 턴 중 리사이즈: 스크롤 영역이 없다 — CPR 시프트로 꼬리/박스 위치만 보정해
-            // 재그림. grow 에서 도킹 조건(tail+reserved>h)이 되면 도킹 전환해 스크롤 영역 설치.
-            if (shift is { } sf)
-            {
-                _lastConvTail = Math.Clamp(_lastConvTail + sf, 1, h);
-            }
-            if (_lastConvTail + _reserved > h)
-            {
-                _floating = false;   // 도킹 전환 — 아래 도킹 경로로 계속(스크롤 영역 설치)
-            }
-            else
-            {
-                _floatingScrollBottom = Math.Max(1, _lastConvTail);
-                _lastW = w;
-                _lastH = h;
-                lock (_drawLock)
-                {
-                    Console.Write(sb.ToString());
-                    Draw(_buf, _pos);
-                }
-                return;
-            }
         }
 
         var regionBottom = Math.Max(1, h - _reserved);
