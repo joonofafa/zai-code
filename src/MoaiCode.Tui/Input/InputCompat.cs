@@ -25,7 +25,7 @@ public static class InputCompat
             return AnsiConsole.Confirm(prompt, defaultValue);
         }
 
-        AnsiConsole.Markup($"{Markup.Escape(prompt)} [grey][[{(defaultValue ? "Y/n" : "y/N")}]][/] ");
+        AnsiConsole.Markup($"{Markup.Escape(prompt)} [{TuiTheme.Dim}][[{(defaultValue ? "Y/n" : "y/N")}]][/] ");
         var line = input.ReadLine()?.Trim();
         AnsiConsole.WriteLine();
         if (string.IsNullOrEmpty(line))

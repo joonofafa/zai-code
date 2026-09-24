@@ -53,6 +53,7 @@ public static class AppBootstrap
         // 1) 설정 머지 (user → project → env)
         var settings = SettingsLoader.Load(cwd);
         L10n.SetLanguage(settings.Language);
+        TuiTheme.Apply(settings.Theme);   // 시맨틱 테마 적용(6종, invalid→carbon-dark 폴백)
         ApplySettingsToEnv(settings);
 
         // 2) 자격증명: env에 없으면 저장소에서 주입
@@ -258,7 +259,12 @@ public static class AppBootstrap
                 SettingsWriter.Set(new Dictionary<string, string?> { ["language"] = language });
                 Environment.SetEnvironmentVariable("MOAI_LANGUAGE", language);
             },
-            // /skills: 전체 스킬(이름·출처·현재 활성) 조회.
+            PersistTheme: theme =>
+            {
+                TuiTheme.Apply(theme);
+                SettingsWriter.Set(new Dictionary<string, string?> { ["theme"] = theme });
+                Environment.SetEnvironmentVariable("MOAI_THEME", theme);
+            },            // /skills: 전체 스킬(이름·출처·현재 활성) 조회.
             GetSkillChoices: () =>
             {
                 var dis = SkillState.LoadDisabled();
@@ -427,6 +433,13 @@ public static class AppBootstrap
             && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MOAI_EFFORT")))
         {
             Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", s.ReasoningEffort);
+        }
+
+        if (!string.IsNullOrEmpty(s.Theme)
+            && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MOAI_THEME"))
+            && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ZAI_THEME")))
+        {
+            Environment.SetEnvironmentVariable("MOAI_THEME", s.Theme);
         }
     }
 

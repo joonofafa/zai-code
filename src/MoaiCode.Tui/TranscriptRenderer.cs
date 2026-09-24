@@ -26,18 +26,18 @@ public static class TranscriptRenderer
 
         AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine(skipped > 0
-            ? $"[grey70]{Markup.Escape(L10n.Get("transcript.prevWithSkip", MaxMessages, skipped))}[/]"
-            : $"[grey70]{Markup.Escape(L10n.Get("transcript.prev"))}[/]");
+            ? $"[{TuiTheme.Dim}]{Markup.Escape(L10n.Get("transcript.prevWithSkip", MaxMessages, skipped))}[/]"
+            : $"[{TuiTheme.Dim}]{Markup.Escape(L10n.Get("transcript.prev"))}[/]");
 
         foreach (var m in shown)
         {
             switch (m)
             {
                 case UserMessage u when u.Text.StartsWith("[Summary of earlier conversation]", StringComparison.Ordinal):
-                    AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(Clip(u.Text, 600))}[/]");
+                    AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]{Markup.Escape(Clip(u.Text, 600))}[/]");
                     break;
                 case UserMessage u:
-                    AnsiConsole.MarkupLine($"[green]› [/]{Markup.Escape(u.Text)}");
+                    AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Prompt)}]› [/]{Markup.Escape(u.Text)}");
                     break;
                 case AssistantMessage a:
                     // 재생 시에도 추론 태그·[[SUGGEST]] 마커를 제거해 보이지 않게 한다(라이브와 동일).
@@ -52,14 +52,14 @@ public static class TranscriptRenderer
 
                     foreach (var tu in a.Content.OfType<ToolUseBlock>())
                     {
-                        AnsiConsole.MarkupLine($"[grey70]→ {Markup.Escape(tu.Name)}[/]");
+                        AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]→ {Markup.Escape(tu.Name)}[/]");
                     }
 
                     break;
             }
         }
 
-        AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(L10n.Get("transcript.continues"))}[/]");
+        AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]{Markup.Escape(L10n.Get("transcript.continues"))}[/]");
         AnsiConsole.WriteLine();
     }
 

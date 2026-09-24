@@ -15,12 +15,12 @@ public static class ProxyFlow
     public static bool RunInteractive()
     {
         AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine($"[aqua]{Markup.Escape(L10n.Get("cli.proxy.title"))}[/] [grey70]· {Markup.Escape(L10n.Get("cli.proxy.subtitle"))}[/]");
+        AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Accent)}]{Markup.Escape(L10n.Get("cli.proxy.title"))}[/] [{TuiTheme.Dim}]· {Markup.Escape(L10n.Get("cli.proxy.subtitle"))}[/]");
 
         var cur = SettingsLoader.Load(Directory.GetCurrentDirectory()).ProxyUrl;
         if (!string.IsNullOrWhiteSpace(cur))
         {
-            AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(L10n.Get("cli.proxy.current", cur))}[/]");
+            AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]{Markup.Escape(L10n.Get("cli.proxy.current", cur))}[/]");
         }
 
         Console.Write(L10n.Get("cli.proxy.serverPrompt"));
@@ -36,13 +36,13 @@ public static class ProxyFlow
         if (url.Length == 0)
         {
             // 입력 없음: 기존 값 유지(취소).
-            AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(L10n.Get("common.unchanged"))}[/]");
+            AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Warning)}]{Markup.Escape(L10n.Get("common.unchanged"))}[/]");
             return false;
         }
 
         if (!Uri.TryCreate(url, UriKind.Absolute, out _))
         {
-            AnsiConsole.MarkupLine($"[red]{Markup.Escape(L10n.Get("cli.proxy.invalidUrlEx"))}[/]");
+            AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Error)}]{Markup.Escape(L10n.Get("cli.proxy.invalidUrlEx"))}[/]");
             return false;
         }
 
@@ -77,7 +77,7 @@ public static class ProxyFlow
         }
 
         var auth = user is null ? "" : L10n.Get("cli.proxy.userSuffix", Markup.Escape(user));
-        AnsiConsole.MarkupLine($"[green]{Markup.Escape(L10n.Get("cli.proxy.configured"))}[/] [grey70]· {Markup.Escape(url)}{auth}[/]");
+        AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Success)}]{Markup.Escape(L10n.Get("cli.proxy.configured"))}[/] [{TuiTheme.Dim}]· {Markup.Escape(url)}{auth}[/]");
     }
 
     public static void Clear()
@@ -88,6 +88,6 @@ public static class ProxyFlow
             ["proxyUser"] = null,
         });
         new FileCredentialStore().Set("PROXY_PASSWORD", string.Empty);
-        AnsiConsole.MarkupLine($"[grey70]{Markup.Escape(L10n.Get("cli.proxy.cleared"))}[/]");
+        AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]{Markup.Escape(L10n.Get("cli.proxy.cleared"))}[/]");
     }
 }

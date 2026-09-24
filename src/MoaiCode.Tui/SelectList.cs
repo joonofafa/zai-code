@@ -52,7 +52,7 @@ public static class SelectList
         }
 
         var help = Clip(OneLine(helpText), SafeWidth() - 1);
-        Console.WriteLine($"\x1b[38;5;250m{help}\x1b[0m");
+        Console.WriteLine($"{TuiTheme.Fg(TuiTheme.Role.Help)}{help}\x1b[0m");
 
         using (ConsolePrompt.Begin())
         {
@@ -179,7 +179,7 @@ public static class SelectList
             EraseWidgetLines(visible + 1 + (_titleShown ? 1 : 0)); // 항목 + 도움말 1줄 + 제목(있으면) 1줄
         }
 
-        Console.WriteLine($"\x1b[36m{L10n.Get("common.select.selected", (idx + 1).ToString().PadLeft(_numberWidth, '0'), items[idx])}\x1b[0m");
+        Console.WriteLine($"{TuiTheme.Fg(TuiTheme.Role.Selected)}{L10n.Get("common.select.selected", (idx + 1).ToString().PadLeft(_numberWidth, '0'), items[idx])}\x1b[0m");
         return idx;
     }
 
@@ -210,7 +210,7 @@ public static class SelectList
             {
                 var hint = " " + L10n.Get("session.delete.confirm");
                 var head = Clip($"❯ {num}. {OneLine(items[i])}", Math.Max(1, SafeWidth() - 1 - Width(hint)));
-                Console.WriteLine($"\x1b[2K\x1b[91m{head}{hint}\x1b[0m");
+                Console.WriteLine($"\x1b[2K{TuiTheme.Fg(TuiTheme.Role.Error)}{head}{hint}\x1b[0m");
                 continue;
             }
 
@@ -221,7 +221,7 @@ public static class SelectList
             // 잘라내야, 재그리기 시 커서 위로-이동(\x1b[{visible}A) 줄 수와 실제 렌더 줄 수가 일치한다.
             // (긴/여러줄 항목이 wrap 되면 줄 수가 어긋나 화면에 중첩 표시되던 버그 수정.)
             var plain = Clip($"{marker} {num}. {OneLine(items[i])}", SafeWidth() - 1);
-            var line = selected ? $"\x1b[36m{plain}\x1b[0m" : plain;
+            var line = selected ? $"{TuiTheme.Fg(TuiTheme.Role.Selected)}{plain}\x1b[0m" : plain;
             Console.WriteLine($"\x1b[2K{line}");
         }
     }

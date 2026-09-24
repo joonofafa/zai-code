@@ -21,13 +21,13 @@ public static class LineEditor
     // 테스트 전용: 터미널 폭을 고정한다(가상 터미널 재현 테스트용). null 이면 실제 Console.WindowWidth.
     internal static int? ColsForTest;
 
-    // 인라인 자동완성(ghost) 색 — 연한 회색(256색 244). 입력 배경 위에서 흐릿하게 보인다.
-    internal const string GhostColor = "\x1b[38;5;244m";
+    // 인라인 자동완성(ghost) 색 — 입력 배경 위에서 흐릿하게(테마 TextMuted). (BottomDock 도 공유)
+    internal static string GhostColor => TuiTheme.Fg(TuiTheme.Role.Ghost);
 
-    // 사용자 프롬프트(입력) 라인 배경 — 약간 어두운 회색(256색 236 ≈ #303030). 환경변수
-    // MOAI_PROMPT_BG 로 256색 인덱스(0~255)를 지정해 조정, "off" 면 배경 없음. escape 코드는
-    // 표시폭 0 이라 wrap 계산에 영향 없음. (BottomDock 도 공유)
-    internal static readonly string InputBg = ResolveInputBg();
+    // 사용자 프롬프트(입력) 라인 배경. 환경변수 MOAI_PROMPT_BG 로 256색 인덱스(0~255)를 지정해
+    // 조정, "off" 면 배경 없음. 기본은 테마 모드: 다크=기존 256색 236(≈#303030), 라이트=테마 Surface.
+    // escape 코드는 표시폭 0 이라 wrap 계산에 영향 없음. (BottomDock 도 공유)
+    internal static string InputBg => ResolveInputBg();
 
     private static string ResolveInputBg()
     {
@@ -40,12 +40,13 @@ public static class LineEditor
         {
             return $"\x1b[48;5;{n}m";
         }
-        return "\x1b[48;5;236m";
+        return TuiTheme.IsLight ? TuiTheme.Bg(TuiTheme.Role.InputBg) : "\x1b[48;5;236m";
     }
 
-    // 셸 모드('!' 접두) 입력 라인 배경 — 어두운 빨강(256색 52 ≈ #5f0000). 이 모드에선 '❯' 프롬프트를
-    // 숨긴다(폭 유지를 위해 공백 2칸으로 대체 — wrap/커서 계산 불변). MOAI_SHELL_BG 로 256색 조정 가능.
-    internal static readonly string ShellBg = ResolveShellBg();
+    // 셸 모드('!' 접두) 입력 라인 배경 — 다크=어두운 빨강(256색 52 ≈ #5f0000), 라이트=테마 Surface.
+    // 이 모드에선 '❯' 프롬프트를 숨긴다(폭 유지를 위해 공백 2칸으로 대체 — wrap/커서 계산 불변).
+    // MOAI_SHELL_BG 로 256색 조정 가능.
+    internal static string ShellBg => ResolveShellBg();
 
     private static string ResolveShellBg()
     {
@@ -54,12 +55,12 @@ public static class LineEditor
         {
             return $"\x1b[48;5;{n}m";
         }
-        return "\x1b[48;5;52m";
+        return TuiTheme.IsLight ? TuiTheme.Bg(TuiTheme.Role.InputBg) : "\x1b[48;5;52m";
     }
 
-    // 브레인스토밍 모드 입력 라인 배경 — 어두운 파랑(256색 18 ≈ #000087). (BottomDock 은 펄스 애니메이션,
-    // 이 폴백 에디터는 정적 파랑.) MOAI_BRAINSTORM_BG 로 256색 조정 가능.
-    internal static readonly string BrainstormBg = ResolveBrainstormBg();
+    // 브레인스토밍 모드 입력 라인 배경 — 다크=어두운 파랑(256색 18 ≈ #000087), 라이트=테마 Surface.
+    // (BottomDock 은 펄스 애니메이션, 이 폴백 에디터는 정적.) MOAI_BRAINSTORM_BG 로 조정 가능.
+    internal static string BrainstormBg => ResolveBrainstormBg();
 
     private static string ResolveBrainstormBg()
     {
@@ -68,7 +69,7 @@ public static class LineEditor
         {
             return $"\x1b[48;5;{n}m";
         }
-        return "\x1b[48;5;18m";
+        return TuiTheme.IsLight ? TuiTheme.Bg(TuiTheme.Role.InputBg) : "\x1b[48;5;18m";
     }
 
     // 브레인스토밍 답변 제안(ghost 기본값): 버퍼가 비어 있을 때 AI 추천 답을 희미하게 보여주고
@@ -381,7 +382,7 @@ public static class LineEditor
                 }
                 else
                 {
-                    sb.Append("\x1b[32m").Append(PromptText).Append("\x1b[39m"); // 초록 화살표
+                    sb.Append(TuiTheme.Fg(TuiTheme.Role.Prompt)).Append(PromptText).Append("\x1b[39m"); // 초록 화살표
                 }
 
                 sb.Append(buf.ToString());                 // 전경 기본(배경 유지) + 버퍼
@@ -397,7 +398,7 @@ public static class LineEditor
                 }
                 else
                 {
-                    sb.Append("\x1b[32m").Append(PromptText).Append("\x1b[0m").Append(buf.ToString());
+                    sb.Append(TuiTheme.Fg(TuiTheme.Role.Prompt)).Append(PromptText).Append("\x1b[0m").Append(buf.ToString());
                 }
 
                 if (showGhost) sb.Append(GhostColor).Append(ghost).Append("\x1b[0m"); // ghost(연한 글자)

@@ -25,7 +25,7 @@ public static class MarkdownRenderer
     {
         if (string.IsNullOrWhiteSpace(markdown))
         {
-            return new Markup("[grey70]…[/]");
+            return new Markup($"[{TuiTheme.Dim}]…[/]");
         }
 
         MarkdownDocument doc;
@@ -121,7 +121,7 @@ public static class MarkdownRenderer
                     ? RenderInlines(leaf.Inline)
                     : "";
                 rows.Add(new Markup(first
-                    ? $"{pad}[grey70]{bullet}[/] {inlineMarkup}"
+                    ? $"{pad}[{TuiTheme.Dim}]{bullet}[/] {inlineMarkup}"
                     : $"{pad}  {inlineMarkup}"));
                 first = false;
             }
@@ -134,15 +134,15 @@ public static class MarkdownRenderer
 
     private static IRenderable RenderCode(string code, string? info)
     {
-        var body = new Markup($"[grey85]{Markup.Escape(code.TrimEnd('\n'))}[/]");
+        var body = new Markup($"[{TuiTheme.Mark(TuiTheme.Role.Text)}]{Markup.Escape(code.TrimEnd('\n'))}[/]");
         var panel = new Panel(body)
         {
             Border = BoxBorder.Rounded,
-            BorderStyle = Style.Parse("grey39"),
+            BorderStyle = new Style(foreground: TuiTheme.ColorOf(TuiTheme.Role.Border)),
         };
         if (!string.IsNullOrWhiteSpace(info))
         {
-            panel.Header = new PanelHeader($"[grey70]{Markup.Escape(info.Trim())}[/]");
+            panel.Header = new PanelHeader($"[{TuiTheme.Dim}]{Markup.Escape(info.Trim())}[/]");
         }
 
         return panel;

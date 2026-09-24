@@ -64,7 +64,11 @@ public sealed record SlashContext(
     // /license: 스킬별 라이선스 조회(이름·출처·라이선스). Cli가 SkillCatalog 기반으로 주입.
     Func<IReadOnlyList<(string Name, string Source, string? License)>>? GetSkillLicenses = null,
     // /plan: 현재 실행 계획(Phase 트리) 평문 렌더를 반환. Cli 가 taskStore 기반으로 주입(Tui→Tools 결합 회피).
-    Func<string>? PlanTree = null);
+    Func<string>? PlanTree = null,
+    // /theme: TUI 색 테마 즉시 적용 + 사용자 설정에 저장. PersistTheme는 선택한 테마 id를
+    // settings/env 에 저장하는 콜백(Cli 가 주입 — /language 와 동일 패턴).
+    string? Theme = null,
+    Action<string>? PersistTheme = null);
 
 /// <summary>
 /// 슬래시 명령 실행 결과. Output은 호출측이 렌더, Quit이면 REPL 종료.

@@ -16,6 +16,10 @@ public sealed record Settings
     /// <summary>사용자 인터페이스 언어(ko|en). 기본(base)은 영어. 한국어 사용자는 명시적으로 ko 로 설정한다(한국어권 배포본은 이 값을 포함).</summary>
     public string Language { get; init; } = "en";
 
+    /// <summary>TUI 색 테마 id(dark: carbon-dark|violet-dark|zen-dark, light: paper-light|solar-light|ivory-light).
+    /// 알 수 없는 값은 TuiTheme 가 carbon-dark 로 정규화한다. env MOAI_THEME 로도 지정 가능.</summary>
+    public string Theme { get; init; } = "carbon-dark";
+
     /// <summary>추론 강도 passthrough (예: low|medium|high). OpenAI 호환 chat/completions의 reasoning_effort로 전달.</summary>
     public string? ReasoningEffort { get; init; }
 

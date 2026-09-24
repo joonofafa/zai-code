@@ -25,8 +25,8 @@ public static class UserBubble
         // 마지막 열에 정확히 닿으면 auto-wrap 로 줄이 하나 더 생긴다 — 여유 1칸을 남긴다.
         var pad = Math.Max(1, terminalCols - w - 1);
 
-        var dim = shell ? "\x1b[38;5;244m" : "\x1b[38;5;71m";   // 테두리: 셸=회색, 일반=연두
-        var body = shell ? "\x1b[38;5;250m" : "\x1b[38;5;254m";
+        var dim = shell ? TuiTheme.Fg(TuiTheme.Role.ShellDim) : TuiTheme.Fg(TuiTheme.Role.UserBorder);   // 테두리: 셸=테마 테두리색, 일반=강조
+        var body = shell ? TuiTheme.Fg(TuiTheme.Role.ShellBody) : TuiTheme.Fg(TuiTheme.Role.UserBody);
         var sb = new StringBuilder();
         sb.Append(' ', pad).Append(dim).Append('╭').Append('─', w - 2).Append(edge).Append("\x1b[0m\n");
         foreach (var line in lines)

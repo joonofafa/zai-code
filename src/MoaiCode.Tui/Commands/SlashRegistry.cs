@@ -34,6 +34,7 @@ public sealed class SlashRegistry
             new ModelCommand(),
             new EffortCommand(),
             new LanguageCommand(),
+            new ThemeCommand(),
             new SkillsCommand(),
             new InstallCommand(),
             new UninstallCommand(),

@@ -33,8 +33,8 @@ public sealed class SpectrePermissionGate : IPermissionGate
         }
 
         var panel = new Panel(new Markup(Markup.Escape(display)))
-            .Header($"[yellow]{Markup.Escape(L10n.Get("permission.header"))}[/] · [bold]{Markup.Escape(tool.Name)}[/]")
-            .BorderColor(Color.Yellow);
+            .Header($"[{TuiTheme.Mark(TuiTheme.Role.Warning)}]{Markup.Escape(L10n.Get("permission.header"))}[/] · [bold]{Markup.Escape(tool.Name)}[/]")
+            .BorderColor(TuiTheme.ColorOf(TuiTheme.Role.Warning));
         AnsiConsole.Write(panel);
 
         var scope = _offerAlways ? PermissionRule.TryScope(tool, call) : null;

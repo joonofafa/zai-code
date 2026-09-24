@@ -33,7 +33,7 @@ public static class MultiSelectList
             Console.WriteLine(title);
         }
 
-        Console.WriteLine($"\x1b[38;5;250m{L10n.Get("common.multiselect.help")}\x1b[0m");
+        Console.WriteLine($"{TuiTheme.Fg(TuiTheme.Role.Help)}{L10n.Get("common.multiselect.help")}\x1b[0m");
 
         using (ConsolePrompt.Begin())
         {
@@ -53,7 +53,7 @@ public static class MultiSelectList
                         }
                     }
 
-                    Console.WriteLine($"\x1b[36m{L10n.Get("common.multiselect.saved", result.Count, items.Count - result.Count)}\x1b[0m");
+                    Console.WriteLine($"{TuiTheme.Fg(TuiTheme.Role.Info)}{L10n.Get("common.multiselect.saved", result.Count, items.Count - result.Count)}\x1b[0m");
                     return result;
                 }
 
@@ -132,7 +132,7 @@ public static class MultiSelectList
             // 각 항목을 정확히 1 물리줄로 (개행 제거 + 폭 클립) — 재그리기 커서 계산 안정화.
             var plain = SelectList.Clip(
                 $"{marker} {box} {num}. {SelectList.OneLine(items[i])}", SelectList.SafeWidth() - 1);
-            var line = selected ? $"\x1b[36m{plain}\x1b[0m" : plain;
+            var line = selected ? $"{TuiTheme.Fg(TuiTheme.Role.Selected)}{plain}\x1b[0m" : plain;
             Console.WriteLine($"\x1b[2K{line}");
         }
     }

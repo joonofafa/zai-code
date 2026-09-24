@@ -219,7 +219,7 @@ public sealed class BottomDock
                 }
                 else
                 {
-                    sb.Append("\x1b[32m").Append(LineEditor.PromptText).Append("\x1b[39m").Append(rest);
+                    sb.Append(TuiTheme.Fg(TuiTheme.Role.Prompt)).Append(LineEditor.PromptText).Append("\x1b[39m").Append(rest);
                     if (showGhost) sb.Append(LineEditor.GhostColor).Append(ghost).Append("\x1b[39m");
                 }
             }
@@ -279,9 +279,9 @@ public sealed class BottomDock
         }
     }
 
-    // 구분선 렌더: 폭만큼 옅은 회색 '─'. 배경색 리셋(0)으로 입력행 배경이 새지 않게 한다.
+    // 구분선 렌더: 폭만큼 옅은 구분선(테마 Border). 배경색 리셋(0)으로 입력행 배경이 새지 않게 한다.
     private static string Separator(int w)
-        => "\x1b[38;5;240m" + new string('─', w) + "\x1b[0m";
+        => TuiTheme.Fg(TuiTheme.Role.Border) + new string('─', w) + "\x1b[0m";
 
     // 입력 확정: 스크롤 영역을 해제해 턴 동안 '일반 터미널'로 되돌린다(→ 마우스휠 네이티브 스크롤백 정상).
     // 하단 박스를 지우고 입력한 명령을 일반 흐름으로 echo. 하단 고정은 다음 ReadLine 의 Draw 가 다시 세운다.

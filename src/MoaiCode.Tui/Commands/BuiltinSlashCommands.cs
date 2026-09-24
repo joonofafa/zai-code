@@ -45,7 +45,7 @@ internal sealed class ModelCommand : ISlashCommand
             return new SlashResult(L10n.Get("slash.model.unsupported", ctx.ProviderDesc));
         }
 
-        Spectre.Console.AnsiConsole.MarkupLine($"[grey70]{Spectre.Console.Markup.Escape(L10n.Get("slash.model.fetching"))}[/]");
+        Spectre.Console.AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]{Spectre.Console.Markup.Escape(L10n.Get("slash.model.fetching"))}[/]");
         var models = await mc.ListModelsAsync(ct).ConfigureAwait(false);
         if (models.Count == 0)
         {
@@ -126,11 +126,82 @@ internal sealed class EffortCommand : ISlashCommand
     }
 }
 
+internal sealed class ThemeCommand : ISlashCommand
+{
+    public string Name => "theme";
+    public string Description => L10n.Get("slash.theme.description");
+
+    public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
+    {
+        if (args.Length == 0)
+        {
+            var t = TuiTheme.CurrentTheme;
+            return Task.FromResult(new SlashResult(
+                L10n.Get("slash.theme.current", t.DisplayName, t.Id)));
+        }
+
+        if (args.Length != 1)
+        {
+            return Task.FromResult(new SlashResult(L10n.Get("slash.theme.usage")));
+        }
+
+        if (string.Equals(args[0], "list", StringComparison.OrdinalIgnoreCase))
+        {
+            var lines = TuiTheme.Themes
+                .GroupBy(t => t.Palette.Mode)
+                .OrderBy(g => g.Key == "dark" ? 0 : 1)   // Dark 먼저, 그다음 Light
+                .Select(g => $"{(g.Key == "dark" ? L10n.Get("slash.theme.groupDark") : L10n.Get("slash.theme.groupLight"))}: "
+                             + string.Join(", ", g.Select(t => $"{t.Id} ({t.DisplayName})")));
+            return Task.FromResult(new SlashResult(
+                L10n.Get("slash.theme.available", string.Join(Environment.NewLine, lines))));
+        }
+
+        var persist = ctx.PersistTheme;
+        if (persist is null)
+        {
+            return Task.FromResult(new SlashResult(L10n.Get("slash.theme.unsupported")));
+        }
+
+        if (string.Equals(args[0], "select", StringComparison.OrdinalIgnoreCase))
+        {
+            if (Console.IsInputRedirected)
+            {
+                return Task.FromResult(new SlashResult(L10n.Get("slash.theme.noSelectNonInteractive")));
+            }
+
+            var options = TuiTheme.Themes.Select(t => t.DisplayName).ToList();
+            var currentIdx = TuiTheme.Themes.ToList().FindIndex(t => t.Id == TuiTheme.Current);
+            var pick = SelectList.Prompt(L10n.Get("slash.theme.pickTitle"), options, Math.Max(0, currentIdx));
+            if (pick < 0)
+            {
+                return Task.FromResult(new SlashResult(L10n.Get("common.unchanged")));
+            }
+
+            var chosen = TuiTheme.Themes[pick];
+            persist(chosen.Id);
+            return Task.FromResult(new SlashResult(L10n.Get("slash.theme.changed", chosen.DisplayName, chosen.Id)));
+        }
+
+        // 직접 id 지정 — TuiTheme.Normalize 가 알 수 없는 값을 기본 테마로 폴백하므로
+        // 존재 검사를 먼저 해서 오타를 usage 로 안내한다.
+        var id = args[0].Trim().ToLowerInvariant().Replace("_", "-");
+        if (TuiTheme.Themes.All(t => t.Id != id))
+        {
+            return Task.FromResult(new SlashResult(
+                L10n.Get("slash.theme.unsupportedTheme", args[0]) + Environment.NewLine +
+                L10n.Get("slash.theme.usage")));
+        }
+
+        persist(id);
+        var info = TuiTheme.Themes.First(t => t.Id == id);
+        return Task.FromResult(new SlashResult(L10n.Get("slash.theme.changed", info.DisplayName, info.Id)));
+    }
+}
+
 internal sealed class LanguageCommand : ISlashCommand
 {
     public string Name => "language";
     public string Description => L10n.Get("slash.language.description");
-
     public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
         if (args.Length == 0)
@@ -370,21 +441,21 @@ internal sealed class PermissionsCommand : ISlashCommand
     private static void Render(IPermissionRuleStore rules)
     {
         Spectre.Console.AnsiConsole.WriteLine();
-        Spectre.Console.AnsiConsole.MarkupLine($"[aqua]{Spectre.Console.Markup.Escape(L10n.Get("slash.permissions.title"))}[/] [grey70]· {Spectre.Console.Markup.Escape(L10n.Get("slash.permissions.savedIn"))}[/]");
-        Spectre.Console.AnsiConsole.MarkupLine("[green]allow[/] " + (rules.Allow.Count == 0 ? $"[grey58]{Spectre.Console.Markup.Escape(L10n.Get("common.none"))}[/]" : ""));
+        Spectre.Console.AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Accent)}]{Spectre.Console.Markup.Escape(L10n.Get("slash.permissions.title"))}[/] [{TuiTheme.Dim}]· {Spectre.Console.Markup.Escape(L10n.Get("slash.permissions.savedIn"))}[/]");
+        Spectre.Console.AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Success)}]allow[/] " + (rules.Allow.Count == 0 ? $"[{TuiTheme.Mark(TuiTheme.Role.Muted)}]{Spectre.Console.Markup.Escape(L10n.Get("common.none"))}[/]" : ""));
         foreach (var r in rules.Allow)
         {
-            Spectre.Console.AnsiConsole.MarkupLine($"  [grey85]{Spectre.Console.Markup.Escape(r)}[/]");
+            Spectre.Console.AnsiConsole.MarkupLine($"  [{TuiTheme.Mark(TuiTheme.Role.Text)}]{Spectre.Console.Markup.Escape(r)}[/]");
         }
 
-        Spectre.Console.AnsiConsole.MarkupLine("[red]deny[/] " + (rules.Deny.Count == 0 ? $"[grey58]{Spectre.Console.Markup.Escape(L10n.Get("common.none"))}[/]" : ""));
+        Spectre.Console.AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Error)}]deny[/] " + (rules.Deny.Count == 0 ? $"[{TuiTheme.Mark(TuiTheme.Role.Muted)}]{Spectre.Console.Markup.Escape(L10n.Get("common.none"))}[/]" : ""));
         foreach (var r in rules.Deny)
         {
-            Spectre.Console.AnsiConsole.MarkupLine($"  [grey85]{Spectre.Console.Markup.Escape(r)}[/]");
+            Spectre.Console.AnsiConsole.MarkupLine($"  [{TuiTheme.Mark(TuiTheme.Role.Text)}]{Spectre.Console.Markup.Escape(r)}[/]");
         }
 
         Spectre.Console.AnsiConsole.MarkupLine(
-            $"[grey58]{Spectre.Console.Markup.Escape(L10n.Get("slash.permissions.hint"))}[/]");
+            $"[{TuiTheme.Mark(TuiTheme.Role.Muted)}]{Spectre.Console.Markup.Escape(L10n.Get("slash.permissions.hint"))}[/]");
     }
 }
 
@@ -401,11 +472,11 @@ internal sealed class UsageCommand : ISlashCommand
         var since = usage is not null ? L10n.Get("slash.usage.since", usage.Since.ToString("yyyy-MM-dd")) : "";
 
         Spectre.Console.AnsiConsole.WriteLine();
-        Spectre.Console.AnsiConsole.MarkupLine($"[grey70]{Spectre.Console.Markup.Escape(L10n.Get("slash.usage.title", since))}[/]");
+        Spectre.Console.AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]{Spectre.Console.Markup.Escape(L10n.Get("slash.usage.title", since))}[/]");
 
         if (rows.Count == 0)
         {
-            Spectre.Console.AnsiConsole.MarkupLine($"[grey70]{Spectre.Console.Markup.Escape(L10n.Get("slash.usage.empty"))}[/]");
+            Spectre.Console.AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]{Spectre.Console.Markup.Escape(L10n.Get("slash.usage.empty"))}[/]");
             return Task.FromResult(new SlashResult(""));
         }
 
@@ -417,17 +488,17 @@ internal sealed class UsageCommand : ISlashCommand
             to += r.OutputTokens;
             tt += r.Turns;
             Spectre.Console.AnsiConsole.MarkupLine(
-                $"[grey85]  {Spectre.Console.Markup.Escape(r.Model.PadRight(nameW))}[/] " +
-                $"[grey70]in[/] [white]{r.InputTokens,11:N0}[/]  " +
-                $"[grey70]out[/] [white]{r.OutputTokens,10:N0}[/]  " +
-                $"[grey70]turns {r.Turns}[/]");
+                $"[{TuiTheme.Mark(TuiTheme.Role.Text)}]  {Spectre.Console.Markup.Escape(r.Model.PadRight(nameW))}[/] " +
+                $"[{TuiTheme.Dim}]in[/] [{TuiTheme.Mark(TuiTheme.Role.Text)}]{r.InputTokens,11:N0}[/]  " +
+                $"[{TuiTheme.Dim}]out[/] [{TuiTheme.Mark(TuiTheme.Role.Text)}]{r.OutputTokens,10:N0}[/]  " +
+                $"[{TuiTheme.Dim}]turns {r.Turns}[/]");
         }
 
         Spectre.Console.AnsiConsole.MarkupLine(
-            $"[grey70]  {Spectre.Console.Markup.Escape(L10n.Get("slash.usage.total").PadRight(nameW))}[/] " +
-            $"[grey70]in[/] [white]{ti,11:N0}[/]  " +
-            $"[grey70]out[/] [white]{to,10:N0}[/]  " +
-            $"[grey70]turns {tt}[/]");
+            $"[{TuiTheme.Dim}]  {Spectre.Console.Markup.Escape(L10n.Get("slash.usage.total").PadRight(nameW))}[/] " +
+            $"[{TuiTheme.Dim}]in[/] [{TuiTheme.Mark(TuiTheme.Role.Text)}]{ti,11:N0}[/]  " +
+            $"[{TuiTheme.Dim}]out[/] [{TuiTheme.Mark(TuiTheme.Role.Text)}]{to,10:N0}[/]  " +
+            $"[{TuiTheme.Dim}]turns {tt}[/]");
 
         return Task.FromResult(new SlashResult(""));
     }

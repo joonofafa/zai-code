@@ -99,6 +99,7 @@ public static class SettingsLoader
                 BaseUrl = allowSensitive ? GetString(root, "baseUrl", "base_url") ?? baseline.BaseUrl : baseline.BaseUrl,
                 Language = L10n.NormalizeLanguage(GetString(root, "language", "locale", "uiLanguage", "ui_language"))
                            ?? baseline.Language,
+                Theme = GetString(root, "theme") ?? baseline.Theme,
                 ReasoningEffort = NormalizeEffort(GetString(root, "reasoningEffort", "reasoning_effort", "effort"))
                                   ?? baseline.ReasoningEffort,
                 ProxyUrl = allowSensitive ? GetString(root, "proxyUrl", "proxy_url", "proxy") ?? baseline.ProxyUrl : baseline.ProxyUrl,
@@ -175,6 +176,8 @@ public static class SettingsLoader
                     ?? Environment.GetEnvironmentVariable("ZAI_MODEL");
         var baseUrl = Environment.GetEnvironmentVariable("ZAI_BASE_URL");
         var language = L10n.NormalizeLanguage(Environment.GetEnvironmentVariable("MOAI_LANGUAGE"));
+        var theme = Environment.GetEnvironmentVariable("MOAI_THEME")
+                    ?? Environment.GetEnvironmentVariable("ZAI_THEME");
         var effort = NormalizeEffort(Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT")
                                      ?? Environment.GetEnvironmentVariable("ZAI_REASONING_EFFORT")
                                      ?? Environment.GetEnvironmentVariable("MOAI_EFFORT"));
@@ -197,6 +200,7 @@ public static class SettingsLoader
             Model = model ?? baseline.Model,
             BaseUrl = baseUrl ?? baseline.BaseUrl,
             Language = language ?? baseline.Language,
+            Theme = theme ?? baseline.Theme,
             ReasoningEffort = effort ?? baseline.ReasoningEffort,
             ProxyUrl = proxy ?? baseline.ProxyUrl,
             Permission = perm ?? baseline.Permission,

@@ -36,7 +36,7 @@ internal static class DiffRenderer
 
         if (removed.Length == 0 && added.Length == 0)
         {
-            AnsiConsole.MarkupLine($"[grey70]  {Markup.Escape(L10n.Get("common.noChanges"))}[/]");
+            AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]  {Markup.Escape(L10n.Get("common.noChanges"))}[/]");
             return;
         }
 
@@ -48,7 +48,7 @@ internal static class DiffRenderer
                 break;
             }
 
-            AnsiConsole.MarkupLine($"[red]  - {Markup.Escape(Clip(line))}[/]");
+            AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.DiffRemoved)}]  - {Markup.Escape(Clip(line))}[/]");
         }
 
         foreach (var line in added)
@@ -58,13 +58,13 @@ internal static class DiffRenderer
                 break;
             }
 
-            AnsiConsole.MarkupLine($"[green]  + {Markup.Escape(Clip(line))}[/]");
+            AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.DiffAdded)}]  + {Markup.Escape(Clip(line))}[/]");
         }
 
         var total = removed.Length + added.Length;
         if (total > MaxLines)
         {
-            AnsiConsole.MarkupLine($"[grey70]  … (+{total - MaxLines} more diff lines)[/]");
+            AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]  … (+{total - MaxLines} more diff lines)[/]");
         }
     }
 

@@ -79,8 +79,8 @@ public sealed class AskUserQuestionTool : ITool
 
         AnsiConsole.WriteLine();
         AnsiConsole.Write(new Panel(new Markup(Markup.Escape(question)))
-            .Header($"[aqua]{Markup.Escape(L10n.Get("common.question"))}[/]")
-            .BorderColor(Color.Aqua));
+            .Header($"[{TuiTheme.Mark(TuiTheme.Role.Accent)}]{Markup.Escape(L10n.Get("common.question"))}[/]")
+            .BorderColor(TuiTheme.ColorOf(TuiTheme.Role.Accent)));
 
         // 화살표 선택 위젯. label + (설명) 을 항목으로. 마지막에 '직접 입력…'(자유 텍스트)을 항상 추가해,
         // 제시된 선택지가 안 맞을 때 ESC로 빠져나가(→ 불필요한 재질문 턴) 대신 사용자가 답을 직접 줄 수 있게 한다.

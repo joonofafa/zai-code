@@ -90,9 +90,9 @@ public sealed class ReplApp
     {
         // 시그니처 배너: 그라데이션 ASCII (Banner.Render)
         Banner.Render();
-        AnsiConsole.MarkupLine($"[yellow]Z.ai Code — Coding Agent (V {Banner.Version()})[/]");
+        AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Accent)}]Z.ai Code — Coding Agent (V {Banner.Version()})[/]");
         // Build identity (git SHA + build time, or a "stale binary" flag when running a replaced binary).
-        AnsiConsole.MarkupLine($"[grey50]{Markup.Escape(Banner.VersionString())}[/]");
+        AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]{Markup.Escape(Banner.VersionString())}[/]");
         AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]{Markup.Escape(L10n.Get("repl.help"))}[/]");
         // 배너~프롬프트 사이 공백 2줄.
         AnsiConsole.WriteLine();
@@ -161,7 +161,7 @@ public sealed class ReplApp
             }
             else
             {
-                AnsiConsole.Markup("[green]❯ [/]");
+                AnsiConsole.Markup($"[{TuiTheme.Mark(TuiTheme.Role.Prompt)}]❯ [/]");
                 input = Console.ReadLine();
             }
 
@@ -196,7 +196,7 @@ public sealed class ReplApp
                 else
                 {
                     _dock?.Teardown();
-                    AnsiConsole.MarkupLine($"[grey58]↳ Queued[/] [green]❯[/] {Markup.Escape(queued)}");
+                    AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Muted)}]↳ Queued[/] [{TuiTheme.Mark(TuiTheme.Role.Prompt)}]❯[/] {Markup.Escape(queued)}");
                 }
 
                 quit = await ProcessInputAsync(queued, ct).ConfigureAwait(false);
@@ -269,7 +269,7 @@ public sealed class ReplApp
 
         if (!_slash.TryGet(name, out var cmd))
         {
-            AnsiConsole.MarkupLine($"[red]{Markup.Escape(L10n.Get("repl.unknownCommand", name))}[/]");
+            AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Error)}]{Markup.Escape(L10n.Get("repl.unknownCommand", name))}[/]");
             return false;
         }
 
@@ -285,7 +285,7 @@ public sealed class ReplApp
         catch (Exception ex)
         {
             // 슬래시 명령 하나의 오류가 REPL 전체를 죽이지 않게 한다.
-            AnsiConsole.MarkupLine($"[red]{Markup.Escape(L10n.Get("repl.commandError", name, ex.Message))}[/]");
+            AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Error)}]{Markup.Escape(L10n.Get("repl.commandError", name, ex.Message))}[/]");
             return false;
         }
 
@@ -316,7 +316,7 @@ public sealed class ReplApp
             return;
         }
 
-        AnsiConsole.MarkupLine($"[grey58]$ {Markup.Escape(command)}[/]");
+        AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Muted)}]$ {Markup.Escape(command)}[/]");
 
         var (file, shellArgs) = OperatingSystem.IsWindows()
             ? ("cmd.exe", new[] { "/c", command })
@@ -394,7 +394,7 @@ public sealed class ReplApp
         }
         catch (Exception ex)
         {
-            AnsiConsole.MarkupLine($"[red]! failed:[/] [{TuiTheme.Dim}]{Markup.Escape(ex.Message)}[/]");
+            AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Error)}]! failed:[/] [{TuiTheme.Dim}]{Markup.Escape(ex.Message)}[/]");
             return;
         }
 
@@ -408,7 +408,7 @@ public sealed class ReplApp
     // '?': 키보드 단축키 + 입력 문법(/ ! @) 요약 표시.
     private static void ShowKeymap()
     {
-        AnsiConsole.MarkupLine("[aqua]Keys & input[/]");
+        AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Accent)}]Keys & input[/]");
         var rows = new (string Key, string Desc)[]
         {
             ("/command", "run a slash command (Tab to autocomplete)"),
@@ -424,10 +424,10 @@ public sealed class ReplApp
         };
         foreach (var (key, desc) in rows)
         {
-            AnsiConsole.MarkupLine($"  [white]{Markup.Escape(key).PadRight(26)}[/][{TuiTheme.Dim}]{Markup.Escape(desc)}[/]");
+            AnsiConsole.MarkupLine($"  [{TuiTheme.Mark(TuiTheme.Role.Text)}]{Markup.Escape(key).PadRight(26)}[/][{TuiTheme.Dim}]{Markup.Escape(desc)}[/]");
         }
 
-        AnsiConsole.MarkupLine("[grey58]Type /help for the full command list.[/]");
+        AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Muted)}]Type /help for the full command list.[/]");
     }
 
     // '@path' 멘션 → 존재하는 파일이면 내용을 컨텍스트에 첨부(주입). 파일이 아니면 조용히 무시.
@@ -447,7 +447,7 @@ public sealed class ReplApp
                 var text = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
                 var capped = QueryEngine.CapToolOutput(text, 40000);
                 _ctx.Engine.AddSystemReminder($"Attached file (via @{raw}): {path}\n---\n{capped}");
-                AnsiConsole.MarkupLine($"[grey58]attached {Markup.Escape(raw)} ({text.Length} chars)[/]");
+                AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Muted)}]attached {Markup.Escape(raw)} ({text.Length} chars)[/]");
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
             {
@@ -540,7 +540,7 @@ public sealed class ReplApp
                         has = await MoveNextWithSpinnerAsync(e, L10n.Get("repl.spinner.working"), tct).ConfigureAwait(false);
                         continue;
                     case StreamNotice sn:
-                        AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(sn.Text)}[/]");
+                        AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Warning)}]{Markup.Escape(sn.Text)}[/]");
                         has = await MoveNextWithSpinnerAsync(e, L10n.Get("repl.spinner.working"), tct).ConfigureAwait(false);
                         continue;
                     case TurnCompleted:
@@ -573,7 +573,7 @@ public sealed class ReplApp
             DeactivateBar();
             _dock?.EndTurnMode();
             ClearSpinnerLine();
-            AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(L10n.Get("repl.aborted"))}[/]");
+            AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Warning)}]{Markup.Escape(L10n.Get("repl.aborted"))}[/]");
         }
         catch (OperationCanceledException)
         {
@@ -582,7 +582,7 @@ public sealed class ReplApp
         catch (Exception ex)
         {
             // 프로바이더/툴 오류로 REPL이 죽지 않도록 표시 후 계속.
-            AnsiConsole.MarkupLine($"[red]{Markup.Escape(L10n.Get("repl.error", ex.Message))}[/]");
+            AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Error)}]{Markup.Escape(L10n.Get("repl.error", ex.Message))}[/]");
         }
         finally
         {
@@ -624,10 +624,10 @@ public sealed class ReplApp
     {
         var (modeKey, ansi) = _ctx.State.Mode switch
         {
-            AgentMode.Plan => ("repl.mode.plan", "\x1b[33m"),       // yellow
-            AgentMode.AutoAct => ("repl.mode.autoAct", "\x1b[38;5;39m"), // deepskyblue
-            AgentMode.Analysis => ("repl.mode.analysis", "\x1b[36m"),    // cyan (정보/질문)
-            _ => ("repl.mode.act", "\x1b[32m"),                     // green
+            AgentMode.Plan => ("repl.mode.plan", TuiTheme.Fg(TuiTheme.Role.Warning)),       // 주의/계획
+            AgentMode.AutoAct => ("repl.mode.autoAct", TuiTheme.Fg(TuiTheme.Role.Info)),  // 정보 강조
+            AgentMode.Analysis => ("repl.mode.analysis", TuiTheme.Fg(TuiTheme.Role.Info)), // 정보/질문
+            _ => ("repl.mode.act", TuiTheme.Fg(TuiTheme.Role.Success)),                // 실행
         };
 
         var modeTxt = L10n.Get(modeKey);
@@ -635,7 +635,7 @@ public sealed class ReplApp
         var model = ModelStatusLabel();
         var context = ContextLabel();
         var path = PathLabel();
-        return $"{ansi}{modeTxt}\x1b[0m\x1b[38;5;249m ({toggle}) · {model}{(context.Length > 0 ? $" · {context}" : "")}{(path.Length > 0 ? $" · {path}" : "")}\x1b[0m";
+        return $"{ansi}{modeTxt}\x1b[0m{TuiTheme.Fg(TuiTheme.Role.Muted)} ({toggle}) · {model}{(context.Length > 0 ? $" · {context}" : "")}{(path.Length > 0 ? $" · {path}" : "")}\x1b[0m";
     }
 
     // 상태줄 Path 표기: 현재 작업 디렉터리. 홈은 '~' 로 줄여 보이고, 앞 세그먼트(모드·모델·Context)와
@@ -868,9 +868,9 @@ public sealed class ReplApp
         var prefix = $" (Q:{qn})\u276f ";
         var avail = Math.Max(1, w - LineEditor.DisplayWidth(prefix) - 2);
         var text = ClampToWidth(isHint ? L10n.Get("repl.typeahead.hint") : line, avail, keepEnd: !isHint);
-        var body = $"{(isHint ? "\u001b[38;5;244m" : "\u001b[38;5;252m")}{text}\u001b[0m";
+        var body = $"{(isHint ? TuiTheme.Fg(TuiTheme.Role.Ghost) : TuiTheme.Fg(TuiTheme.Role.Text))}{text}\u001b[0m";
 
-        lock (_barLock) { if (!_barActive) { return; } Console.Write($"\u001b7\u001b[{h};1H\u001b[48;5;236m\u001b[2K \u001b[38;5;245m(Q:{qn})\u001b[38;5;39m\u276f\u001b[39m {body}\u001b[7m \u001b[K\u001b[0m\u001b8"); }
+        lock (_barLock) { if (!_barActive) { return; } Console.Write($"\u001b7\u001b[{h};1H{TuiTheme.Bg(TuiTheme.Role.InputBg)}\u001b[2K {TuiTheme.Fg(TuiTheme.Role.Muted)}(Q:{qn}){TuiTheme.Fg(TuiTheme.Role.Prompt)}\u276f\u001b[39m {body}\u001b[7m \u001b[K\u001b[0m\u001b8"); }
     }
 
     // 표시폭(와이드문자 2칸) 기준으로 maxCells 이내로 자른다. keepEnd=true 면 뒤쪽(최근 입력)을 남기고
@@ -936,7 +936,7 @@ public sealed class ReplApp
                 // 입력바 활성: 커서 위치와 무관하게 바로 위 행(h-1)에 절대좌표로 그린다.
                 var h = BarHeight();
                 EraseStaleSpinnerFrame(h - 1);
-                Console.Write($"\u001b7\u001b[{h - 1};1H\u001b[2K\u001b[38;5;39m{spin} {label} ({seconds:0}s)\u001b[0m\u001b8");
+                Console.Write($"\u001b7\u001b[{h - 1};1H\u001b[2K{TuiTheme.Fg(TuiTheme.Role.Info)}{spin} {label} ({seconds:0}s)\u001b[0m\u001b8");
                 _spinnerRow = h - 1;
             }
             else if (_dock is { InTurn: true })
@@ -944,12 +944,12 @@ public sealed class ReplApp
                 // 고정 composer: 스피너를 입력창 바로 위 고정 행에 절대좌표로 그린다(파킹 커서 옆 아님).
                 var row = _dock.ActivityRow;
                 EraseStaleSpinnerFrame(row);
-                Console.Write($"\u001b7\u001b[{row};1H\u001b[2K\u001b[38;5;39m{spin} {label} ({seconds:0}s)\u001b[0m\u001b8");
+                Console.Write($"\u001b7\u001b[{row};1H\u001b[2K{TuiTheme.Fg(TuiTheme.Role.Info)}{spin} {label} ({seconds:0}s)\u001b[0m\u001b8");
                 _spinnerRow = row;
             }
             else
             {
-                Console.Write($"\r\u001b[2K\u001b[38;5;39m{spin} {label} ({seconds:0}s)\u001b[0m");
+                Console.Write($"\r\u001b[2K{TuiTheme.Fg(TuiTheme.Role.Info)}{spin} {label} ({seconds:0}s)\u001b[0m");
                 _spinnerRow = 0;   // 인라인 경로는 CR+2K 로 항상 제자리 지움 — 앵커 불필요
             }
         }
@@ -1134,7 +1134,7 @@ public sealed class ReplApp
             }
         }
 
-        AnsiConsole.MarkupLine($"[yellow]→[/] [{TuiTheme.Dim}]{Markup.Escape(d)}[/]");
+        AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Warning)}]→[/] [{TuiTheme.Dim}]{Markup.Escape(d)}[/]");
     }
 
     private static void RenderToolResult(ToolExecuted x, ToolUseBlock? call = null)
@@ -1147,7 +1147,7 @@ public sealed class ReplApp
         {
             var err = x.Output.Length > 200 ? x.Output[..200] + "…" : x.Output;
             AnsiConsole.MarkupLine(
-                $"{ind}[red]✗ {Markup.Escape(x.ToolName)}[/] [{TuiTheme.Dim}]{Markup.Escape(err.ReplaceLineEndings(" "))}[/]");
+                $"{ind}[{TuiTheme.Mark(TuiTheme.Role.Error)}]✗ {Markup.Escape(x.ToolName)}[/] [{TuiTheme.Dim}]{Markup.Escape(err.ReplaceLineEndings(" "))}[/]");
             return;
         }
 
@@ -1155,7 +1155,7 @@ public sealed class ReplApp
         if (call is not null && call.Name is "Edit" or "Write")
         {
             var path = GetStr(call.Input, "path") ?? "";
-            AnsiConsole.MarkupLine($"{ind}[green]✓ {Markup.Escape(x.ToolName)}[/] [{TuiTheme.Dim}]{Markup.Escape(path)}[/]");
+            AnsiConsole.MarkupLine($"{ind}[{TuiTheme.Mark(TuiTheme.Role.Success)}]✓ {Markup.Escape(x.ToolName)}[/] [{TuiTheme.Dim}]{Markup.Escape(path)}[/]");
             if (call.Name == "Edit")
             {
                 DiffRenderer.Render(GetStr(call.Input, "old_string") ?? "", GetStr(call.Input, "new_string") ?? "");
@@ -1171,7 +1171,7 @@ public sealed class ReplApp
         // Plan/Task 트리는 잘리지 않게 전체를 색으로 렌더(진행 상황 가시화).
         if (x.ToolName is "PlanCreate" or "TaskList")
         {
-            AnsiConsole.MarkupLine($"{ind}[green]✓ {Markup.Escape(x.ToolName)}[/]");
+            AnsiConsole.MarkupLine($"{ind}[{TuiTheme.Mark(TuiTheme.Role.Success)}]✓ {Markup.Escape(x.ToolName)}[/]");
             foreach (var raw in (x.Output ?? "").Replace("\r", "").Split('\n'))
             {
                 var line = raw.TrimEnd();
@@ -1181,10 +1181,10 @@ public sealed class ReplApp
                 }
 
                 var t = line.TrimStart();
-                var color = t.StartsWith("[x]") || t.StartsWith("x ") ? "green"
-                    : t.StartsWith("[>]") || t.StartsWith("> ") ? "aqua"
+                var color = t.StartsWith("[x]") || t.StartsWith("x ") ? TuiTheme.Mark(TuiTheme.Role.Success)
+                    : t.StartsWith("[>]") || t.StartsWith("> ") ? TuiTheme.Mark(TuiTheme.Role.Info)
                     : t.StartsWith("[ ]") || t.StartsWith("- ") ? TuiTheme.Dim
-                    : "grey85";
+                    : TuiTheme.Mark(TuiTheme.Role.Text);
                 AnsiConsole.MarkupLine($"{ind}{ind}[{color}]{Markup.Escape(line)}[/]");
             }
 
@@ -1202,7 +1202,7 @@ public sealed class ReplApp
         }
 
         AnsiConsole.MarkupLine(
-            $"{ind}[green]✓ {Markup.Escape(x.ToolName)}[/] [{TuiTheme.Dim}]({lineCount} lines · {output.Length} chars)[/]");
+            $"{ind}[{TuiTheme.Mark(TuiTheme.Role.Success)}]✓ {Markup.Escape(x.ToolName)}[/] [{TuiTheme.Dim}]({lineCount} lines · {output.Length} chars)[/]");
         if (firstLine.Length > 0)
         {
             AnsiConsole.MarkupLine($"{ind}{ind}[{TuiTheme.Dim}]{Markup.Escape(firstLine)}[/]");
