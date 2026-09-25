@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -135,9 +136,27 @@ public sealed class BashTool : ITool
                 // 자식 출력은 UTF-8로 디코딩(Windows는 위에서 chcp 65001로 UTF-8 정규화, Unix는 기본 UTF-8).
                 .WithStandardOutputPipe(PipeTarget.ToDelegate(s => stdoutBuf.AppendLine(s), Encoding.UTF8))
                 .WithStandardErrorPipe(PipeTarget.ToDelegate(s => stderrBuf.AppendLine(s), Encoding.UTF8));
-            var commandTask = cmd.ExecuteAsync(timeoutCts.Token);
-            var result = await commandTask.ConfigureAwait(false);
-            exitCode = result.ExitCode;
+            // 주의: 명령이 띄운 백그라운드 프로세스가 파이프 쓰기 끝을 물고 있으면 메인 프로세스가
+            // 끝난 뒤에도 EOF 가 오지 않아 ExecuteAsync 대기가 풀리지 않는다(무한 대기 버그, 2026-09-25).
+            // CancelAfter 토큰만으로는 이 대기를 깨울 수 없으므로 타임아웃은 독립 레이스로 판정하고,
+            // 지면 트리를 kill 한 뒤 commandTask 를 기다리지 않고 부분 출력을 즉시 반환한다.
+            var execution = cmd.ExecuteAsync(timeoutCts.Token);
+            var winner = await Task.WhenAny(execution.Task, Task.Delay(timeout, CancellationToken.None)).ConfigureAwait(false);
+            if (winner != execution.Task)
+            {
+                timedOut = true;
+                KillProcessTree(execution.ProcessId, timeoutCts);
+                // 트리 종료로 파이프가 닫히면 마지막 출력이 흘러들어온다 — 수집 여유만 짧게 준다.
+                await Task.WhenAny(execution.Task, Task.Delay(500, CancellationToken.None)).ConfigureAwait(false);
+                // 기다리지 않고 반환하므로 나중에 완료될 태스크의 예외를 미리 관찰해둔다.
+                _ = execution.Task.ContinueWith(
+                    t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+            }
+            else
+            {
+                var result = await execution.Task.ConfigureAwait(false);
+                exitCode = result.ExitCode;
+            }
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
@@ -196,6 +215,84 @@ public sealed class BashTool : ITool
         }
 
         return combined.ToString();
+    }
+
+    // 타임아웃 판정 시 프로세스와 자손 전체를 최선으로 종료한다. 자식이 파이프 쓰기 끝을
+    // 물고 남아 출력 수집 파이프가 닫히지 않는 누수를 막기 위함. setsid 로 떨어져 나간
+    // 고아 데몬은 여기 닿지 않지만, 그 경우에도 commandTask 를 기다리지 않으므로 반환은 즉시다.
+    private static void KillProcessTree(int processId, CancellationTokenSource cts)
+    {
+        try
+        {
+            cts.Cancel();   // CliWrap 이 메인 프로세스를 kill 하게 한다.
+        }
+        catch
+        {
+            // best effort
+        }
+
+        try
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                using var _ = Process.Start(new ProcessStartInfo("taskkill", $"/PID {processId} /T /F")
+                {
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                });
+                return;
+            }
+
+            KillSelfAndDescendants(processId);
+        }
+        catch
+        {
+            // best effort — 이 실패가 도구 반환을 막아서는 안 된다.
+        }
+    }
+
+    // leaf(가장 깊은 자손)부터 SIGKILL — /proc/<pid>/task/*/children 로 자식을 찾는다.
+    private static void KillSelfAndDescendants(int pid)
+    {
+        List<int> children;
+        try
+        {
+            children = new List<int>();
+            foreach (var taskDir in Directory.GetDirectories($"/proc/{pid}/task"))
+            {
+                var childrenFile = Path.Combine(taskDir, "children");
+                if (!File.Exists(childrenFile))
+                {
+                    continue;
+                }
+
+                foreach (var token in File.ReadAllText(childrenFile).Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (int.TryParse(token, out var child))
+                    {
+                        children.Add(child);
+                    }
+                }
+            }
+        }
+        catch
+        {
+            return; // 이미 종료된 프로세스
+        }
+
+        foreach (var child in children)
+        {
+            KillSelfAndDescendants(child);
+        }
+
+        try
+        {
+            Process.GetProcessById(pid).Kill();
+        }
+        catch
+        {
+            // already gone / not ours
+        }
     }
 
     // cwd가 유효하지 않으면(삭제/이동) 프로세스 cwd → 홈 순으로 폴백.

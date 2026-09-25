@@ -88,6 +88,17 @@ public class BashToolExecutionTests
         Assert.True(err);
     }
 
+    // 2026-09-25 무한 대기 회귀 테스트: 백그라운드 자식이 파이프 쓰기 끝을 물고 있으면
+    // 메인 셸이 끝나도 EOF 가 오지 않아 예전 구조는 영원히 반환되지 않았다.
+    // 타임아웃 시 트리 kill + 부분 출력 반환으로 바뀌었는지 검증한다.
+    [Fact]
+    public async Task Timeout_returns_partial_output_when_child_holds_pipe()
+    {
+        var (output, err) = await Run("""{"command":"echo pipe-marker; sleep 60 &","timeout_ms":2000}""");
+        Assert.True(err);
+        Assert.Contains("pipe-marker", output);
+    }
+
     [Fact]
     public async Task Destructive_command_is_rejected_before_execution()
     {

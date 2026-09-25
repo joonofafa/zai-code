@@ -28,6 +28,9 @@
                낡은 티어 주석 정리(difficulty 라우팅 회수 마무리)
          1.2.11: 태스크 난이도(difficulty) 티어·모델 라우팅 잔여 코드 제거 — 라우팅은 동작하지
                않았는데 [L]/[M]/[H] 태그만 표시되던 것 회수(TaskCreate/PlanCreate 스키마 단순화)
+         1.2.18: BashTool 무한 대기 수정 — 백그라운드 자식이 파이프 쓰기 끝을 물고 있으면 메인
+               셸 종료 후에도 EOF 가 오지 않아 await 가 영원히 풀리지 않던 버그. 타임아웃 판정을
+               독립 레이스(Task.WhenAny)로 전환, 초과 시 프로세스 트리 kill 후 부분 출력 즉시 반환
          1.2.10: 슬래시 명령형 에이전트 턴(/init, /review 등) 중에도 하단 입력창 유지 —
                BottomDock.ReinstallForTurn(): SubmitPrompt 커맨드가 모델 턴을 돌리기 전
                해제된 컴퍼저를 재설치
@@ -51,7 +54,7 @@
          1.2.0: 세션/메모리 프로젝트별 스코핑, 백그라운드 셸(run_in_background·BashOutput/KillShell),
                입력바 표시폭 클램프(한글 wrap 잔상 제거)
          1.1.0: GEMINI 키 저장소 복원, 붙여넣기 홍수 수정, 큐잉 플래시 피드백, 턴 중 Shift+Tab -->
-    <Version>1.2.17</Version>
+    <Version>1.2.18</Version>
     <!-- 멀티타깃: win-* RID 는 net10.0-windows(Office COM 툴 포함), 나머지는 net10.0. -->
     <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
     <!-- 크로스 게시 대상 (Linux에서 win-x64 self-contained exe 생성 가능) -->
