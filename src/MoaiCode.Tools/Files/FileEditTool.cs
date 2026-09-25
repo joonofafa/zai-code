@@ -78,6 +78,24 @@ public sealed class FileEditTool : ITool
         }
 
         var content = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
+
+        // Windows CRLF 파일 폴백: Read 도구는 줄 단위(\r 제거)로 보여주므로 모델이 만든
+        // old_string/new_string 은 항상 LF-only 다. CRLF 파일에 그대로 ordinal 매칭하면
+        // 무조건 실패한다("old_string not found" 연발 — 실제 사고). 파일에 CR 이 있고
+        // 요청 문자열에 없으면 LF→CRLF 로 정규화해 매칭한다(치환 결과의 줄끝은 파일 규칙 유지).
+        if (content.Contains('\r') && !inp.OldString.Contains('\r'))
+        {
+            var normOld = inp.OldString.Replace("\n", "\r\n");
+            if (CountOccurrences(content, normOld) > 0)
+            {
+                inp = inp with
+                {
+                    OldString = normOld,
+                    NewString = inp.NewString.Replace("\n", "\r\n"),
+                };
+            }
+        }
+
         var count = CountOccurrences(content, inp.OldString);
         if (count == 0)
         {

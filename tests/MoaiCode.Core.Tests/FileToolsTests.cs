@@ -87,6 +87,30 @@ public class FileToolsTests : IDisposable
     }
 
     [Fact]
+    public async Task Edit_crlf_file_matches_lf_old_string()
+    {
+        // Windows CRLF 파일 폴백: Read 는 \r 을 떼어 보여주므로 모델의 old_string 은 LF-only.
+        // 실사고: CRLF 소스에서 Edit 이 "not found" 연발 → 모델이 턴을 낭비하다 멈춤.
+        await Run(new FileWriteTool(), """{"path":"win.cs","content":"alpha\r\nbeta\r\ngamma"}""");
+
+        var (_, err) = await Run(new FileEditTool(),
+            """{"path":"win.cs","old_string":"beta\r\ngamma","new_string":"BETA\r\nGAMMA"}""");
+        // 모델이 LF-only 로 보내는 경우(JSON \n)도 동일하게 매칭돼야 한다.
+        Assert.False(err);
+
+        var (read, _) = await Run(new FileReadTool(), """{"path":"win.cs"}""");
+        Assert.Contains("BETA", read);
+        Assert.Contains("GAMMA", read);
+
+        // LF-only old_string 도 CRLF 파일에 매칭(핵심 회귀).
+        var (_, err2) = await Run(new FileEditTool(),
+            """{"path":"win.cs","old_string":"alpha\nBETA","new_string":"ALPHA\nBETA"}""");
+        Assert.False(err2);
+        var (read2, _) = await Run(new FileReadTool(), """{"path":"win.cs"}""");
+        Assert.Contains("ALPHA", read2);
+    }
+
+    [Fact]
     public async Task Glob_finds_by_pattern()
     {
         await Run(new FileWriteTool(), """{"path":"src/main.cs","content":"//"}""");

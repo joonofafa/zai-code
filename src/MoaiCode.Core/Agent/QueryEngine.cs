@@ -461,6 +461,15 @@ public sealed class QueryEngine
                     continue;
                 }
 
+                // 빈 응답(추론만 흐르고 content 없음)이 넛지에도 계속되면 여기서 종료된다.
+                // 조용히 끝내면 화면에는 스피너 잔상만 남고 사용자는 멈춘 줄 모른다(실제 사고) —
+                // 눈에 보이는 안내를 남긴다.
+                if (cleanText.Length == 0 && continuationNudges >= 2)
+                {
+                    yield return new StreamNotice(
+                        "model returned an empty response — retry with a shorter message");
+                }
+
                 _log($"done: stop={stopReason} turns={turn} ext={extensions}");
                 yield return new TurnCompleted(lastUsage, stopReason);
                 yield break;
