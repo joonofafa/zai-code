@@ -113,7 +113,10 @@ public sealed class ModeAwarePermissionGate : IPermissionGate
 
             case RiskDecision.Deny:
                 WriteReasonLine(L10n.Get("permission.deniedReason", verdict.Reason));
-                return false;
+                // 대화형이면 휴리스틱 거부를 사람 확인으로 강등 — 분류기는 사람 대신 결정하지 않는다.
+                // 헤드리스(확인 불가)는 ConfirmAsync 가 false → 여전히 하드 거부(fail-closed).
+                // (사용자가 명시한 deny 규칙은 위 규칙 티어에서 이미 하드 차단된다.)
+                return await ConfirmAsync(tool, call, ct).ConfigureAwait(false);
 
             default:
                 WriteReasonLine(L10n.Get("permission.confirmReason", verdict.Reason));

@@ -187,7 +187,7 @@
   "permission.denyRule": "zaiCode: denied — permission rule (deny)",
   "permission.confirmNeeded": "zaiCode: this command needs confirmation — {0}",
   "permission.classifierFailed": "zaiCode: risk check failed (gateway error/timeout) — falling back to confirmation for safety.",
-  "permission.deniedReason": "zaiCode: denied — {0}",
+  "permission.deniedReason": "zaiCode: auto-denied by risk check — {0}",
   "permission.confirmReason": "zaiCode: confirmation required — {0}",
   "permission.headlessDenied": "zaiCode: non-interactive — write/exec tools are auto-denied. To auto-approve, set MOAI_YES=1 (or permission=auto in settings).",
   "transcript.prevWithSkip": "──── Earlier conversation (last {0}, {1} skipped) ────",

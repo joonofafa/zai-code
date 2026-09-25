@@ -130,11 +130,15 @@ public static class Reminders
         "Otherwise, use the appropriate tools to proceed to the next step.\n" +
         "</system-reminder>";
 
-    // 권한 거부 (utils/messages.ts)
+    // 권한 거부 (utils/messages.ts) — 거부 주체는 자동 위험 게이트·규칙·사용자 중 어느 쪽일 수도
+    // 있다. 모델이 "사용자가 거부했다"고 단정·전가하는 것을 막는다(실제 사고: 사용자가 거부한 적
+    // 없는데 모델이 "네가 거부했으니 안 했다"고 잘못 전파).
     public const string PermissionDenied =
-        "Permission for this tool use was denied. The tool use was rejected (eg. if it was a file " +
-        "edit, the new content was NOT written to the file). Try a different approach or report the " +
-        "limitation to complete your task.";
+        "This tool use was denied by the permission gate — an automated risk check, the " +
+        "configured permission rules, or the user. The tool use was rejected (eg. if it was a file " +
+        "edit, the new content was NOT written to the file). Nothing was executed. Do NOT assume or " +
+        "tell the user that they personally rejected it. If you still believe this action is needed, " +
+        "ask the user directly; otherwise try a different approach or report the limitation.";
 
     // max_turns 도달 후 컨텍스트 압축하고 연장할 때 주입 (작업을 마무리/집중하도록 유도)
     public const string MaxTurnsExtended =

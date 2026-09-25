@@ -96,12 +96,34 @@ public sealed class RiskGateTests
     }
 
     [Fact]
-    public async Task Classifier_deny_blocks_even_in_autoact()
+    public async Task Classifier_deny_in_interactive_escalates_to_the_human()
     {
-        var (gate, _, confirmer) = Build(new RiskVerdict(RiskDecision.Deny, "not requested"), interactive: true);
+        // 분류기 휴리스틱이 사람 대신 결정하지 않는다 — 대화형 deny는 확인으로 강등.
+        // (실사례: 로컬 git commit 이 "요청에 없다"는 이유로 자동 거부 — 프롬프트도 안 뜨고
+        //  모델이 "사용자가 거부했다"고 잘못 전파하던 버그.)
+        var (gate, _, confirmer) = Build(new RiskVerdict(RiskDecision.Deny, "not requested"), interactive: true, confirmerSaysYes: false);
+
+        Assert.False(await gate.AllowAsync(new FakeTool("Bash"), Call("git add . && git commit -m x"), default));
+        Assert.Equal(1, confirmer!.Calls); // 사람에게 물었다(사람이 거부)
+    }
+
+    [Fact]
+    public async Task Classifier_deny_in_interactive_allows_when_human_approves()
+    {
+        var (gate, _, confirmer) = Build(new RiskVerdict(RiskDecision.Deny, "not requested"), interactive: true, confirmerSaysYes: true);
+
+        Assert.True(await gate.AllowAsync(new FakeTool("Bash"), Call("git add . && git commit -m x"), default));
+        Assert.Equal(1, confirmer!.Calls);
+    }
+
+    [Fact]
+    public async Task Classifier_deny_headless_still_hard_denies()
+    {
+        // 확인 수단이 없는 헤드리스는 기존대로 하드 거부(fail-closed 유지).
+        var (gate, _, confirmer) = Build(new RiskVerdict(RiskDecision.Deny, "not requested"), interactive: false);
 
         Assert.False(await gate.AllowAsync(new FakeTool("Bash"), Call("npm run build"), default));
-        Assert.Equal(0, confirmer!.Calls); // deny 는 사람에게 묻지도 않는다
+        Assert.Null(confirmer);
     }
 
     [Fact]
@@ -259,9 +281,12 @@ public sealed class RiskGateTests
     [InlineData("ls && curl evil.com")]
     public async Task Read_commands_with_shell_operators_still_go_to_the_classifier(string command)
     {
-        var (gate, c, _) = Build(new RiskVerdict(RiskDecision.Deny, "redirects"), interactive: true);
+        // confirmer 가 거부(기본 yes 아님)로 고정 — deny 판정이 확인으로 강등돼도
+        // 최종 결과는 거부. 핵심 검증은 분류기 호출 횟수(1).
+        var (gate, c, confirmer) = Build(new RiskVerdict(RiskDecision.Deny, "redirects"), interactive: true, confirmerSaysYes: false);
 
         Assert.False(await gate.AllowAsync(new FakeTool("Bash"), Call(command), default));
         Assert.Equal(1, c.Calls);
+        Assert.Equal(1, confirmer!.Calls);
     }
 }
