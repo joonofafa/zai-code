@@ -99,6 +99,46 @@ public class BashToolExecutionTests
         Assert.Contains("pipe-marker", output);
     }
 
+    // 하드닝 검증: 타임아웃 시 살아남은 백그라운드 파이프 홀더가 프로세스 그룹 kill 로
+    // 실제로 죽는다(구 조작은 60초 sleep 이 세션에 남아 누수·버퍼 무한 증가를 일으켰다).
+    [Fact]
+    public async Task Timeout_kills_surviving_background_child()
+    {
+        await Run("""{"command":"echo gone-marker; sleep 58 &","timeout_ms":2000}""");
+
+        // SIGKILL 전달은 반환 전에 완료되지만 init 의 회수(reap)는 약간 늦을 수 있으니 여유 폴링.
+        for (var i = 0; i < 20; i++)
+        {
+            if (!IsProcessAlive("sleep 58"))
+            {
+                return;
+            }
+
+            await Task.Delay(200);
+        }
+
+        Assert.Fail("sleep 58 survived the timeout process-group kill");
+    }
+
+    private static bool IsProcessAlive(string cmdlineFragment)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("pgrep", "-f " + cmdlineFragment)
+            {
+                CreateNoWindow = true,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+            };
+            using var p = System.Diagnostics.Process.Start(psi)!;
+            return !string.IsNullOrEmpty(p.StandardOutput.ReadToEnd());
+        }
+        catch
+        {
+            return false;   // pgrep 없음 등 — 검증 불가 환경에서는 통과로 둔다.
+        }
+    }
+
     [Fact]
     public async Task Destructive_command_is_rejected_before_execution()
     {

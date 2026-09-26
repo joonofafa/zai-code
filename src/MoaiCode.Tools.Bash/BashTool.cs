@@ -10,6 +10,17 @@ using MoaiCode.Localization;
 
 namespace MoaiCode.Tools.Bash;
 
+#if !WINDOWS
+// 유닉스 시그널 P/Invoke — kill(-PGID, SIGKILL) 프로세스 그룹 타격용.
+internal static partial class UnixSignal
+{
+    public const int SIGKILL = 9;
+
+    [DllImport("libc", SetLastError = true)]
+    internal static extern int kill(int pid, int signal);
+}
+#endif
+
 /// <summary>
 /// 크로스플랫폼 셸 실행 툴. CliWrap 기반. 보안은 BashSecurity 단순화 정책.
 /// 설계 근거: ../../CSHARP_PORT_PLAN.md 4.5.
@@ -19,6 +30,7 @@ public sealed class BashTool : ITool
     private const int DefaultTimeoutMs = 120_000;
     private const int MaxTimeoutMs = 600_000;   // 상한 10분 — 모델이 무한대 타임아웃을 넣어 턴이 멈추는 것 방지.
     private const int MaxOutputChars = 30_000;
+    private const int MaxBufferChars = 200_000; // 수집 버퍼 상한 — 모델 노출(30k)보다 여유. 파이프 홀더 생존 시 무한 증가 방지.
     private const string CwdMarker = "__MOAI_CWD__:";
 
     // 세션 동안 작업 디렉터리를 유지한다 (description의 "persists between commands" 보장).
@@ -123,19 +135,57 @@ public sealed class BashTool : ITool
 
         // 파이프로 직접 출력을 수집한다 — 타임아웃/취소 시에도 그 시점까지 받은 출력을
         // 버리지 않고 부분 결과로 돌려줄 수 있다(ExecuteBufferedAsync 는 예외 시 출력을 잃음).
+        // 버퍼는 파이프 delegate(다른 스레드)와 경합하므로 락으로 보호하고, 살아남은 데몬이
+        // 파이프를 계속 채우는 경우를 대비해 용량 상한을 둔다(무한 증가 방지).
         var stdoutBuf = new StringBuilder();
         var stderrBuf = new StringBuilder();
+        var bufLock = new object();
+        var bufCapped = false;
+        void Append(StringBuilder buf, string s)
+        {
+            lock (bufLock)
+            {
+                if (buf.Length >= MaxBufferChars)
+                {
+                    bufCapped = true;   // 이후 출력은 버린다 — 부분 결과는 이미 충분히 커다란 의미.
+                    return;
+                }
+
+                buf.AppendLine(s);
+            }
+        }
+
+        string Snapshot()
+        {
+            lock (bufLock)
+            {
+                var combined = Combine(stdoutBuf, stderrBuf);
+                if (bufCapped)
+                {
+                    combined += "\n… (output capped)";
+                }
+
+                return combined;
+            }
+        }
         var exitCode = 0;
         var timedOut = false;
         try
         {
-            var cmd = Cli.Wrap(shell)
-                .WithArguments(args)
+            // setsid 바이너리가 없는 플랫폼(macOS 등)은 폴백으로 셸을 직접 띄운다(트리 kill 폴백이 담당).
+            var setsid = File.Exists("/usr/bin/setsid") ? "/usr/bin/setsid" : null;
+            var (exe, exeArgs) = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || setsid is null
+                ? (shell, args)
+                // Unix: setsid 로 새 세션·프로세스 그룹에서 띄운다. 그룹 리더 PID == PGID 이므로
+                // 타임아웃 시 kill(-PGID) 로 데몬(재부파된 자식 포함)까지 확정 타격할 수 있다.
+                : (setsid, new[] { shell }.Concat(args).ToArray());
+            var cmd = Cli.Wrap(exe)
+                .WithArguments(exeArgs)
                 .WithWorkingDirectory(workDir)
                 .WithValidation(CommandResultValidation.None)
                 // 자식 출력은 UTF-8로 디코딩(Windows는 위에서 chcp 65001로 UTF-8 정규화, Unix는 기본 UTF-8).
-                .WithStandardOutputPipe(PipeTarget.ToDelegate(s => stdoutBuf.AppendLine(s), Encoding.UTF8))
-                .WithStandardErrorPipe(PipeTarget.ToDelegate(s => stderrBuf.AppendLine(s), Encoding.UTF8));
+                .WithStandardOutputPipe(PipeTarget.ToDelegate(s => Append(stdoutBuf, s), Encoding.UTF8))
+                .WithStandardErrorPipe(PipeTarget.ToDelegate(s => Append(stderrBuf, s), Encoding.UTF8));
             // 주의: 명령이 띄운 백그라운드 프로세스가 파이프 쓰기 끝을 물고 있으면 메인 프로세스가
             // 끝난 뒤에도 EOF 가 오지 않아 ExecuteAsync 대기가 풀리지 않는다(무한 대기 버그, 2026-09-25).
             // CancelAfter 토큰만으로는 이 대기를 깨울 수 없으므로 타임아웃은 독립 레이스로 판정하고,
@@ -148,6 +198,8 @@ public sealed class BashTool : ITool
                 KillProcessTree(execution.ProcessId, timeoutCts);
                 // 트리 종료로 파이프가 닫히면 마지막 출력이 흘러들어온다 — 수집 여유만 짧게 준다.
                 await Task.WhenAny(execution.Task, Task.Delay(500, CancellationToken.None)).ConfigureAwait(false);
+                // 이후 수집은 Append 의 용량 상한(MaxBufferChars)이 이미 담당한다 —
+                // 살아남은 파이프 홀더가 계속 써도 버퍼는 유한하게 멈춘다.
                 // 기다리지 않고 반환하므로 나중에 완료될 태스크의 예외를 미리 관찰해둔다.
                 _ = execution.Task.ContinueWith(
                     t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
@@ -166,7 +218,7 @@ public sealed class BashTool : ITool
         if (timedOut)
         {
             // 타임아웃이어도 지금까지 쌓인 출력은 모델에게 보여준다(진단/재시도 근거).
-            var partial = Truncate(Combine(stdoutBuf, stderrBuf));
+            var partial = Truncate(Snapshot());
             var msg = L10n.Get("tools.bash.timeout", timeout);
             if (partial.Length > 0)
             {
@@ -178,6 +230,7 @@ public sealed class BashTool : ITool
         }
 
         // 명령 실행 후의 cwd를 마커에서 추출해 유지한다 (출력에서는 마커 제거).
+        // 정상 경로는 프로세스가 끝났어도 파이프 drain 이 완료된 뒤다(delegate 경합 없음).
         var (_, newCwd) = ExtractCwd(stdoutBuf.ToString());
         if (newCwd is not null && Directory.Exists(newCwd))
         {
@@ -217,9 +270,10 @@ public sealed class BashTool : ITool
         return combined.ToString();
     }
 
-    // 타임아웃 판정 시 프로세스와 자손 전체를 최선으로 종료한다. 자식이 파이프 쓰기 끝을
-    // 물고 남아 출력 수집 파이프가 닫히지 않는 누수를 막기 위함. setsid 로 떨어져 나간
-    // 고아 데몬은 여기 닿지 않지만, 그 경우에도 commandTask 를 기다리지 않으므로 반환은 즉시다.
+    // 타임아웃 판정 시 프로세스와 자손 전체를 종료한다. 셸을 setsid(새 세션·프로세스 그룹)로
+    // 띄웠으므로 그룹 리더 PID == PGID 이고, kill(-PGID) 로 그룹 전체를 한 번에 친다 —
+    // 명령이 띄운 데몬이 init 에 재부모되어도 PGID 는 유지되므로 파이프 홀더까지 확정 타격된다.
+    // 그룹 킬에 실패했을 때의 폴백으로 /proc children 순회 킬을 유지한다.
     private static void KillProcessTree(int processId, CancellationTokenSource cts)
     {
         try
@@ -243,11 +297,25 @@ public sealed class BashTool : ITool
                 return;
             }
 
-            KillSelfAndDescendants(processId);
+            // 새 세션 리더이므로 PID == PGID. 부정적 kill(-PGID, 0) 로 그룹 존재 확인 후 SIGKILL.
+            if (UnixSignal.kill(-processId, 0) == 0)
+            {
+                UnixSignal.kill(-processId, UnixSignal.SIGKILL);
+                return;
+            }
         }
         catch
         {
             // best effort — 이 실패가 도구 반환을 막아서는 안 된다.
+        }
+
+        try
+        {
+            KillSelfAndDescendants(processId);
+        }
+        catch
+        {
+            // best effort
         }
     }
 
