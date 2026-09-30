@@ -28,6 +28,10 @@
                낡은 티어 주석 정리(difficulty 라우팅 회수 마무리)
          1.2.11: 태스크 난이도(difficulty) 티어·모델 라우팅 잔여 코드 제거 — 라우팅은 동작하지
                않았는데 [L]/[M]/[H] 태그만 표시되던 것 회수(TaskCreate/PlanCreate 스키마 단순화)
+         1.2.20: 네트워크 스톨 3종 방비 — ①응답 헤더 대기 상한(기본 300s, MOAI_HEADER_TIMEOUT_SECONDS,
+               방화벽 무음 드롭 시 무한 대기 → transient 재시도) ②SSE idle 타임아웃을 실제 data 줄
+               기준으로만 리셋(게이트웨이 keepalive 주석 무력화 차단) ③TUI 권한 다이얼로그 선택적
+               만료 거부(MOAI_PERMISSION_TIMEOUT 설정 시, 기본 무한대기 유지)
          1.2.19: BashTool 하드닝 — setsid 새 프로세스 그룹 실행으로 타임아웃 시 kill(-PGID)가
                setsid 데몬·재부팅된 파이프 홀더까지 확정 종료(구조적 누수 제거), 수집 버퍼 락+200k
                상한(살아남은 홀더의 무한 출력·레이스 방지), setsid 부재 플랫폼 폴백
@@ -57,7 +61,7 @@
          1.2.0: 세션/메모리 프로젝트별 스코핑, 백그라운드 셸(run_in_background·BashOutput/KillShell),
                입력바 표시폭 클램프(한글 wrap 잔상 제거)
          1.1.0: GEMINI 키 저장소 복원, 붙여넣기 홍수 수정, 큐잉 플래시 피드백, 턴 중 Shift+Tab -->
-    <Version>1.2.19</Version>
+    <Version>1.2.20</Version>
     <!-- 멀티타깃: win-* RID 는 net10.0-windows(Office COM 툴 포함), 나머지는 net10.0. -->
     <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
     <!-- 크로스 게시 대상 (Linux에서 win-x64 self-contained exe 생성 가능) -->

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace MoaiCode.Providers.Http;
@@ -17,6 +18,13 @@ public static class SseReader
     {
         var idleTimeout = IdleReadTimeout();
         using var reader = new StreamReader(stream);
+
+        // keepalive 무력화 방어: idle 타이머는 '실제 data 줄' 도착으로만 리셋한다.
+        // 게이트웨이의 SSE 주석 keepalive(': ping')는 연결이 살아있음을 보여줄 뿐 모델이
+        // 일하고 있음을 보여주지 못한다 — 주석만 계속 오면 타임아웃이 영원히 안 걸려
+        // silent stall 이 무한 대기로 변했었다. 첫 data 줄까지의 대기(수 분짜리 reasoning
+        // 침묵 포함)는 idleTimeout 이 그대로 담당한다.
+        var sinceData = Stopwatch.StartNew();
         while (true)
         {
             string? line;
@@ -26,9 +34,17 @@ public static class SseReader
             // 스트림을 끊지도 않고 굳어버리면 프로세스가 영원히 멈췄다. 매 줄마다 ct 에 연결된 CTS 를 새로
             // 만들어 한 줄 도착에 상한(기본 120s)을 건다. 발동하면 transient 로 변환해 RetryingChatModel 의
             // 기존 재시도(토큰 방출 전=백오프 재시도, 이후=즉시 실패)에 자연스럽게 올라탄다.
+            var remain = idleTimeout - sinceData.Elapsed;
+            if (remain <= TimeSpan.Zero)
+            {
+                throw new ProviderException(
+                    L10n.Get("providers.streamIdleTimeout", (int)idleTimeout.TotalSeconds),
+                    ErrorCategory.NetworkTransient);
+            }
+
             using (var idleCts = CancellationTokenSource.CreateLinkedTokenSource(ct))
             {
-                idleCts.CancelAfter(idleTimeout);
+                idleCts.CancelAfter(remain);
                 try
                 {
                     line = await reader.ReadLineAsync(idleCts.Token).ConfigureAwait(false);
@@ -55,11 +71,12 @@ public static class SseReader
 
             if (line.Length == 0 || line[0] == ':')
             {
-                continue; // 빈 줄 / 주석
+                continue; // 빈 줄 / 주석(keepalive) — idle 타이머를 리셋하지 않는다
             }
 
             if (line.StartsWith("data:", StringComparison.Ordinal))
             {
+                sinceData.Restart();
                 yield return line[5..].TrimStart();
             }
             // event:/id:/retry: 라인은 chat completions에서 불필요 → 무시

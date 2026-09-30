@@ -190,6 +190,8 @@
   "permission.deniedReason": "zaiCode: 위험 판정 자동 거부 — {0}",
   "permission.confirmReason": "zaiCode: 확인이 필요합니다 — {0}",
   "permission.headlessDenied": "zaiCode: 비대화형이라 쓰기/실행 툴을 자동 거부합니다. 자동 승인하려면 MOAI_YES=1 (또는 설정 permission=auto).",
+  "permission.timedOut": "권한 확인 프롬프트가 {0}초 만에 만료되어 거부했습니다 (MOAI_PERMISSION_TIMEOUT 해제 시 무한 대기)",
+  "providers.headerWaitTimeout": "게이트웨이가 {0}초 내에 응답하지 않습니다(헤더) — 방화벽/프록시 무음 드롭 가능성. 재시도 중.",
   "transcript.prevWithSkip": "──── 이전 대화 (최근 {0}개, 앞 {1}개 생략) ────",
   "transcript.prev": "──── 이전 대화 ────",
   "transcript.continues": "──── 여기서 이어집니다 ────",

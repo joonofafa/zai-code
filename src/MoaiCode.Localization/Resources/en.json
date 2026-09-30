@@ -190,6 +190,8 @@
   "permission.deniedReason": "zaiCode: auto-denied by risk check — {0}",
   "permission.confirmReason": "zaiCode: confirmation required — {0}",
   "permission.headlessDenied": "zaiCode: non-interactive — write/exec tools are auto-denied. To auto-approve, set MOAI_YES=1 (or permission=auto in settings).",
+  "permission.timedOut": "Permission prompt timed out after {0}s — denied (unset MOAI_PERMISSION_TIMEOUT to wait forever)",
+  "providers.headerWaitTimeout": "Gateway did not respond within {0}s (headers) — possible firewall/proxy silent drop. Retrying.",
   "transcript.prevWithSkip": "──── Earlier conversation (last {0}, {1} skipped) ────",
   "transcript.prev": "──── Earlier conversation ────",
   "transcript.continues": "──── Continuing from here ────",

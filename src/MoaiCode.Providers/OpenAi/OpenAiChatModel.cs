@@ -147,9 +147,23 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl
         HttpResponseMessage resp;
         try
         {
+            // 헤더 도착 대기 상한: SharedHttp.Timeout 은 무제한이라 방화벽/프록시가 연결을
+            // 소리 없이 버리면(RST 없이 상태만 삭제 — 내부망 idle 커넥션 정리) SendAsync 가
+            // 영원히 묶인다. idle-read 방어(SseReader)는 스트림 열린 뒤부터만 작동하므로
+            // 이 구간에 별도 상한을 건다. 발동하면 아래 catch 가 transient 로 변환해
+            // RetryingChatModel 의 기존 재시도(첫 토큰 전=백오프 재시도)에 자연스럽게 올라탄다.
+            using var headerCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            headerCts.CancelAfter(HeaderWaitTimeout());
             resp = await _http
-                .SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct)
+                .SendAsync(req, HttpCompletionOption.ResponseHeadersRead, headerCts.Token)
                 .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // 원 호출자 취소가 아니면 헤더 대기 타임아웃 — 무한 대기를 유한한 실패로.
+            throw new ProviderException(
+                L10n.Get("providers.headerWaitTimeout", (int)HeaderWaitTimeout().TotalSeconds),
+                ErrorCategory.NetworkTransient);
         }
         catch (Exception ex) when (ProviderException.IsNetworkFailure(ex))
         {
@@ -510,6 +524,25 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl
         }
 
         return 16384;   // 큰 단일 파일(예: 게임 index.html) Write 가 중간에 잘려 'path' 누락되던 문제 완화
+    }
+
+    // 응답 헤더(첫 바이트) 도착 대기 상한. env MOAI_HEADER_TIMEOUT_SECONDS 로 조정(기본 300s, 0=비활성).
+    // idle-read(SseReader)와 달리 스트림 열리기 전 구간이라 첫 토큰 지연과 무관하게 잡을 수 있어
+    // SseReader 기본(120s)보다 여유를 둔다. 클램프 10s~1h.
+    private static TimeSpan HeaderWaitTimeout()
+    {
+        var env = Environment.GetEnvironmentVariable("MOAI_HEADER_TIMEOUT_SECONDS");
+        if (int.TryParse(env, out var n))
+        {
+            if (n <= 0)
+            {
+                return Timeout.InfiniteTimeSpan;
+            }
+
+            return TimeSpan.FromSeconds(Math.Clamp(n, 10, 3600));
+        }
+
+        return TimeSpan.FromSeconds(300);
     }
 
     private string? ResolveReasoningEffort()

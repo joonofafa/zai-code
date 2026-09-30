@@ -25,6 +25,46 @@ public sealed class SpectrePermissionGate : IPermissionGate
 
     public ValueTask<bool> AllowAsync(ITool tool, ToolUseBlock call, CancellationToken ct)
     {
+        // 무인 운영(opt-in) 타임아웃: 기본은 꺼짐(0) — 대화형 다이얼로그를 임의로 끊지 않는다.
+        // env MOAI_PERMISSION_TIMEOUT 초 설정 시(예: headless 재활용/무인 tmux 세션) 만료를
+        // 거부로 처리해 턴이 확인 대기로 영구 멈추는 것을 막는다. stream-json 게이트와 같은 env.
+        var timeoutSec = PermissionTimeoutSeconds();
+        if (timeoutSec > 0)
+        {
+            var decision = PromptWithTimeout(tool, call, timeoutSec, ct);
+            return ValueTask.FromResult(decision);
+        }
+
+        return ValueTask.FromResult(Prompt(tool, call));
+    }
+
+    /// <summary>MOAI_PERMISSION_TIMEOUT 값(초). 0/무효면 비활성(무한 대기 — 기존 동작).</summary>
+    internal static int PermissionTimeoutSeconds()
+    {
+        var v = Environment.GetEnvironmentVariable("MOAI_PERMISSION_TIMEOUT");
+        return int.TryParse(v, out var n) && n > 0 ? n : 0;
+    }
+
+    private bool PromptWithTimeout(ITool tool, ToolUseBlock call, int timeoutSec, CancellationToken ct)
+    {
+        // 다이얼로그 렌더는 메인 스레드에서 동기적으로 하고, 입력 대기는 백그라운드 태스크로
+        // 돌려 타임아웃과 레이스시킨다. 승자가 타임아웃이면 거부(false) + 안내 한 줄.
+        var input = Task.Run(() => Prompt(tool, call), ct);
+        var timeout = Task.Delay(TimeSpan.FromSeconds(timeoutSec), CancellationToken.None);
+        var done = Task.WhenAny(input, timeout).ConfigureAwait(false).GetAwaiter().GetResult();
+        if (done == input)
+        {
+            return input.GetAwaiter().GetResult();
+        }
+
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine(
+            $"[{TuiTheme.Mark(TuiTheme.Role.Warning)}]{Markup.Escape(L10n.Get("permission.timedOut", timeoutSec))}[/]");
+        return false;   // fail-closed — stream-json 게이트와 동일 정책
+    }
+
+    private bool Prompt(ITool tool, ToolUseBlock call)
+    {
         AnsiConsole.WriteLine();
         var display = ToolDisplay.Describe(tool.Name, call.Input);
         if (display.Length > 2000)
@@ -54,15 +94,15 @@ public sealed class SpectrePermissionGate : IPermissionGate
 
         if (choice == 0)
         {
-            return ValueTask.FromResult(true);
+            return true;
         }
 
         if (canAlways && choice == 1)
         {
             _persistAllow?.Invoke(scope!);
-            return ValueTask.FromResult(true);
+            return true;
         }
 
-        return ValueTask.FromResult(false); // 거부 / 취소(-1)
+        return false; // 거부 / 취소(-1)
     }
 }
