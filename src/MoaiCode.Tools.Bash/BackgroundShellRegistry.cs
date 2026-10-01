@@ -12,6 +12,9 @@ public enum BackgroundShellStatus
     Killed,
 }
 
+/// <summary>백그라운드 셸 완료 통보 — 대기 복귀(자동 재개 턴)의 트리거 데이터.</summary>
+public sealed record BackgroundShellFinished(string Id, string Command, BackgroundShellStatus Status, int? ExitCode);
+
 /// <summary>
 /// 백그라운드 셸 1개: 프로세스 핸들 + 스트리밍 출력 버퍼 + 읽기 커서.
 /// 출력은 자식이 쓰는 즉시 버퍼에 쌓이고, <see cref="ReadNew"/> 가 마지막 조회 이후 새 부분만 돌려준다.
@@ -141,6 +144,12 @@ public sealed class BackgroundShellRegistry
     private readonly int _maxChars;
     private int _seq;
 
+    /// <summary>
+    /// 셸 완료(정상/킬 포함) 시 UI 스레드에 전달되는 콜백. null 이면 통보 없음.
+    /// ReplApp 이 구독해 "백그라운드 완료 → 자동 재개 터"을 구동한다.
+    /// </summary>
+    public Action<BackgroundShellFinished>? OnShellFinished { get; set; }
+
     public BackgroundShellRegistry(int maxChars = DefaultMaxChars)
     {
         _maxChars = maxChars;
@@ -165,6 +174,17 @@ public sealed class BackgroundShellRegistry
 
         shell.Track(run);
         _shells[id] = shell;
+
+        // 완료 통보: Track 이 Status/ExitCode 를 확정한 뒤 같은 continuation 체인에서 발화.
+        // 스레드풀 스레드에서 호출되므로 구독자(ReplApp)는 자체 마샬링 필요.
+        if (OnShellFinished is not null)
+        {
+            _ = shell.Completion.ContinueWith(
+                _ => OnShellFinished(new BackgroundShellFinished(
+                    shell.Id, shell.Command, shell.Status, shell.ExitCode)),
+                TaskScheduler.Default);
+        }
+
         Prune();
         return shell;
     }

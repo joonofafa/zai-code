@@ -128,9 +128,33 @@ public static class LineEditor
         {
         while (true)
         {
-            var ev = Input.TerminalInput.Shared is { } input
-                ? input.ReadEvent() ?? new Input.KeyEvent(default)
-                : new Input.KeyEvent(Console.ReadKey(intercept: true));
+            Input.InputEvent? ev;
+            if (Input.TerminalInput.Shared is { } input)
+            {
+                // 깨움 통로가 걸려 있으면(백그라운드 대기 중) 40ms 폴링으로 대기 — 외부 사유로 즉시 반환.
+                if (Input.PromptInterrupt.ShouldWake is not null)
+                {
+                    while (true)
+                    {
+                        if (input.TryReadEvent(40) is { } e) { ev = e; break; }
+                        if (Input.PromptInterrupt.ShouldWake())
+                        {
+                            // 미제출 초안은 보존 — 재개 턴이 끝난 뒤 다음 프롬프트의 초기 버퍼로 복원.
+                            Input.PromptInterrupt.PendingDraft = buf.ToString();
+                            r.Finish();
+                            return Input.PromptInterrupt.WakeSignal;
+                        }
+                    }
+                }
+                else
+                {
+                    ev = input.ReadEvent() ?? new Input.KeyEvent(default);
+                }
+            }
+            else
+            {
+                ev = new Input.KeyEvent(Console.ReadKey(intercept: true));
+            }
 
             // 붙여넣기: 여러 줄이면 표식으로 접어 넣는다(개행이 Enter 로 안 샌다).
             if (ev is Input.PasteEvent pe)

@@ -47,6 +47,13 @@ public sealed class ReplApp
     // 타입어헤드: 턴 처리 중 친 입력을 모아 턴 종료 후 순차 제출. MOAI_TYPEAHEAD=0/false/off 로 끔(기본 on).
     private readonly TurnInputQueue _turnInput = new();
 
+    // 백그라운드 셸 완료 통보 큐 — Registry의 스레드풀 콜백을 입력 스레드로 마샬링해 소비.
+    // 완료가 도착하면 프롬프트를 유지한 채 "자동 재개 턴"을 띄워 결과를 보고하게 한다.
+    private readonly System.Threading.Channels.Channel<MoaiCode.Tools.Bash.BackgroundShellFinished> _shellFinished =
+        System.Threading.Channels.Channel.CreateUnbounded<MoaiCode.Tools.Bash.BackgroundShellFinished>(
+            new System.Threading.Channels.UnboundedChannelOptions { SingleReader = true });
+    private bool _autoResumeEnabled = true;   // MOAI_BG_AUTORESUME=0/false/off 로 끔(기본 on)
+
     // 턴 종료 시 남은 미확정 드래프트 — 다음 프롬프트의 편집 가능한 초기 버퍼로 시드(한 번 쓰고 비움).
     private string? _pendingInput;
     private readonly bool _typeAhead =
@@ -84,6 +91,19 @@ public sealed class ReplApp
                 || dockEnv.Equals("false", StringComparison.OrdinalIgnoreCase)
                 || dockEnv.Equals("off", StringComparison.OrdinalIgnoreCase));
         _dock = _useRawEditor && !dockOff && BottomDock.Fits() ? new BottomDock(BuildStatusLine) : null;
+
+        // 백그라운드 셸 완료 → 채널 적재(스레드풀 → 입력 스레드 마샬링). UI 갱신은 소비 쪽에서.
+        var autoOff = Environment.GetEnvironmentVariable("MOAI_BG_AUTORESUME") is "0" or "false" or "off";
+        _autoResumeEnabled = !autoOff;
+        if (_autoResumeEnabled)
+        {
+            MoaiCode.Tools.Bash.BackgroundShellRegistry.Shared.OnShellFinished =
+                f => _shellFinished.Writer.TryWrite(f);
+            // 프롬프트 입력 대기(40ms 폴링) 중 완료 도착을 감지해 즉시 깨운다.
+            Input.PromptInterrupt.ShouldWake = () => _shellFinished.Reader.CanCount
+                ? _shellFinished.Reader.Count > 0
+                : false;
+        }
     }
 
     public async Task RunAsync(CancellationToken ct)
@@ -146,6 +166,9 @@ public sealed class ReplApp
             var seed = _pendingInput;
             _pendingInput = null;
 
+            // 백그라운드 셸이 살아있으면 대기 배너 — 프롬프트는 그대로 열려 있어 자유 입력 가능.
+            RenderWaitingShells();
+
             if (_dock is not null)
             {
                 // 하단 고정: 상태줄+입력창은 화면 맨 아래, 출력은 위 영역에서 스크롤.
@@ -177,6 +200,19 @@ public sealed class ReplApp
                 continue;
             }
 
+            // 백그라운드 셸 완료 깨움 — 초안을 편집 가능 시드로 보존한 뒤 재개 턴으로.
+            if (input == Input.PromptInterrupt.WakeSignal)
+            {
+                _pendingInput = Input.PromptInterrupt.PendingDraft;
+                Input.PromptInterrupt.PendingDraft = null;
+                var drained = DrainShellFinished();
+                if (drained.Count > 0)
+                {
+                    quit = await ResumeFromBackgroundAsync(drained, ct).ConfigureAwait(false);
+                }
+                continue;
+            }
+
             quit = await ProcessInputAsync(input, ct).ConfigureAwait(false);
 
             // 타입어헤드: 턴 처리 중 사용자가 Enter 로 확정한 입력(큐)만 순차로 이어서 제출.
@@ -202,6 +238,18 @@ public sealed class ReplApp
                 quit = await ProcessInputAsync(queued, ct).ConfigureAwait(false);
             }
 
+            // 백그라운드 셸 완료가 이미 도착해 있으면(턴 중/입력 대기 중 완료) 자동 재개 턴을 띄운다.
+            // 사용자가 방금 제출한 입력/큐가 있었으면 위에서 먼저 처리됐으므로 여기 도달 = 사용자 입력 없음.
+            // 완료가 여러 개 몰려 있으면 하나의 재개 턴 프롬프트에 합쳐 한 번만 모델을 호출한다.
+            if (!quit && !ct.IsCancellationRequested && _autoResumeEnabled)
+            {
+                var drained = DrainShellFinished();
+                if (drained.Count > 0)
+                {
+                    quit = await ResumeFromBackgroundAsync(drained, ct).ConfigureAwait(false);
+                }
+            }
+
             // 확정 큐를 다 비운 뒤 남은 미확정 드래프트는 다음 프롬프트의 편집 가능한 초기 버퍼로 올린다
             // (그냥 제출되지 않고, 사용자가 이어서 편집/제출하도록). 큐가 있었다면 위에서 이미 처리됐다.
             if (!quit && _typeAhead)
@@ -213,6 +261,60 @@ public sealed class ReplApp
                 }
             }
         }
+    }
+
+    // 백그라운드 셸 완료가 살아있으면 1줄 배너 — "기다리는 중이지만 프롬프트는 열려 있음"을 알린다.
+    // 채널에 쌓인 완료 통보를 전부 꺼낸다(여러 개 몰려 있으면 재개 턴 하나로 합침).
+    private List<MoaiCode.Tools.Bash.BackgroundShellFinished> DrainShellFinished()
+    {
+        var drained = new List<MoaiCode.Tools.Bash.BackgroundShellFinished>();
+        while (_shellFinished.Reader.TryRead(out var fin))
+        {
+            drained.Add(fin);
+        }
+
+        return drained;
+    }
+
+    private void RenderWaitingShells()
+    {
+        try
+        {
+            var running = MoaiCode.Tools.Bash.BackgroundShellRegistry.Shared.All
+                .Where(s => s.Status == MoaiCode.Tools.Bash.BackgroundShellStatus.Running)
+                .ToList();
+            if (running.Count == 0)
+            {
+                return;
+            }
+
+            var cmds = string.Join(", ", running.Select(s => $"{s.Id}({Clip(s.Command, 30)})"));
+            AnsiConsole.MarkupLine(
+                $"[{TuiTheme.Mark(TuiTheme.Role.Info)}]● background: {Markup.Escape(cmds)} — {Markup.Escape(L10n.Get("repl.bgWaiting"))}[/]");
+        }
+        catch
+        {
+            // 상태 표시 실패가 REPL을 막지 않게 한다.
+        }
+    }
+
+    // 백그라운드 셸 완료 → 자동 재개 턴. 완료 사실을 사용자에게 보여주고, 결과 확인·보고를
+    // 모델에게 지시하는 프롬프트로 새 턴을 시작한다(일반 사용자 턴과 동일 경로 — 세션 저장·
+    // 토큰 집계도 공유). 사용자가 ESC로 중단하면 프롬프트로 복귀.
+    private async Task<bool> ResumeFromBackgroundAsync(
+        IReadOnlyList<MoaiCode.Tools.Bash.BackgroundShellFinished> finished, CancellationToken ct)
+    {
+        var lines = finished.Select(f =>
+            f.Status == MoaiCode.Tools.Bash.BackgroundShellStatus.Killed
+                ? $"- {f.Id} (killed): {f.Command}"
+                : $"- {f.Id} (exit {f.ExitCode?.ToString() ?? "?"}): {f.Command}");
+        var summary = string.Join("\n", lines);
+
+        AnsiConsole.MarkupLine(
+            $"[{TuiTheme.Mark(TuiTheme.Role.Success)}]✔ {Markup.Escape(L10n.Get("repl.bgFinished", finished.Count))}[/]");
+
+        var prompt = L10n.Get("repl.bgResumePrompt", summary);
+        return await ProcessInputAsync(prompt, ct).ConfigureAwait(false);
     }
 
     // 한 입력 라인 처리(슬래시/셸/도움말/에이전트 턴). REPL 종료면 true.

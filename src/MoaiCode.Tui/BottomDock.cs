@@ -409,6 +409,13 @@ public sealed class BottomDock
         while (true)
         {
             var ev = ReadEventWithResize(_buf, _pos);
+            if (ev is Input.WakeEvent)
+            {
+                // 백그라운드 완료 깨움 — composer(초안 포함)는 설치 상태로 보존되고
+                // ReplApp 이 재개 턴을 돌린 뒤 이어 편집 가능하다.
+                return Input.PromptInterrupt.WakeSignal;
+            }
+
             switch (HandleEvent(ev))
             {
                 case ComposerOutcome.Submit:
@@ -591,6 +598,12 @@ public sealed class BottomDock
             if (input.TryReadEvent(ResizePollMs) is { } ev)
             {
                 return ev;
+            }
+
+            // 외부 사유(백그라운드 셸 완료 등)로 대기를 깨운다 — ReplApp 이 센티넬로 해석.
+            if (Input.PromptInterrupt.ShouldWake?.Invoke() == true)
+            {
+                return new Input.WakeEvent();
             }
 
             int w = Width(), h = Height();

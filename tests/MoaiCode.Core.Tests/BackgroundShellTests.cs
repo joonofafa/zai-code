@@ -137,4 +137,61 @@ public class BackgroundShellTests
         var text = await Run(new BashTool(new BackgroundShellRegistry()), """{"command":"echo sync","run_in_background":false}""");
         Assert.Equal("sync", text.Trim());
     }
+
+    [Fact]
+    public async Task Completion_notification_carries_shell_id_status_and_exit_code()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        var reg = new BackgroundShellRegistry();
+        var received = new List<BackgroundShellFinished>();
+        using var gate = new SemaphoreSlim(0);
+        reg.OnShellFinished = f => { received.Add(f); gate.Release(); };
+
+        // 1) 정상 종료(exit 0)
+        var ok = reg.Start("echo ok", Path.GetTempPath());
+        // 2) 비정상 종료(exit 7)
+        var bad = reg.Start("exit 7", Path.GetTempPath());
+
+        for (var i = 0; i < 2; i++)
+        {
+            await gate.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+
+        await Task.WhenAll(ok.Completion, bad.Completion);
+
+        Assert.Equal(2, received.Count);
+        var okNote = Assert.Single(received, f => f.Id == ok.Id);
+        Assert.Equal(BackgroundShellStatus.Completed, okNote.Status);
+        Assert.Equal(0, okNote.ExitCode);
+        Assert.Equal("echo ok", okNote.Command);
+
+        var badNote = Assert.Single(received, f => f.Id == bad.Id);
+        Assert.Equal(BackgroundShellStatus.Completed, badNote.Status);
+        Assert.Equal(7, badNote.ExitCode);
+    }
+
+    [Fact]
+    public async Task Completion_notification_fires_for_killed_shell()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        var reg = new BackgroundShellRegistry();
+        BackgroundShellFinished? note = null;
+        using var gate = new SemaphoreSlim(0);
+        reg.OnShellFinished = f => { note = f; gate.Release(); };
+
+        var shell = reg.Start("sleep 30", Path.GetTempPath());
+        await Task.Delay(300);   // 프로세스가 확실히 뜰 시간
+        await new KillShellTool(reg).ExecuteAsync(
+            JsonDocument.Parse("""{"shell_id":"bash_1"}""").RootElement,
+            new ToolContext(Path.GetTempPath(), PermissionMode.Auto), default).ToListAsync();
+
+        await gate.WaitAsync(TimeSpan.FromSeconds(10));
+        await shell.Completion;
+
+        Assert.NotNull(note);
+        Assert.Equal(shell.Id, note!.Id);
+        Assert.Equal(BackgroundShellStatus.Killed, note.Status);
+    }
 }
