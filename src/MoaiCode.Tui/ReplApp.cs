@@ -49,9 +49,9 @@ public sealed class ReplApp
 
     // 백그라운드 셸 완료 통보 큐 — Registry의 스레드풀 콜백을 입력 스레드로 마샬링해 소비.
     // 완료가 도착하면 프롬프트를 유지한 채 "자동 재개 턴"을 띄워 결과를 보고하게 한다.
-    private readonly System.Threading.Channels.Channel<MoaiCode.Tools.Bash.BackgroundShellFinished> _shellFinished =
-        System.Threading.Channels.Channel.CreateUnbounded<MoaiCode.Tools.Bash.BackgroundShellFinished>(
-            new System.Threading.Channels.UnboundedChannelOptions { SingleReader = true });
+    // 주의: Channel 은 쓰지 않는다 — .NET 10 런타임의 unbounded 구현은 Reader.CanCount=false
+    // (Count 미지원)라 폴링 감지가 불가했다(1.2.21 idle wake 불발의 원인). ConcurrentQueue.IsEmpty 로 감지.
+    private readonly System.Collections.Concurrent.ConcurrentQueue<MoaiCode.Tools.Bash.BackgroundShellFinished> _shellFinished = new();
     private bool _autoResumeEnabled = true;   // MOAI_BG_AUTORESUME=0/false/off 로 끔(기본 on)
 
     // 턴 종료 시 남은 미확정 드래프트 — 다음 프롬프트의 편집 가능한 초기 버퍼로 시드(한 번 쓰고 비움).
@@ -98,11 +98,9 @@ public sealed class ReplApp
         if (_autoResumeEnabled)
         {
             MoaiCode.Tools.Bash.BackgroundShellRegistry.Shared.OnShellFinished =
-                f => _shellFinished.Writer.TryWrite(f);
-            // 프롬프트 입력 대기(40ms 폴링) 중 완료 도착을 감지해 즉시 깨운다.
-            Input.PromptInterrupt.ShouldWake = () => _shellFinished.Reader.CanCount
-                ? _shellFinished.Reader.Count > 0
-                : false;
+                f => _shellFinished.Enqueue(f);
+            // 프롬프트 입력 대기(폴링) 중 완료 도착을 감지해 즉시 깨운다.
+            Input.PromptInterrupt.ShouldWake = () => !_shellFinished.IsEmpty;
         }
     }
 
@@ -268,7 +266,7 @@ public sealed class ReplApp
     private List<MoaiCode.Tools.Bash.BackgroundShellFinished> DrainShellFinished()
     {
         var drained = new List<MoaiCode.Tools.Bash.BackgroundShellFinished>();
-        while (_shellFinished.Reader.TryRead(out var fin))
+        while (_shellFinished.TryDequeue(out var fin))
         {
             drained.Add(fin);
         }
