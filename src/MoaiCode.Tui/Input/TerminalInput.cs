@@ -251,8 +251,10 @@ public sealed class TerminalInput : IDisposable
                     {
                         if (sb.Length > 0)
                         {
+                            // 한글 등 전각 문자는 2칸 — 칸 수만큼 지워야 반쪽 잔상이 안 남는다(마스크 '*' 는 1칸).
+                            var cells = mask ? 1 : LineEditor.CharWidth(sb[^1]);
                             sb.Remove(sb.Length - 1, 1);
-                            Console.Write("\b \b");
+                            Console.Write(cells == 2 ? "\b\b  \b\b" : "\b \b");
                         }
 
                         break;

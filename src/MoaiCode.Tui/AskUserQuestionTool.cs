@@ -115,12 +115,14 @@ public sealed class AskUserQuestionTool : ITool
     }
 
     // '직접 입력' 선택 시 한 줄 자유 텍스트를 읽는다. 콘솔 입력을 단독 점유하도록 ConsolePrompt 로 감싼다.
+    // Console.ReadLine 을 직접 부르면 안 된다 — REPL 중엔 공용 리더(raw)가 stdin 을 읽고 있어 키를 서로
+    // 나눠 가져가 입력이 안 보이고 Enter 도 안 먹는다(프리징). InputCompat 이 리더로 라우팅한다.
     private static string? ReadFreeText()
     {
         using (ConsolePrompt.Begin())
         {
             Console.Write(L10n.Get("ask.inputPrompt"));
-            return Console.ReadLine();
+            return Input.InputCompat.ReadLine();
         }
     }
 
