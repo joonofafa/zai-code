@@ -48,10 +48,9 @@ public sealed class ReplApp
     private readonly TurnInputQueue _turnInput = new();
 
     // 백그라운드 셸 완료 통보 큐 — Registry의 스레드풀 콜백을 입력 스레드로 마샬링해 소비.
-    // 완료가 도착하면 프롬프트를 유지한 채 "자동 재개 턴"을 띄워 결과를 보고하게 한다.
-    // 주의: Channel 은 쓰지 않는다 — .NET 10 런타임의 unbounded 구현은 Reader.CanCount=false
-    // (Count 미지원)라 폴링 감지가 불가했다(1.2.21 idle wake 불발의 원인). ConcurrentQueue.IsEmpty 로 감지.
-    private readonly System.Collections.Concurrent.ConcurrentQueue<MoaiCode.Tools.Bash.BackgroundShellFinished> _shellFinished = new();
+    // 완료가 도착하면 프롬프트를 유지한 채 "자동 재개 턴"을 띄워 결과를 보고하게 한다(연속 상한 포함).
+    private readonly BackgroundResumeQueue _bgResume = new(
+        id => MoaiCode.Tools.Bash.BackgroundShellRegistry.Shared.Get(id) is { Acknowledged: true });
     private bool _autoResumeEnabled = true;   // MOAI_BG_AUTORESUME=0/false/off 로 끔(기본 on)
 
     // 턴 종료 시 남은 미확정 드래프트 — 다음 프롬프트의 편집 가능한 초기 버퍼로 시드(한 번 쓰고 비움).
@@ -97,10 +96,9 @@ public sealed class ReplApp
         _autoResumeEnabled = !autoOff;
         if (_autoResumeEnabled)
         {
-            MoaiCode.Tools.Bash.BackgroundShellRegistry.Shared.OnShellFinished =
-                f => _shellFinished.Enqueue(f);
+            MoaiCode.Tools.Bash.BackgroundShellRegistry.Shared.OnShellFinished = _bgResume.Enqueue;
             // 프롬프트 입력 대기(폴링) 중 완료 도착을 감지해 즉시 깨운다.
-            Input.PromptInterrupt.ShouldWake = () => !_shellFinished.IsEmpty;
+            Input.PromptInterrupt.ShouldWake = () => _bgResume.HasPending;
         }
     }
 
@@ -199,19 +197,18 @@ public sealed class ReplApp
             }
 
             // 백그라운드 셸 완료 깨움 — 초안을 편집 가능 시드로 보존한 뒤 재개 턴으로.
+            // 재개 턴 중 Enter 로 큐에 넣은 입력은 아래 타입어헤드 루프가 이어서 처리한다.
             if (input == Input.PromptInterrupt.WakeSignal)
             {
                 _pendingInput = Input.PromptInterrupt.PendingDraft;
                 Input.PromptInterrupt.PendingDraft = null;
-                var drained = DrainShellFinished();
-                if (drained.Count > 0)
-                {
-                    quit = await ResumeFromBackgroundAsync(drained, ct).ConfigureAwait(false);
-                }
-                continue;
+                quit = await ResumeFromBackgroundAsync(ct).ConfigureAwait(false);
             }
-
-            quit = await ProcessInputAsync(input, ct).ConfigureAwait(false);
+            else
+            {
+                _bgResume.OnUserInput();   // 사용자 입력 — 자동 재개 연속 횟수를 다시 센다
+                quit = await ProcessInputAsync(input, ct).ConfigureAwait(false);
+            }
 
             // 타입어헤드: 턴 처리 중 사용자가 Enter 로 확정한 입력(큐)만 순차로 이어서 제출.
             // 미확정 드래프트(입력 중이던 줄)는 큐에 넣지 않는다 — 자동 제출 금지.
@@ -233,6 +230,7 @@ public sealed class ReplApp
                     AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Muted)}]↳ Queued[/] [{TuiTheme.Mark(TuiTheme.Role.Prompt)}]❯[/] {Markup.Escape(queued)}");
                 }
 
+                _bgResume.OnUserInput();
                 quit = await ProcessInputAsync(queued, ct).ConfigureAwait(false);
             }
 
@@ -241,11 +239,7 @@ public sealed class ReplApp
             // 완료가 여러 개 몰려 있으면 하나의 재개 턴 프롬프트에 합쳐 한 번만 모델을 호출한다.
             if (!quit && !ct.IsCancellationRequested && _autoResumeEnabled)
             {
-                var drained = DrainShellFinished();
-                if (drained.Count > 0)
-                {
-                    quit = await ResumeFromBackgroundAsync(drained, ct).ConfigureAwait(false);
-                }
+                quit = await ResumeFromBackgroundAsync(ct).ConfigureAwait(false);
             }
 
             // 확정 큐를 다 비운 뒤 남은 미확정 드래프트는 다음 프롬프트의 편집 가능한 초기 버퍼로 올린다
@@ -255,25 +249,13 @@ public sealed class ReplApp
                 var draft = _turnInput.TakePartial();
                 if (draft.Length > 0)
                 {
-                    _pendingInput = draft;
+                    _pendingInput += draft;   // 깨움 직전 초안(있으면) 뒤에 턴 중 친 글자를 잇는다
                 }
             }
         }
     }
 
     // 백그라운드 셸 완료가 살아있으면 1줄 배너 — "기다리는 중이지만 프롬프트는 열려 있음"을 알린다.
-    // 채널에 쌓인 완료 통보를 전부 꺼낸다(여러 개 몰려 있으면 재개 턴 하나로 합침).
-    private List<MoaiCode.Tools.Bash.BackgroundShellFinished> DrainShellFinished()
-    {
-        var drained = new List<MoaiCode.Tools.Bash.BackgroundShellFinished>();
-        while (_shellFinished.TryDequeue(out var fin))
-        {
-            drained.Add(fin);
-        }
-
-        return drained;
-    }
-
     private void RenderWaitingShells()
     {
         try
@@ -296,23 +278,42 @@ public sealed class ReplApp
         }
     }
 
-    // 백그라운드 셸 완료 → 자동 재개 턴. 완료 사실을 사용자에게 보여주고, 결과 확인·보고를
-    // 모델에게 지시하는 프롬프트로 새 턴을 시작한다(일반 사용자 턴과 동일 경로 — 세션 저장·
-    // 토큰 집계도 공유). 사용자가 ESC로 중단하면 프롬프트로 복귀.
-    private async Task<bool> ResumeFromBackgroundAsync(
-        IReadOnlyList<MoaiCode.Tools.Bash.BackgroundShellFinished> finished, CancellationToken ct)
+    // 백그라운드 셸 완료 → 자동 재개 턴. 쌓인 완료(모델이 이미 아는 셸 제외)를 하나로 합쳐 사용자에게
+    // 보여주고, 결과 확인·보고를 모델에게 지시하는 프롬프트로 새 턴을 시작한다. 사용자 입력이 아니므로
+    // 입력 히스토리·LastUserRequest(위험 분류 기준)·@첨부를 거치지 않고 턴만 돈다(세션 저장·토큰 집계는
+    // ConsumeTurnAsync 가 공유). 연속 상한에 닿으면 턴 대신 결과를 다음 사용자 메시지에 실어 보낸다.
+    // 보고할 게 없으면 아무것도 하지 않는다. 사용자가 ESC로 중단하면 프롬프트로 복귀.
+    private async Task<bool> ResumeFromBackgroundAsync(CancellationToken ct)
     {
+        var finished = _bgResume.Drain();
+        if (finished.Count == 0)
+        {
+            return false;
+        }
+
         var lines = finished.Select(f =>
             f.Status == MoaiCode.Tools.Bash.BackgroundShellStatus.Killed
                 ? $"- {f.Id} (killed): {f.Command}"
                 : $"- {f.Id} (exit {f.ExitCode?.ToString() ?? "?"}): {f.Command}");
         var summary = string.Join("\n", lines);
 
+        // 고정 composer: 초안은 그대로 두고 턴 모드로 — 아래 출력이 입력창이 아니라 스크롤 영역에 찍힌다.
+        _dock?.ParkForTurn();
         AnsiConsole.MarkupLine(
             $"[{TuiTheme.Mark(TuiTheme.Role.Success)}]✔ {Markup.Escape(L10n.Get("repl.bgFinished", finished.Count))}[/]");
+        AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]{Markup.Escape(summary)}[/]");
 
-        var prompt = L10n.Get("repl.bgResumePrompt", summary);
-        return await ProcessInputAsync(prompt, ct).ConfigureAwait(false);
+        if (!_bgResume.TryBeginResume())
+        {
+            AnsiConsole.MarkupLine(
+                $"[{TuiTheme.Dim}]{Markup.Escape(L10n.Get("repl.bgResumeCapped", BackgroundResumeQueue.MaxConsecutive))}[/]");
+            _ctx.Engine.AddSystemReminder(L10n.Get("repl.bgResumePrompt", summary));
+            _dock?.EndTurnMode();
+            return false;
+        }
+
+        await ConsumeTurnAsync(L10n.Get("repl.bgResumePrompt", summary), ct).ConfigureAwait(false);
+        return false;
     }
 
     // 한 입력 라인 처리(슬래시/셸/도움말/에이전트 턴). REPL 종료면 true.
@@ -734,13 +735,32 @@ public sealed class ReplApp
         var toggle = L10n.Get("repl.status.toggle");
         var model = ModelStatusLabel();
         var context = ContextLabel();
-        var path = PathLabel();
-        return $"{ansi}{modeTxt}\x1b[0m{TuiTheme.Fg(TuiTheme.Role.Muted)} ({toggle}) · {model}{(context.Length > 0 ? $" · {context}" : "")}{(path.Length > 0 ? $" · {path}" : "")}\x1b[0m";
+        var bg = BackgroundLabel();
+        // 경로 앞 세그먼트(평문) — 경로가 쓸 수 있는 폭은 이 실제 폭을 뺀 나머지다.
+        var head = $"({toggle}) · {model}{(context.Length > 0 ? $" · {context}" : "")}{(bg.Length > 0 ? $" · {bg}" : "")}";
+        var path = PathLabel(LineEditor.DisplayWidth($"{modeTxt} {head}"));
+        return $"{ansi}{modeTxt}\x1b[0m{TuiTheme.Fg(TuiTheme.Role.Muted)} {head}{(path.Length > 0 ? $" · {path}" : "")}\x1b[0m";
+    }
+
+    // 상태줄 백그라운드 표기: 실행 중(Running) 백그라운드 셸 개수. idle 대기 중에도 뭘 돌고 있는지 상시 노출.
+    // Registry.All 는 스냅샷 배열이라 잦은 호출이 안전하다(성능상 부담 없는 규모).
+    private string BackgroundLabel()
+    {
+        try
+        {
+            var running = MoaiCode.Tools.Bash.BackgroundShellRegistry.Shared.All.Count(
+                s => s.Status == MoaiCode.Tools.Bash.BackgroundShellStatus.Running);
+            return running > 0 ? L10n.Get("repl.status.bg", running) : string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
     }
 
     // 상태줄 Path 표기: 현재 작업 디렉터리. 홈은 '~' 로 줄여 보이고, 앞 세그먼트(모드·모델·Context)와
     // 합쳐 터미널 폭을 넘으면 안쪽(오른쪽) 세그먼트를 우선 보존하며 경로 앞쪽을 '…' 로 자른다.
-    private string PathLabel()
+    private string PathLabel(int usedCells)
     {
         string dir;
         try
@@ -758,15 +778,9 @@ public sealed class ReplApp
             dir = "~" + dir[home.Length..];
         }
 
-        // 상태줄에서 경로가 차지할 수 있는 최대 칸 수: 폭에서 고정 세그먼트들을 빼고 여유 2칸.
-        var budget = Math.Max(12, BarWidth() - LineEditor.DisplayWidth(
-            $"{L10n.Get(_ctx.State.Mode switch
-            {
-                AgentMode.Plan => "repl.mode.plan",
-                AgentMode.AutoAct => "repl.mode.autoAct",
-                AgentMode.Analysis => "repl.mode.analysis",
-                _ => "repl.mode.act",
-            })} ({L10n.Get("repl.status.toggle")}) · {ModelStatusLabel()} · {ContextLabel()}") - 2);
+        // 상태줄에서 경로가 차지할 수 있는 최대 칸 수: 폭에서 앞 세그먼트(usedCells)와 구분자 " · "(3칸)를
+        // 빼고, 마지막 칸 1개는 비운다(맨 아래 행 마지막 칸까지 쓰면 터미널에 따라 줄바꿈돼 앞을 덮는다).
+        var budget = Math.Max(12, BarWidth() - usedCells - 3 - 1);
 
         var label = L10n.Get("repl.status.path", dir);
         return ClampToWidth(label, budget, keepEnd: true);

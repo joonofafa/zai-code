@@ -16,6 +16,7 @@ namespace MoaiCode.Tui;
 public sealed class BottomDock
 {
     private readonly Func<string> _status;
+    private string? _lastStatusFingerprint;   // 상태줄 지문(모드·모델·BG 개수 등) — 폴링 중 변화 감지용
     private int _reserved;      // 현재 예약된 하단 줄 수(상태 1 + 입력행)
     private bool _installed;    // 스크롤 영역이 설정돼 있는가
     private IReadOnlyList<string> _slash = Array.Empty<string>();  // ghost 자동완성용 명령 목록
@@ -35,6 +36,8 @@ public sealed class BottomDock
     public enum ComposerOutcome { None, Submit, SubmitShell, Quit, Keymap }
 
     private const int ResizePollMs = 40;   // 키 대기 중 리사이즈 폴링 주기
+    private const int StatusPollTicks = 12;   // 상태줄 변화 확인 주기(40ms*12 ≈ 0.5초)
+    private int _statusPollTick;
 
     // 브레인스토밍 모드: 입력창 배경을 어두운 파랑으로 강조하고 숨쉬듯 펄스(어두운→덜 어두운→어두운).
     // 40ms 폴에 편승해 프레임마다 음영을 바꿔 입력행만 다시 그린다(별도 스레드 없음).
@@ -232,7 +235,10 @@ public sealed class BottomDock
 
         // 상태줄(입력창 아래). 그 위에 구분선 — 상태줄과도 시각적으로 분리.
         sb.Append($"\x1b[{statusRow - 1};1H\x1b[2K").Append(Separator(w));
-        sb.Append($"\x1b[{statusRow};1H\x1b[2K").Append(statusOverride ?? _status());
+        // 그린 상태줄의 지문을 남겨, 대기 폴링이 바뀐 것(백그라운드 셸 개수 등)만 감지해 다시 그리게 한다.
+        var status = statusOverride ?? _status();
+        _lastStatusFingerprint = StripAnsi(status);
+        sb.Append($"\x1b[{statusRow};1H\x1b[2K").Append(status);
 
         if (_turnMode && statusRow < h)
         {
@@ -343,15 +349,32 @@ public sealed class BottomDock
     /// </summary>
     public void ReinstallForTurn()
     {
-        _turnMode = false;
         _buf.Clear();
         _pos = 0;
         _shell = false;
-        Draw(_buf, _pos);   // 신규 설치 경로: CPR 실측 스크롤 + DECSTBM + 박스 렌더
+        ParkForTurn();
+    }
+
+    /// <summary>
+    /// 사용자 echo 없이 턴 모드로 전환한다(백그라운드 완료 자동 재개 턴). <b>입력 초안은 보존</b>해 턴 중에도
+    /// 이어 편집할 수 있다. composer 가 해체돼 있으면 신규 설치 경로(CPR 실측 스크롤)로 다시 세운다.
+    /// 설치돼 있었으면 커서가 입력창 안에 있으므로 영역 하단으로 옮겨 한 줄 내린다(직전 대화 줄을 덮지 않게).
+    /// 이후 출력 커서는 영역 하단에 park — 스트리밍이 컴퍼저 위에서 스크롤된다.
+    /// </summary>
+    public void ParkForTurn()
+    {
+        var wasInstalled = _installed;
+        _turnMode = false;
+        if (!wasInstalled)
+        {
+            Draw(_buf, _pos);   // 신규 설치 경로: CPR 실측 스크롤 + DECSTBM + 박스 렌더
+        }
+
         var scrollBottom = Math.Max(1, Height() - _reserved);
         lock (_drawLock)
         {
-            Console.Write($"\x1b[{scrollBottom};1H");   // 출력 커서 park(스트리밍 시작 위치)
+            // 출력 커서 park(스트리밍 시작 위치)
+            Console.Write(wasInstalled ? $"\x1b[{scrollBottom};1H\r\n" : $"\x1b[{scrollBottom};1H");
         }
         _lastCursorRow = scrollBottom;
         _turnMode = true;
@@ -606,6 +629,18 @@ public sealed class BottomDock
                 return new Input.WakeEvent();
             }
 
+            // 상태줄 지문 변화(백그라운드 셸 종료 등) 감지 — 대기 중에도 상태줄을 갱신한다. _status() 는
+            // 컨텍스트 추정(대화 전체 순회)까지 하므로 매 폴(40ms)이 아니라 StatusPollTicks 마다만 본다.
+            // 다시 그리기는 Draw 에 맡긴다 — 상태줄 행 계산·_drawLock·편집 위치 커서 복귀가 한 곳에 있다.
+            if (++_statusPollTick >= StatusPollTicks)
+            {
+                _statusPollTick = 0;
+                if (StripAnsi(_status()) != _lastStatusFingerprint)
+                {
+                    Draw(buf, pos);
+                }
+            }
+
             int w = Width(), h = Height();
             if (w != _lastW || h != _lastH)
             {
@@ -625,6 +660,28 @@ public sealed class BottomDock
                 }
             }
         }
+    }
+
+    // 상태줄 지문: 상태줄 텍스트에서 ANSI 를 벗긴 값 — BG 셸 개수·모드·모델 변화를 문자열 비교로 감지.
+    private static string StripAnsi(string s)
+    {
+        var sb = new StringBuilder(s.Length);
+        for (var i = 0; i < s.Length; i++)
+        {
+            if (s[i] == '\x1b')
+            {
+                while (i < s.Length && !char.IsLetter(s[i]))
+                {
+                    i++;
+                }
+            }
+            else
+            {
+                sb.Append(s[i]);
+            }
+        }
+
+        return sb.ToString();
     }
 
     // 리사이즈 처리: 터미널이 DECSTBM 영역을 리셋해 이전 입력창이 화면 중간에 잔상으로 남는다.

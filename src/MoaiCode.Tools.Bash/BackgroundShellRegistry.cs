@@ -41,6 +41,12 @@ public sealed class BackgroundShell
     public int? ExitCode { get; private set; }
     public DateTimeOffset StartedAt { get; } = DateTimeOffset.UtcNow;
 
+    /// <summary>
+    /// 모델이 이 셸의 최종 상태를 이미 안다 — KillShell 로 직접 죽였거나, 종료 후 BashOutput 으로 끝까지 읽었다.
+    /// 참이면 완료 통보(자동 재개 턴)가 필요 없다.
+    /// </summary>
+    public bool Acknowledged { get; private set; }
+
     /// <summary>프로세스 종료를 기다리는 태스크(테스트/정리용).</summary>
     public Task Completion { get; private set; } = Task.CompletedTask;
 
@@ -79,6 +85,12 @@ public sealed class BackgroundShell
         {
             var text = _buffer.ToString(_readPos, _buffer.Length - _readPos);
             _readPos = _buffer.Length;
+            // 종료 후 읽기 = 남은 출력과 최종 상태를 모델이 다 봤다(Status 는 같은 락 안에서 확정된다).
+            if (Status != BackgroundShellStatus.Running)
+            {
+                Acknowledged = true;
+            }
+
             var truncated = _truncated;
             _truncated = false;
             return (text, truncated);
@@ -120,6 +132,7 @@ public sealed class BackgroundShell
             }
 
             Status = BackgroundShellStatus.Killed;
+            Acknowledged = true;   // 직접 kill — 결과를 이미 안다
         }
 
         // CliWrap 은 토큰 취소 시 Process.Kill(entireProcessTree: true) 로 자식까지 정리한다.

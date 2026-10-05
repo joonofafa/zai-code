@@ -28,8 +28,12 @@
                낡은 티어 주석 정리(difficulty 라우팅 회수 마무리)
          1.2.11: 태스크 난이도(difficulty) 티어·모델 라우팅 잔여 코드 제거 — 라우팅은 동작하지
                않았는데 [L]/[M]/[H] 태그만 표시되던 것 회수(TaskCreate/PlanCreate 스키마 단순화)
-         1.2.22: idle 웨이크 수정 — .NET 10 런타임에서 Channel.Reader.CanCount=false·Count 지원
-               안 함(NotSupportedException)이라 ShouldWake 가 항상 false 였던 것을 ConcurrentQueue
+         1.2.23: 백그라운드 완료 보고 정비 — 재개 턴이 고정 입력창을 턴 모드로 전환(출력이 입력창에
+               찍히던 것, 초안 보존), 재개 프롬프트를 사용자 입력으로 취급하지 않음(히스토리·위험 분류
+               기준·@첨부 제외), 입력 없는 연속 재개 3회 상한, 모델이 직접 kill 하거나 종료 후 끝까지
+               읽은 셸은 보고 제외, 상태줄 BG(n) 표시(대기 중 0.5초 주기 갱신), 완료 개수 표기
+         1.2.22: idle 웨이크 수정 — Channel.CreateUnbounded(SingleReader=true) 가 고르는 단일 소비자
+               구현은 Reader.CanCount=false·Count 지원 안 함(NotSupportedException)이라 ShouldWake 가 항상 false 였던 것을 ConcurrentQueue
                (IsEmpty 판정 + TryDequeue 드레인)로 교체. idle(프롬프트 대기) 중 백그라운드 셸
                완료 시 자동 보고가 이제 실제로 발동
          1.2.21: 백그라운드 작업 완료 자동 보고 — 턴 종료 시 실행 중 셸이 남으면 대기 배너를
@@ -69,7 +73,7 @@
          1.2.0: 세션/메모리 프로젝트별 스코핑, 백그라운드 셸(run_in_background·BashOutput/KillShell),
                입력바 표시폭 클램프(한글 wrap 잔상 제거)
          1.1.0: GEMINI 키 저장소 복원, 붙여넣기 홍수 수정, 큐잉 플래시 피드백, 턴 중 Shift+Tab -->
-    <Version>1.2.22</Version>
+    <Version>1.2.23</Version>
     <!-- 멀티타깃: win-* RID 는 net10.0-windows(Office COM 툴 포함), 나머지는 net10.0. -->
     <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
     <!-- 크로스 게시 대상 (Linux에서 win-x64 self-contained exe 생성 가능) -->
