@@ -262,15 +262,26 @@ public sealed class ReplApp
         {
             var running = MoaiCode.Tools.Bash.BackgroundShellRegistry.Shared.All
                 .Where(s => s.Status == MoaiCode.Tools.Bash.BackgroundShellStatus.Running)
+                .OrderBy(s => s.StartedAt)
                 .ToList();
             if (running.Count == 0)
             {
                 return;
             }
 
-            var cmds = string.Join(", ", running.Select(s => $"{s.Id}({Clip(s.Command, 30)})"));
-            AnsiConsole.MarkupLine(
-                $"[{TuiTheme.Mark(TuiTheme.Role.Info)}]● background: {Markup.Escape(cmds)} — {Markup.Escape(L10n.Get("repl.bgWaiting"))}[/]");
+            // 툴 호출 줄(→ Bash (명령))과 같은 형태: → Background (명령) - 안내. 여러 개면 셸마다 한 줄, 안내는 마지막 줄에만.
+            for (var i = 0; i < running.Count; i++)
+            {
+                var cmd = running[i].Command.ReplaceLineEndings(" ").Trim();
+                if (cmd.Length > 150)
+                {
+                    cmd = cmd[..150] + "…";
+                }
+
+                var tail = i == running.Count - 1 ? $" - {L10n.Get("repl.bgWaiting")}" : string.Empty;
+                AnsiConsole.MarkupLine(
+                    $"[{TuiTheme.Mark(TuiTheme.Role.Warning)}]→[/] [{TuiTheme.Dim}]{Markup.Escape($"Background ({cmd}){tail}")}[/]");
+            }
         }
         catch
         {

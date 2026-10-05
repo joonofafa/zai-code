@@ -86,7 +86,7 @@
   "repl.commandError": "/{0} failed: {1}",
   "repl.emptyResponse": "(Empty response — the model returned no content. Try a different model with /model.)",
   "repl.aborted": "⊘ Interrupted",
-  "repl.bgWaiting": "running — you can keep typing; results will be reported when done",
+  "repl.bgWaiting": "You can keep typing; results will be reported when done.",
   "repl.bgFinished": "{0} background task(s) finished:",
   "repl.bgResumePrompt": "A background task you started has finished. Results:\n{0}\n\nCheck the output with the BashOutput tool (tail the remaining output) and report the result to the user concisely. If the task failed (non-zero exit), diagnose the cause. Do not restart anything unless the user asks.",
   "repl.bgResumeCapped": "Auto-resume paused after {0} turns in a row without your input. The results will be passed along with your next message.",
