@@ -307,6 +307,11 @@ public sealed class BottomDock
         Console.Write(sb.ToString());
         _installed = false;
         _reserved = 0;
+        // 제출한 입력은 버퍼에서 비운다 — 남겨 두면 재개 턴(ParkForTurn)이 composer 를 다시 세울 때
+        // 이미 실행한 슬래시/셸 명령이 입력창에 되살아난다.
+        _buf.Clear();
+        _pos = 0;
+        _shell = false;
     }
 
     /// <summary>
@@ -316,6 +321,13 @@ public sealed class BottomDock
     /// </summary>
     public void KeepComposerForTurn(string text, bool shell = false)
     {
+        // 큐의 슬래시 명령이 composer 를 해체한 직후일 수 있다 — 먼저 다시 세운다(예약 0 이면 화면 밖에 그린다).
+        if (!_installed)
+        {
+            _turnMode = false;
+            Draw(_buf, _pos);   // 신규 설치 경로: CPR 실측 스크롤 + DECSTBM + 박스 렌더
+        }
+
         var h = Height();
         var scrollBottom = Math.Max(1, h - _reserved);
         // 채팅처럼 우측 정렬 버블로 echo(스크롤 영역 폭 기준).
@@ -394,7 +406,7 @@ public sealed class BottomDock
     public string CurrentText => _buf.ToString();
 
     /// <summary>초안을 비우고 composer 를 다시 그린다(턴 중 Enter 로 큐에 넣은 뒤 호출).</summary>
-    public void ClearDraft() { _buf.Clear(); _pos = 0; Draw(_buf, _pos); }
+    public void ClearDraft() { _buf.Clear(); _pos = 0; _shell = false; Draw(_buf, _pos); }
 
     /// <summary>
     /// 하단 고정 입력 한 줄 읽기. 반환 규칙은 LineEditor.ReadLine 과 동일(null=EOF/quit).
@@ -408,7 +420,6 @@ public sealed class BottomDock
         string? initialText = null)
     {
         _slash = slashCommands;
-        _shell = false;
         _brainstorm = brainstorm;
         _animTick = 0;
         _animShade = BrainstormPalette[0];
@@ -416,8 +427,10 @@ public sealed class BottomDock
         _hist = history;
         _turnMode = false;   // 프롬프트 편집: 실제 커서로 정상 렌더
         // composer 가 이미 설치돼 있고 새 초기값이 없으면(턴 종료 후 이어짐) 진행 중이던 초안을 보존한다.
+        // 초안을 보존하면 '!' 셸 모드도 함께 보존한다(깨움 뒤 셸 초안이 일반 프롬프트로 바뀌지 않게).
         if (!_installed || initialText != null)
         {
+            _shell = false;
             _buf.Clear();
             _buf.Append(initialText ?? string.Empty);
             _pos = _buf.Length;

@@ -60,6 +60,25 @@ public class SseReaderIdleTimeoutTests
         return lines;
     }
 
+    // 0 = 비활성(InfiniteTimeSpan) — 남은 시간 계산이 음수가 돼 첫 줄 전에 즉시 실패하던 회귀.
+    [Fact]
+    public async Task Zero_disables_idle_timeout_instead_of_failing_immediately()
+    {
+        var prev = Environment.GetEnvironmentVariable("MOAI_STREAM_IDLE_TIMEOUT_SECONDS");
+        try
+        {
+            Environment.SetEnvironmentVariable("MOAI_STREAM_IDLE_TIMEOUT_SECONDS", "0");
+
+            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(": ping\n\ndata: {\"a\":1}\n\ndata: [DONE]\n\n"));
+            var lines = await CollectDataLinesAsync(stream);
+            Assert.Equal(["{\"a\":1}", "[DONE]"], lines);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("MOAI_STREAM_IDLE_TIMEOUT_SECONDS", prev);
+        }
+    }
+
     // 침묵 스트림 → idle timeout 이 ProviderException(NetworkTransient) 으로 발동해야 한다.
     [Fact]
     public async Task Silent_stall_raises_transient_provider_exception()

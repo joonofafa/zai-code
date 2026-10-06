@@ -22,8 +22,10 @@ public static class SelectList
     /// 선택한 인덱스. 취소/비대화형이면 -1. onDelete 를 주면 Del 키로 항목 삭제 가능:
     /// 1차 Del 은 그 행을 밝은 빨강 + 제목 줄임 + "[Del 재입력 시 삭제]"로 무장, 2차 Del 이면
     /// onDelete(index) 호출 후 목록에서 제거한다(호출측 병렬 컬렉션도 같은 index 를 지워 정합 유지).
+    /// cancel 이 취소되면 -1(만료). 취소 가능한 토큰이면 키를 짧게 폴링해 위젯이 실제로 끝난다 —
+    /// 다른 스레드에서 버려진 채 키를 계속 가로채는 위젯이 남지 않게(권한 대화상자 만료).
     /// </summary>
-    public static int Prompt(string title, IReadOnlyList<string> items, int defaultIndex = 0, int numberWidth = 1, Func<int, bool>? onDelete = null)
+    public static int Prompt(string title, IReadOnlyList<string> items, int defaultIndex = 0, int numberWidth = 1, Func<int, bool>? onDelete = null, CancellationToken cancel = default)
     {
         if (items.Count == 0 || Console.IsInputRedirected)
         {
@@ -60,7 +62,11 @@ public static class SelectList
 
             while (true)
             {
-                var key = (Input.TerminalInput.Shared is { } __ti ? __ti.ReadKey() : Console.ReadKey(intercept: true));
+                if (ReadKey(cancel) is not { } key)
+                {
+                    return -1;   // 만료(취소)
+                }
+
                 if (key.KeyChar == '\r' || key.KeyChar == '\n')
                 {
                     return Finish(list, idx);
@@ -151,6 +157,36 @@ public static class SelectList
                 }
             }
         }
+    }
+
+    // 다음 키. 취소 가능한 토큰이면 공용 리더를 100ms 단위로 폴링하다 취소 시 null.
+    // (TerminalInput.ReadKey 와 같은 매핑: Ctrl+C 는 Escape, Paste/Mouse/Focus 는 건너뜀.)
+    private static ConsoleKeyInfo? ReadKey(CancellationToken cancel)
+    {
+        if (Input.TerminalInput.Shared is not { } ti)
+        {
+            return Console.ReadKey(intercept: true);
+        }
+
+        if (!cancel.CanBeCanceled)
+        {
+            return ti.ReadKey();
+        }
+
+        while (!cancel.IsCancellationRequested)
+        {
+            switch (ti.TryReadEvent(100))
+            {
+                case Input.KeyEvent k:
+                    return k.Key;
+                case Input.CancelEvent:
+                    return new ConsoleKeyInfo('\u001b', ConsoleKey.Escape, shift: false, alt: false, control: false);
+                case null when ti.IsEof:
+                    return null;
+            }
+        }
+
+        return null;
     }
 
     // 위젯 영역(lines 줄)을 지운다: 커서를 lines 줄 위로 옮긴 뒤 DL(ESC[nM)으로 삭제.

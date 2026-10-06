@@ -252,8 +252,10 @@ public sealed class TerminalInput : IDisposable
                         if (sb.Length > 0)
                         {
                             // 한글 등 전각 문자는 2칸 — 칸 수만큼 지워야 반쪽 잔상이 안 남는다(마스크 '*' 는 1칸).
-                            var cells = mask ? 1 : LineEditor.CharWidth(sb[^1]);
-                            sb.Remove(sb.Length - 1, 1);
+                            // 서로게이트 쌍(이모지 등)은 두 UTF-16 단위를 함께 지운다(반쪽 문자 방지, 표시 2칸).
+                            var pair = sb.Length >= 2 && char.IsLowSurrogate(sb[^1]) && char.IsHighSurrogate(sb[^2]);
+                            var cells = mask ? 1 : pair ? 2 : LineEditor.CharWidth(sb[^1]);
+                            sb.Remove(sb.Length - (pair ? 2 : 1), pair ? 2 : 1);
                             Console.Write(cells == 2 ? "\b\b  \b\b" : "\b \b");
                         }
 
@@ -271,6 +273,9 @@ public sealed class TerminalInput : IDisposable
             }
         }
     }
+
+    /// <summary>입력 끝(EOF)에 닿았는가 — 이후 <see cref="TryReadEvent"/> 는 기다리지 않고 null 을 돌려준다.</summary>
+    public bool IsEof => _eof;
 
     /// <summary>대기 중인 이벤트가 있는가(비블로킹). 리사이즈 폴링 루프 등에서 사용.</summary>
     public bool Available

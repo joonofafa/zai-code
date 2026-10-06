@@ -47,14 +47,15 @@ public sealed class SpectrePermissionGate : IPermissionGate
 
     private bool PromptWithTimeout(ITool tool, ToolUseBlock call, int timeoutSec, CancellationToken ct)
     {
-        // 다이얼로그 렌더는 메인 스레드에서 동기적으로 하고, 입력 대기는 백그라운드 태스크로
-        // 돌려 타임아웃과 레이스시킨다. 승자가 타임아웃이면 거부(false) + 안내 한 줄.
-        var input = Task.Run(() => Prompt(tool, call), ct);
-        var timeout = Task.Delay(TimeSpan.FromSeconds(timeoutSec), CancellationToken.None);
-        var done = Task.WhenAny(input, timeout).ConfigureAwait(false).GetAwaiter().GetResult();
-        if (done == input)
+        // 같은 스레드에서 그리고 기다리되 선택 위젯에 만료 토큰을 넘긴다. 예전엔 위젯을 백그라운드 태스크로
+        // 돌려 타임아웃과 경주시켰는데, 만료 뒤에도 그 위젯이 살아남아 이후 키를 가로챘고(입력창·ESC 먹통)
+        // 거기서 '항상 허용'이 눌리면 이미 거부된 호출의 허용 규칙이 저장됐다.
+        using var expiry = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        expiry.CancelAfter(TimeSpan.FromSeconds(timeoutSec));
+        var allowed = Prompt(tool, call, expiry.Token);
+        if (allowed || !expiry.IsCancellationRequested || ct.IsCancellationRequested)
         {
-            return input.GetAwaiter().GetResult();
+            return allowed;
         }
 
         AnsiConsole.WriteLine();
@@ -63,7 +64,7 @@ public sealed class SpectrePermissionGate : IPermissionGate
         return false;   // fail-closed — stream-json 게이트와 동일 정책
     }
 
-    private bool Prompt(ITool tool, ToolUseBlock call)
+    private bool Prompt(ITool tool, ToolUseBlock call, CancellationToken expiry = default)
     {
         AnsiConsole.WriteLine();
         var display = ToolDisplay.Describe(tool.Name, call.Input);
@@ -90,7 +91,7 @@ public sealed class SpectrePermissionGate : IPermissionGate
             : new[] { allowOnce, deny };
 
         // 화살표 선택 위젯(SelectList). Spectre SelectionPrompt 는 단일 파일에서 크래시하므로 미사용.
-        var choice = SelectList.Prompt(L10n.Get("permission.prompt", tool.Name), choices);
+        var choice = SelectList.Prompt(L10n.Get("permission.prompt", tool.Name), choices, cancel: expiry);
 
         if (choice == 0)
         {

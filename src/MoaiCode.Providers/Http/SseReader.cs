@@ -31,11 +31,14 @@ public static class SseReader
 
             // idle-read 타임아웃: HttpClient 는 무제한(SharedHttp.Timeout=Infinite)이라 연결이 살아있는
             // 채 데이터만 안 오는 silent stall 을 애플리케이션 계층에서 막을 방어가 없었다 — 프록시/게이트웨이가
-            // 스트림을 끊지도 않고 굳어버리면 프로세스가 영원히 멈췄다. 매 줄마다 ct 에 연결된 CTS 를 새로
-            // 만들어 한 줄 도착에 상한(기본 120s)을 건다. 발동하면 transient 로 변환해 RetryingChatModel 의
-            // 기존 재시도(토큰 방출 전=백오프 재시도, 이후=즉시 실패)에 자연스럽게 올라탄다.
-            var remain = idleTimeout - sinceData.Elapsed;
-            if (remain <= TimeSpan.Zero)
+            // 스트림을 끊지도 않고 굳어버리면 프로세스가 영원히 멈췄다. 마지막 data 줄 이후 경과 시간에
+            // 상한(기본 120s)을 건다(읽기마다 남은 시간만큼 ct 연결 CTS). 발동하면 transient 로 변환해
+            // RetryingChatModel 의 기존 재시도(토큰 방출 전=백오프 재시도, 이후=즉시 실패)에 올라탄다.
+            // 비활성(0 → InfiniteTimeSpan = -1ms)이면 남은 시간 계산을 건너뛴다 — 빼면 음수가 돼 즉시 실패한다.
+            var remain = idleTimeout == Timeout.InfiniteTimeSpan
+                ? Timeout.InfiniteTimeSpan
+                : idleTimeout - sinceData.Elapsed;
+            if (remain != Timeout.InfiniteTimeSpan && remain <= TimeSpan.Zero)
             {
                 throw new ProviderException(
                     L10n.Get("providers.streamIdleTimeout", (int)idleTimeout.TotalSeconds),

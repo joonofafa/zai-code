@@ -181,4 +181,75 @@ public class BackgroundResumeTests
             PromptInterrupt.ShouldWake = origWake;
         }
     }
+
+    private static BottomDock DockOver(Stream stdin, out TerminalInput input)
+    {
+        input = new TerminalInput(stdin);
+        TerminalInput.Shared = input;
+        return new BottomDock(() => "status");
+    }
+
+    // 제출하며 해체한 입력은 버퍼에서 비운다 — 재개 턴이 composer 를 다시 세워도 이미 실행한 명령이 안 살아난다.
+    [Fact]
+    public void Submitted_slash_command_does_not_come_back_when_resume_turn_reinstalls()
+    {
+        var origOut = Console.Out;
+        var origShared = TerminalInput.Shared;
+        try
+        {
+            Console.SetOut(new StringWriter());
+            var dock = DockOver(new MemoryStream(Encoding.UTF8.GetBytes("/help\r")), out var input);
+            using (input)
+            {
+                Assert.Equal("/help", dock.ReadLine([], [], null));
+                Assert.Equal(string.Empty, dock.CurrentText);
+
+                dock.ParkForTurn();
+                Assert.Equal(string.Empty, dock.CurrentText);
+            }
+        }
+        finally
+        {
+            Console.SetOut(origOut);
+            TerminalInput.Shared = origShared;
+        }
+    }
+
+    // 큐의 슬래시 명령이 composer 를 해체한 뒤 일반 메시지가 오면, 먼저 다시 세운 다음 턴 모드로 간다.
+    [Fact]
+    public void KeepComposerForTurn_reinstalls_a_torn_down_composer()
+    {
+        var origOut = Console.Out;
+        try
+        {
+            Console.SetOut(new StringWriter());
+            var dock = new BottomDock(() => "status");
+            dock.KeepComposerForTurn("queued message");
+
+            Assert.True(dock.InTurn);
+            Assert.True((int)typeof(BottomDock).GetField("_reserved",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(dock)! > 0);
+        }
+        finally
+        {
+            Console.SetOut(origOut);
+        }
+    }
+
+    // 줄 입력 백스페이스: 서로게이트 쌍(이모지)은 한 번에 통째로 지운다(반쪽 문자 남지 않음).
+    [Fact]
+    public void Line_prompt_backspace_removes_whole_surrogate_pair()
+    {
+        var origOut = Console.Out;
+        try
+        {
+            Console.SetOut(new StringWriter());
+            using var input = new TerminalInput(new MemoryStream(Encoding.UTF8.GetBytes("a\U0001F600\u007f\r")));
+            Assert.Equal("a", input.ReadLine());
+        }
+        finally
+        {
+            Console.SetOut(origOut);
+        }
+    }
 }

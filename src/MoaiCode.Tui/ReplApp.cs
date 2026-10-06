@@ -683,6 +683,7 @@ public sealed class ReplApp
             // Ctrl+C로 사용자가 중단 — 프로세스는 유지하고 다음 입력으로 복귀.
             // 바를 먼저 해제(스크롤영역 복원 + 바 행 지움)해야 '중단됨' 이 큐 힌트/입력바와 안 엉킨다.
             DeactivateBar();
+            escStop.Dispose();   // 워처를 먼저 멈춘다(아래 finally 주석 참조)
             _dock?.EndTurnMode();
             ClearSpinnerLine();
             AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Warning)}]{Markup.Escape(L10n.Get("repl.aborted"))}[/]");
@@ -699,6 +700,7 @@ public sealed class ReplApp
         finally
         {
             DeactivateBar();
+            escStop.Dispose();      // 워처를 먼저 멈춘다 — 해제 뒤 친 키가 큐로 새지 않고 다음 ReadLine 의 composer 로 간다
             _dock?.EndTurnMode();   // 고정 composer: 턴 모드 해제(다음 ReadLine 이 정상 렌더)
             _barWanted = false;
             _activeTurnCts = null;
@@ -1406,7 +1408,7 @@ public sealed class ReplApp
         }
 
         var stop = new CancellationTokenSource();
-        _ = Task.Run(async () =>
+        var watcher = Task.Run(async () =>
         {
             try
             {
@@ -1434,9 +1436,10 @@ public sealed class ReplApp
                                 // 고정 composer: 턴 중에도 같은 입력창에서 라이브 편집. Enter 면 큐에 넣어
                                 // 턴 종료 후 순차 제출(입력창은 그대로 유지).
                                 if (ev is not null && _dock.HandleEvent(ev) is
-                                        BottomDock.ComposerOutcome.Submit or BottomDock.ComposerOutcome.SubmitShell)
+                                        (BottomDock.ComposerOutcome.Submit or BottomDock.ComposerOutcome.SubmitShell) and var outcome)
                                 {
-                                    var queued = _dock.CurrentText;
+                                    // '!' 셸 모드 입력은 버퍼에 '!' 가 없다 — 큐에는 붙여 넣어야 셸 명령으로 처리된다.
+                                    var queued = (outcome == BottomDock.ComposerOutcome.SubmitShell ? "!" : "") + _dock.CurrentText;
                                     _dock.ClearDraft();
                                     _turnInput.EnqueueMessage(queued);
                                     DrawBar();   // 하단 큐 카운트 갱신(바가 있을 때만 실동작)
@@ -1482,11 +1485,14 @@ public sealed class ReplApp
             }
         });
 
+        // 멈춤은 워처가 실제로 끝날 때까지 기다린다 — 턴 모드 해제(EndTurnMode) 뒤에도 워처가 한 바퀴 더 돌면
+        // 그 사이 키가 composer 가 아닌 타입어헤드 큐로 빠져, 다음 프롬프트에서 초안 전체를 그 몇 글자로 덮었다.
         return new ActionDisposable(() =>
         {
             try
             {
                 stop.Cancel();
+                watcher.Wait(1000);
             }
             catch
             {

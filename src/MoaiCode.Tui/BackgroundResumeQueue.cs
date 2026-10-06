@@ -29,7 +29,7 @@ internal sealed class BackgroundResumeQueue
     public void Enqueue(BackgroundShellFinished finished) => _queue.Enqueue(finished);
 
     /// <summary>보고할 완료가 있는가 — 입력 대기 폴링(40ms)마다 호출된다. 이미 아는 셸만 있으면 깨우지 않는다.</summary>
-    public bool HasPending => _queue.Any(f => !_acknowledged(f.Id));
+    public bool HasPending => !_queue.IsEmpty && _queue.Any(f => !_acknowledged(f.Id));   // 비었으면 스냅샷 생략
 
     /// <summary>쌓인 통보를 전부 꺼내 보고할 것만 돌려준다(여러 개면 재개 턴 하나로 합친다).</summary>
     public List<BackgroundShellFinished> Drain()
