@@ -114,7 +114,7 @@ public class BackgroundShellTests
         var shell = reg.Start("for i in $(seq 1 40); do echo line$i; done", Path.GetTempPath());
         await shell.Completion;
 
-        var (text, truncated) = shell.ReadNew();
+        var (text, truncated, _, _) = shell.ReadNew();
         Assert.True(truncated);
         Assert.True(text.Length <= 50);
         Assert.Contains("line40", text);

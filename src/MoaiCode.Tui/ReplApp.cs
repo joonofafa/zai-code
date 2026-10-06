@@ -219,10 +219,12 @@ public sealed class ReplApp
                     break;
                 }
 
-                // 고정 composer: 모델 턴 큐 메시지는 입력창을 유지한 채 echo, 슬래시 큐는 해제 후 일반 처리.
-                if (_dock is not null && !queued.TrimStart().StartsWith('/'))
+                // 고정 composer: 모델 턴 큐 메시지는 입력창을 유지한 채 echo, 슬래시·'!' 셸 큐는 해제 후 일반 처리
+                // (직접 친 '!' 와 같게 — 일반 터미널에서 실행). 어느 쪽이든 입력 중이던 초안은 보존한다.
+                var head = queued.TrimStart();
+                if (_dock is not null && !head.StartsWith('/') && !head.StartsWith('!'))
                 {
-                    _dock.KeepComposerForTurn(queued);
+                    _dock.KeepComposerForTurn(queued, keepDraft: true);
                 }
                 else
                 {
@@ -407,10 +409,10 @@ public sealed class ReplApp
         }
 
         // 프롬프트형 커맨드(/init, /review)는 결과 프롬프트로 에이전트 턴을 실행.
-        // 슬래시 처리로 해체된 컴퍼저를 이 턴 동안 유지되게 다시 설치한다(하단 고정 유지).
+        // 슬래시 처리로 해체된 컴퍼저를 이 턴 동안 유지되게 다시 설치한다(하단 고정 유지, 입력 중 초안 보존).
         if (!string.IsNullOrEmpty(result.SubmitPrompt))
         {
-            _dock?.ReinstallForTurn();
+            _dock?.ParkForTurn();
             await ConsumeTurnAsync(result.SubmitPrompt, ct).ConfigureAwait(false);
         }
 
@@ -1461,7 +1463,10 @@ public sealed class ReplApp
 
                     if (hit)
                     {
-                        turnCts.Cancel();
+                        // CancelAsync: 취소 콜백(턴 쪽 후속 처리)을 이 워처 스레드에서 동기로 돌리지 않는다.
+                        // 동기 Cancel 이면 턴의 abort 처리가 여기서 이어 돌며 escStop.Dispose() 로 '자기 자신'의
+                        // 종료를 기다려 1초씩 멈췄다.
+                        _ = turnCts.CancelAsync();
                         break;
                     }
 
@@ -1487,8 +1492,14 @@ public sealed class ReplApp
 
         // 멈춤은 워처가 실제로 끝날 때까지 기다린다 — 턴 모드 해제(EndTurnMode) 뒤에도 워처가 한 바퀴 더 돌면
         // 그 사이 키가 composer 가 아닌 타입어헤드 큐로 빠져, 다음 프롬프트에서 초안 전체를 그 몇 글자로 덮었다.
+        var stopped = 0;
         return new ActionDisposable(() =>
         {
+            if (Interlocked.Exchange(ref stopped, 1) != 0)
+            {
+                return;   // 이미 멈춤(abort 경로·finally·using 이 각각 부른다)
+            }
+
             try
             {
                 stop.Cancel();

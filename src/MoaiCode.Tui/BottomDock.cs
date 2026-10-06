@@ -318,8 +318,9 @@ public sealed class BottomDock
     /// 확정 명령을 스크롤 영역 위로 echo 하되 <b>composer 는 유지</b>하고 턴 모드로 전환한다(고정 입력창).
     /// 스크롤 영역은 그대로 두고, 명령을 영역 하단에 흘려보낸 뒤 출력 커서를 영역 하단에 park 한다 —
     /// 이후 스트리밍 출력이 composer 위에서 스크롤된다. 입력 버퍼는 비우고 composer 를 다시 그린다.
+    /// keepDraft: 타입어헤드 큐 메시지처럼 버퍼가 '제출한 텍스트'가 아니라 사용자가 입력 중인 초안이면 보존한다.
     /// </summary>
-    public void KeepComposerForTurn(string text, bool shell = false)
+    public void KeepComposerForTurn(string text, bool shell = false, bool keepDraft = false)
     {
         // 큐의 슬래시 명령이 composer 를 해체한 직후일 수 있다 — 먼저 다시 세운다(예약 0 이면 화면 밖에 그린다).
         if (!_installed)
@@ -343,9 +344,13 @@ public sealed class BottomDock
 
         _lastCursorRow = scrollBottom;   // 턴: 커서는 영역 하단에 park — 이후 스트리밍도 행은 불변
 
-        _buf.Clear();
-        _pos = 0;
-        _shell = false;
+        if (!keepDraft)
+        {
+            _buf.Clear();
+            _pos = 0;
+            _shell = false;
+        }
+
         _turnMode = true;
         Draw(_buf, _pos);   // 턴 모드로 composer 재그림(save/restore)
     }
@@ -354,22 +359,9 @@ public sealed class BottomDock
     public void EndTurnMode() => _turnMode = false;
 
     /// <summary>
-    /// 프롬프트형 커맨드(/init·/review 등)로 해체된 컴퍼저를, 그 결과 프롬프트로 도는 모델 턴 동안
-    /// 유지하기 위해 다시 설치한다. 신규 설치 경로와 동일하게 CPR 로 대화 꼬리를 실측해 꼬리가 박스와
-    /// 겹치는 만큼만 스크롤한다(echo 없음 — 명령 echo 는 이미 일반 흐름으로 출력됐다). 이후 출력 커서를
-    /// 영역 하단에 park 하고 턴 모드로 전환해 스트리밍이 컴퍼저 위에서 스크롤되게 한다.
-    /// </summary>
-    public void ReinstallForTurn()
-    {
-        _buf.Clear();
-        _pos = 0;
-        _shell = false;
-        ParkForTurn();
-    }
-
-    /// <summary>
-    /// 사용자 echo 없이 턴 모드로 전환한다(백그라운드 완료 자동 재개 턴). <b>입력 초안은 보존</b>해 턴 중에도
-    /// 이어 편집할 수 있다. composer 가 해체돼 있으면 신규 설치 경로(CPR 실측 스크롤)로 다시 세운다.
+    /// 사용자 echo 없이 턴 모드로 전환한다(백그라운드 완료 자동 재개 턴, 프롬프트형 슬래시 커맨드(/init·/review)
+    /// 의 모델 턴). <b>입력 초안은 보존</b>해 턴 중에도 이어 편집할 수 있다(제출로 해체된 경우 버퍼는 이미 비어
+    /// 있다). composer 가 해체돼 있으면 신규 설치 경로(CPR 실측 스크롤)로 다시 세운다.
     /// 설치돼 있었으면 커서가 입력창 안에 있으므로 영역 하단으로 옮겨 한 줄 내린다(직전 대화 줄을 덮지 않게).
     /// 이후 출력 커서는 영역 하단에 park — 스트리밍이 컴퍼저 위에서 스크롤된다.
     /// </summary>
@@ -428,7 +420,8 @@ public sealed class BottomDock
         _turnMode = false;   // 프롬프트 편집: 실제 커서로 정상 렌더
         // composer 가 이미 설치돼 있고 새 초기값이 없으면(턴 종료 후 이어짐) 진행 중이던 초안을 보존한다.
         // 초안을 보존하면 '!' 셸 모드도 함께 보존한다(깨움 뒤 셸 초안이 일반 프롬프트로 바뀌지 않게).
-        if (!_installed || initialText != null)
+        // 해체돼 있어도(큐의 슬래시·셸 명령) 초안은 남긴다 — 제출로 해체된 경우는 SubmitAndTeardown 이 이미 비웠다.
+        if (initialText != null)
         {
             _shell = false;
             _buf.Clear();

@@ -114,6 +114,78 @@ public class BackgroundResumeTests
         await running.Completion;
     }
 
+    [Fact]
+    public async Task KillShell_on_a_finished_shell_acknowledges_it()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        var reg = new BackgroundShellRegistry();
+        var shell = reg.Start("echo done", Path.GetTempPath());
+        await shell.Completion;
+
+        var text = await Run(new KillShellTool(reg), """{"shell_id":"bash_1"}""");
+        Assert.Contains("exit code 0", text);   // 최종 상태를 모델에 알려줬다
+        Assert.True(shell.Acknowledged);        // → 완료 보고를 한 번 더 띄우지 않는다
+    }
+
+    [Fact]
+    public async Task ReadNew_returns_the_status_seen_at_read_time()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        var reg = new BackgroundShellRegistry();
+        var shell = reg.Start("echo out; exit 4", Path.GetTempPath());
+        await shell.Completion;
+
+        var (text, _, status, exitCode) = shell.ReadNew();
+        Assert.Contains("out", text);
+        Assert.Equal(BackgroundShellStatus.Completed, status);
+        Assert.Equal(4, exitCode);
+    }
+
+    // 셸이 띄우고 떨어져 나간 자식(init 에 재부모)도 KillShell 의 그룹 종료에 함께 죽는다.
+    [Fact]
+    public async Task KillShell_also_kills_detached_children()
+    {
+        if (OperatingSystem.IsWindows() || !File.Exists("/usr/bin/setsid")) return;
+
+        var reg = new BackgroundShellRegistry();
+        var shell = reg.Start("(sleep 300 >/dev/null 2>&1 & echo $!); sleep 300", Path.GetTempPath());
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (shell.UnreadLength == 0 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(50);
+        }
+
+        var orphanPid = int.Parse(shell.ReadNew().Text.Trim());
+        Assert.True(Directory.Exists($"/proc/{orphanPid}"));
+
+        await Run(new KillShellTool(reg), """{"shell_id":"bash_1"}""");
+        await shell.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+
+        deadline = DateTime.UtcNow.AddSeconds(5);
+        while (IsAlive(orphanPid) && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(50);
+        }
+
+        Assert.False(IsAlive(orphanPid));
+    }
+
+    // /proc/<pid>/stat 의 상태가 좀비(Z)면 이미 죽은 것(부모 수거 대기).
+    private static bool IsAlive(int pid)
+    {
+        try
+        {
+            var stat = File.ReadAllText($"/proc/{pid}/stat");
+            return stat[(stat.LastIndexOf(')') + 2)] != 'Z';
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+    }
+
     // 끝나지 않는 stdin — 키 없이 대기 루프만 돌게 한다(리더 스레드는 백그라운드라 프로세스와 함께 정리).
     private sealed class SilentStream : Stream
     {
@@ -169,10 +241,15 @@ public class BackgroundResumeTests
             Assert.Equal(PromptInterrupt.WakeSignal, dock.ReadLine(history, slash, null));
             Assert.Equal("half typed", dock.CurrentText);
 
-            // 대비: 슬래시 명령 턴용 재설치는 초안을 비운다.
-            dock.ReinstallForTurn();
+            // 큐의 슬래시·셸 명령이 composer 를 해체해도 다음 프롬프트에 초안이 남는다.
+            dock.Teardown();
+            Assert.Equal(PromptInterrupt.WakeSignal, dock.ReadLine(history, slash, null));
+            Assert.Equal("half typed", dock.CurrentText);
+
+            // 큐의 일반 메시지를 턴으로 echo 해도 입력 중 초안은 그대로.
+            dock.KeepComposerForTurn("queued message", keepDraft: true);
             Assert.True(dock.InTurn);
-            Assert.Equal(string.Empty, dock.CurrentText);
+            Assert.Equal("half typed", dock.CurrentText);
         }
         finally
         {

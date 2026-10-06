@@ -172,13 +172,7 @@ public sealed class BashTool : ITool
         var timedOut = false;
         try
         {
-            // setsid 바이너리가 없는 플랫폼(macOS 등)은 폴백으로 셸을 직접 띄운다(트리 kill 폴백이 담당).
-            var setsid = File.Exists("/usr/bin/setsid") ? "/usr/bin/setsid" : null;
-            var (exe, exeArgs) = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || setsid is null
-                ? (shell, args)
-                // Unix: setsid 로 새 세션·프로세스 그룹에서 띄운다. 그룹 리더 PID == PGID 이므로
-                // 타임아웃 시 kill(-PGID) 로 데몬(재부파된 자식 포함)까지 확정 타격할 수 있다.
-                : (setsid, new[] { shell }.Concat(args).ToArray());
+            var (exe, exeArgs) = InNewProcessGroup(shell, args);
             var cmd = Cli.Wrap(exe)
                 .WithArguments(exeArgs)
                 .WithWorkingDirectory(workDir)
@@ -270,11 +264,23 @@ public sealed class BashTool : ITool
         return combined.ToString();
     }
 
+    // Unix: setsid 로 새 세션·프로세스 그룹에서 띄운다. 그룹 리더 PID == PGID 이므로 종료 시
+    // kill(-PGID) 로 데몬(재부모된 자식 포함)까지 확정 타격할 수 있다(KillProcessTree).
+    // setsid 바이너리가 없는 플랫폼(macOS 등)·Windows 는 셸을 직접 띄운다(트리 kill 폴백이 담당).
+    // 백그라운드 셸(BackgroundShellRegistry)도 같은 방식으로 띄운다.
+    internal static (string Exe, string[] Args) InNewProcessGroup(string shell, string[] args)
+    {
+        var setsid = File.Exists("/usr/bin/setsid") ? "/usr/bin/setsid" : null;
+        return RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || setsid is null
+            ? (shell, args)
+            : (setsid, new[] { shell }.Concat(args).ToArray());
+    }
+
     // 타임아웃 판정 시 프로세스와 자손 전체를 종료한다. 셸을 setsid(새 세션·프로세스 그룹)로
     // 띄웠으므로 그룹 리더 PID == PGID 이고, kill(-PGID) 로 그룹 전체를 한 번에 친다 —
     // 명령이 띄운 데몬이 init 에 재부모되어도 PGID 는 유지되므로 파이프 홀더까지 확정 타격된다.
     // 그룹 킬에 실패했을 때의 폴백으로 /proc children 순회 킬을 유지한다.
-    private static void KillProcessTree(int processId, CancellationTokenSource cts)
+    internal static void KillProcessTree(int processId, CancellationTokenSource cts)
     {
         try
         {
@@ -283,6 +289,12 @@ public sealed class BashTool : ITool
         catch
         {
             // best effort
+        }
+
+        // PID 를 모르면(0) 여기서 멈춘다 — kill(-0) 은 '호출자 자신의 프로세스 그룹' 이라 zaiCode 까지 죽인다.
+        if (processId <= 0)
+        {
+            return;
         }
 
         try

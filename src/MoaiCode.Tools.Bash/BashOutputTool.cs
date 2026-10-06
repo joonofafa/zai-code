@@ -76,14 +76,14 @@ public sealed class BashOutputTool : ITool
             }
         }
 
-        var (text, truncated) = shell.ReadNew();
+        var (text, truncated, status, exitCode) = shell.ReadNew();
         if (filter is not null && text.Length > 0)
         {
             text = string.Join('\n', text.Split('\n').Where(l => filter.IsMatch(l)));
         }
 
         var sb = new StringBuilder();
-        sb.Append(StatusLine(shell));
+        sb.Append(StatusLine(shell.Id, status, exitCode));   // 읽은 시점의 상태(따로 다시 읽으면 어긋날 수 있다)
         if (truncated)
         {
             sb.AppendLine().Append(L10n.Get("tools.bashOutput.truncated"));
@@ -94,11 +94,13 @@ public sealed class BashOutputTool : ITool
         yield return new ToolOutput(sb.ToString());
     }
 
-    internal static string StatusLine(BackgroundShell shell) => shell.Status switch
+    internal static string StatusLine(BackgroundShell shell) => StatusLine(shell.Id, shell.Status, shell.ExitCode);
+
+    internal static string StatusLine(string id, BackgroundShellStatus status, int? exitCode) => status switch
     {
-        BackgroundShellStatus.Running => L10n.Get("tools.bashOutput.statusRunning", shell.Id),
-        BackgroundShellStatus.Killed => L10n.Get("tools.bashOutput.statusKilled", shell.Id),
-        _ => L10n.Get("tools.bashOutput.statusCompleted", shell.Id, shell.ExitCode?.ToString() ?? "?"),
+        BackgroundShellStatus.Running => L10n.Get("tools.bashOutput.statusRunning", id),
+        BackgroundShellStatus.Killed => L10n.Get("tools.bashOutput.statusKilled", id),
+        _ => L10n.Get("tools.bashOutput.statusCompleted", id, exitCode?.ToString() ?? "?"),
     };
 
     private static Regex? TryRegex(string pattern)

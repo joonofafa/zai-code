@@ -52,6 +52,9 @@ public sealed class BackgroundShell
 
     internal CancellationToken KillToken => _kill.Token;
 
+    /// <summary>셸 프로세스 PID(setsid 로 띄웠으면 PGID 와 같다) — 그룹 종료용.</summary>
+    internal int ProcessId { get; set; }
+
     internal void Append(string line)
     {
         lock (_lock)
@@ -78,8 +81,12 @@ public sealed class BackgroundShell
         get { lock (_lock) { return _buffer.Length - _readPos; } }
     }
 
-    /// <summary>마지막 조회 이후 새로 쌓인 출력. truncated 는 그 사이 상한 초과로 일부가 버려졌음.</summary>
-    public (string Text, bool Truncated) ReadNew()
+    /// <summary>
+    /// 마지막 조회 이후 새로 쌓인 출력. truncated 는 그 사이 상한 초과로 일부가 버려졌음.
+    /// Status/ExitCode 는 읽은 시점의 상태 — 읽은 뒤 따로 조회하면 그 사이 종료돼 "완료"인데 끝 출력은
+    /// 못 받은 어긋난 보고가 된다.
+    /// </summary>
+    public (string Text, bool Truncated, BackgroundShellStatus Status, int? ExitCode) ReadNew()
     {
         lock (_lock)
         {
@@ -93,7 +100,7 @@ public sealed class BackgroundShell
 
             var truncated = _truncated;
             _truncated = false;
-            return (text, truncated);
+            return (text, truncated, Status, ExitCode);
         }
     }
 
@@ -126,17 +133,18 @@ public sealed class BackgroundShell
     {
         lock (_lock)
         {
+            Acknowledged = true;   // 직접 kill(이미 끝났으면 KillShell 이 최종 상태를 알려준다) — 결과를 이미 안다
             if (Status != BackgroundShellStatus.Running)
             {
                 return false;
             }
 
             Status = BackgroundShellStatus.Killed;
-            Acknowledged = true;   // 직접 kill — 결과를 이미 안다
         }
 
-        // CliWrap 은 토큰 취소 시 Process.Kill(entireProcessTree: true) 로 자식까지 정리한다.
-        _kill.Cancel();
+        // 동기 Bash 와 같은 종료: CliWrap 취소 + 프로세스 그룹(setsid) 통째 SIGKILL. 트리 kill 만으로는
+        // `서버 &`·nohup 처럼 init 에 재부모된 자식이 살아남아 포트·파이프를 계속 쥐었다.
+        BashTool.KillProcessTree(ProcessId, _kill);
         return true;
     }
 }
@@ -176,16 +184,17 @@ public sealed class BackgroundShellRegistry
         var (exe, args) = ResolveShell(command);
 
         var stdout = PipeTarget.ToDelegate(shell.Append, Encoding.UTF8);
-        var run = Cli.Wrap(exe)
+        (exe, args) = BashTool.InNewProcessGroup(exe, args);   // 그룹 종료(Kill)가 떨어져 나간 자식까지 닿게
+        var execution = Cli.Wrap(exe)
             .WithArguments(args)
             .WithWorkingDirectory(workingDirectory)
             .WithValidation(CommandResultValidation.None)
             .WithStandardOutputPipe(stdout)
             .WithStandardErrorPipe(stdout)   // 동기 Bash 와 같이 stdout/stderr 합산
-            .ExecuteAsync(shell.KillToken)
-            .Task;
+            .ExecuteAsync(shell.KillToken);
 
-        shell.Track(run);
+        shell.ProcessId = execution.ProcessId;
+        shell.Track(execution.Task);
         _shells[id] = shell;
 
         // 완료 통보: Track 이 Status/ExitCode 를 확정한 뒤 같은 continuation 체인에서 발화.
