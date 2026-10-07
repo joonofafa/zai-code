@@ -49,6 +49,34 @@ public class FileToolsTests : IDisposable
         return (sb.ToString(), err);
     }
 
+    // 방금 Write 로 만든 파일은 Read 없이 바로 Edit·재Write 할 수 있다(쓴 내용은 모델이 안다).
+    [Fact]
+    public async Task Edit_and_rewrite_right_after_write_need_no_read()
+    {
+        var ctx = new ToolContext(_dir, PermissionMode.Auto, new ReadTracker());
+
+        async Task<bool> RunWith(ITool tool, string json)
+        {
+            using var doc = JsonDocument.Parse(json);
+            var err = false;
+            await foreach (var p in tool.ExecuteAsync(doc.RootElement, ctx, default))
+            {
+                err |= p is ToolOutput { IsError: true };
+            }
+
+            return err;
+        }
+
+        Assert.False(await RunWith(new FileWriteTool(), """{"path":"w.txt","content":"alpha beta\n"}"""));
+        Assert.False(await RunWith(new FileEditTool(), """{"path":"w.txt","old_string":"beta","new_string":"gamma"}"""));
+        Assert.Equal("alpha gamma\n", File.ReadAllText(Path.Combine(_dir, "w.txt")));
+        Assert.False(await RunWith(new FileWriteTool(), """{"path":"w.txt","content":"again\n"}"""));
+
+        // 다른 사람이 만든(읽지 않은) 기존 파일은 여전히 Read 가 먼저다.
+        File.WriteAllText(Path.Combine(_dir, "other.txt"), "x");
+        Assert.True(await RunWith(new FileEditTool(), """{"path":"other.txt","old_string":"x","new_string":"y"}"""));
+    }
+
     [Fact]
     public async Task Write_then_Read_roundtrips()
     {

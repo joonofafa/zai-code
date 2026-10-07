@@ -56,6 +56,50 @@ public sealed class HeadlessRunnerTests
         return sw.ToString();
     }
 
+    /// <summary>첫 턴에 없는 툴을 부르고(실패), 다음 턴에 정상 답으로 끝나는 모델.</summary>
+    private sealed class FailingToolThenAnswerModel : IChatModel
+    {
+        private int _calls;
+
+        public async IAsyncEnumerable<StreamEvent> StreamAsync(
+            IReadOnlyList<Message> messages,
+            IReadOnlyList<ITool> tools,
+            [EnumeratorCancellation] CancellationToken ct = default)
+        {
+            await Task.Yield();
+            if (_calls++ == 0)
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse("{}");
+                yield return new ToolCallRequested(new ToolUseBlock("t1", "NoSuchTool", doc.RootElement.Clone()));
+                yield return new TurnCompleted(new Usage(1, 1), "tool_calls");
+                yield break;
+            }
+
+            yield return new TextDelta("done");
+            yield return new TurnCompleted(new Usage(1, 1), "stop");
+        }
+    }
+
+    // 도중의 툴 실패는 실행 실패가 아니다 — 끝까지 마친 실행은 종료 코드 0.
+    [Fact]
+    public async Task Tool_error_mid_run_does_not_fail_the_run()
+    {
+        var originalOut = Console.Out;
+        var originalErr = Console.Error;
+        Console.SetOut(new StringWriter());
+        Console.SetError(new StringWriter());
+        try
+        {
+            var engine = new QueryEngine(new FailingToolThenAnswerModel(), Array.Empty<ITool>(), workingDirectory: Path.GetTempPath());
+            Assert.Equal(0, await HeadlessRunner.RunAsync(engine, "hi", CancellationToken.None));
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Console.SetError(originalErr);
+        }
+    }
+
     [Fact]
     public async Task Strips_thinking_status_marker_split_across_deltas()
     {

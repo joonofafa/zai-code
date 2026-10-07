@@ -74,6 +74,9 @@ public sealed class FileWriteTool : ITool
         }
 
         await File.WriteAllTextAsync(path, inp.Content ?? "", ct).ConfigureAwait(false);
+        // 방금 쓴 내용은 모델이 안다 — 읽은 것으로 표시해 바로 Edit/재Write 할 수 있게 한다
+        // (아니면 매번 Read 한 번을 더 해야 했다).
+        context.Reads?.MarkRead(path);
         yield return new ToolOutput($"Wrote {(inp.Content ?? "").Length} bytes to {path}");
     }
 }

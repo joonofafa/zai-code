@@ -18,7 +18,6 @@ public static class HeadlessRunner
     public static async Task<int> RunAsync(QueryEngine engine, string prompt, CancellationToken ct, string outputFormat)
     {
         var json = string.Equals(outputFormat, "json", StringComparison.OrdinalIgnoreCase);
-        var hadError = false;
         var stopReason = "end_turn";
 
         // 추론 마커(<think>…, __THINKING_STATUS__:…)는 델타 경계에 걸쳐 쪼개져 오므로 조각 단위로는
@@ -68,8 +67,9 @@ public static class HeadlessRunner
                         Console.Error.WriteLine($"→ {t.Block.Name}");
                         break;
                     case ToolExecuted x:
+                        // 툴 실패는 실행 실패가 아니다 — 모델이 결과를 보고 이어서 고친다(Read 누락·없는 경로 등).
+                        // 예전엔 한 번이라도 있으면 종료 코드 1/is_error=true 라, 과제를 끝낸 실행도 실패로 보였다.
                         Console.Error.WriteLine($"{(x.IsError ? "✗" : "✓")} {x.ToolName}");
-                        hadError |= x.IsError;
                         break;
                     case TurnCompleted tc:
                         FlushText();
@@ -94,7 +94,7 @@ public static class HeadlessRunner
         FlushText();
 
         var u = engine.CumulativeUsage;
-        var isError = errCode is not null || hadError;
+        var isError = errCode is not null;
 
         if (json)
         {
@@ -113,7 +113,7 @@ public static class HeadlessRunner
                 },
             };
             Console.Out.WriteLine(obj.ToJsonString(new JsonSerializerOptions { WriteIndented = false }));
-            return errCode ?? (hadError ? 1 : 0);
+            return errCode ?? 0;
         }
 
         if (errMsg is not null)
@@ -129,6 +129,6 @@ public static class HeadlessRunner
                 $"\"cache_read\":{u.CacheReadTokens},\"cache_creation\":{u.CacheCreationTokens}}}");
         }
 
-        return errCode ?? (hadError ? 1 : 0);
+        return errCode ?? 0;
     }
 }
