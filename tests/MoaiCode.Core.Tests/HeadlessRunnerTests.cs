@@ -80,6 +80,39 @@ public sealed class HeadlessRunnerTests
         }
     }
 
+    /// <summary>본문 없이 출력 한도(stop=length)로만 끝나는 모델 — 추론만 하다 잘린 응답.</summary>
+    private sealed class LengthCutOnlyModel : IChatModel
+    {
+        public async IAsyncEnumerable<StreamEvent> StreamAsync(
+            IReadOnlyList<Message> messages,
+            IReadOnlyList<ITool> tools,
+            [EnumeratorCancellation] CancellationToken ct = default)
+        {
+            await Task.Yield();
+            yield return new TurnCompleted(new Usage(1, 1), "length");
+        }
+    }
+
+    // 답 없이 출력 한도로 끝난 실행은 실패(종료 코드 3)로 알린다 — 예전엔 0 + 빈 출력.
+    [Fact]
+    public async Task Length_cut_without_answer_fails_the_run()
+    {
+        var originalOut = Console.Out;
+        var originalErr = Console.Error;
+        Console.SetOut(new StringWriter());
+        Console.SetError(new StringWriter());
+        try
+        {
+            var engine = new QueryEngine(new LengthCutOnlyModel(), Array.Empty<ITool>(), workingDirectory: Path.GetTempPath());
+            Assert.Equal(3, await HeadlessRunner.RunAsync(engine, "hi", CancellationToken.None));
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Console.SetError(originalErr);
+        }
+    }
+
     // 도중의 툴 실패는 실행 실패가 아니다 — 끝까지 마친 실행은 종료 코드 0.
     [Fact]
     public async Task Tool_error_mid_run_does_not_fail_the_run()

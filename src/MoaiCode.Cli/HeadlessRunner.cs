@@ -26,6 +26,8 @@ public static class HeadlessRunner
         var run = new StringBuilder();
         var full = new StringBuilder();
 
+        var produced = false;   // 답변 텍스트가 한 번이라도 나왔는가(출력 모드 무관)
+
         void FlushText()
         {
             if (run.Length == 0)
@@ -40,6 +42,7 @@ public static class HeadlessRunner
                 return;
             }
 
+            produced = true;
             if (json)
             {
                 if (full.Length > 0) full.Append('\n');
@@ -92,6 +95,15 @@ public static class HeadlessRunner
         }
 
         FlushText();
+
+        // 출력 한도에 걸린 채 답 없이 끝났으면 실패로 알린다 — 예전엔 종료 코드 0 에 빈 출력이라
+        // 호출자(스크립트·브리지)가 성공으로 오인했다.
+        if (errCode is null && string.Equals(stopReason, "length", StringComparison.OrdinalIgnoreCase)
+            && !produced)
+        {
+            errCode = 3;
+            errMsg = "the model hit its output token limit without producing an answer (see MOAI_MAX_TOKENS).";
+        }
 
         var u = engine.CumulativeUsage;
         var isError = errCode is not null;

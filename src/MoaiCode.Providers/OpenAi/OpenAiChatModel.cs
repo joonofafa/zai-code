@@ -118,7 +118,9 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl
             ["stream"] = true,
             // max_tokens 미전송 시 일부 게이트웨이(open-moai 등)가 1024 로 캡핑 → 응답이 중간에 잘려
             // 모델이 작업을 끝내기 전에 멈춘다. 넉넉히 보낸다(env MOAI_MAX_TOKENS, 기본 8192).
-            ["max_tokens"] = MaxOutputTokens(),
+            // 직전 응답이 추론만 하다 한도에서 잘렸으면 이번 한 번은 API 최대치로 — 같은 한도로 다시 물으면
+            // 처음부터 다시 추론하다 똑같이 잘린다(어려운 과제에서 응답 6번이 전부 추론만으로 끝난 실측).
+            ["max_tokens"] = _boostOutput ? ApiMaxOutputTokens : MaxOutputTokens(),
             ["messages"] = BuildMessages(messages),
         };
 
@@ -280,6 +282,8 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl
         // 토큰 한도 컷 시 content 도달 전에 잘리면, 잘린 reasoning 원문을 답변으로 흘려보내
         // 화면에 추론이 그대로 노출되는 사고가 있었다(2026-09-21). 이어쓰기 누지에 맡긴다.
         var hasTools = toolAccum.Values.Any(b => !string.IsNullOrEmpty(b.Name));
+        _boostOutput = string.Equals(stopReason, "length", StringComparison.OrdinalIgnoreCase)
+                       && !emittedContent && !hasTools;
         if (!emittedContent && !hasTools && reasoning.Length > 0
             && !string.Equals(stopReason, "length", StringComparison.OrdinalIgnoreCase))
         {
@@ -516,15 +520,23 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl
 
     // 출력 토큰 상한. env MOAI_MAX_TOKENS 로 조정(기본 8192). 게이트웨이의 낮은 기본 캡(예:1024)으로
     // 응답이 잘려 작업 도중 멈추는 것을 방지. 합리적 범위로 클램프.
+    // z.ai chat/completions 가 받는 max_tokens 상한(초과 시 400 '1210 max_tokens parameter is illegal').
+    public const int ApiMaxOutputTokens = 131_072;
+
+    // 직전 응답이 본문·툴콜 없이 추론만 하다 stop=length 로 잘렸는가 — 다음 요청 한 번 한도를 최대로 올린다.
+    private volatile bool _boostOutput;
+
     private static int MaxOutputTokens()
     {
         var env = Environment.GetEnvironmentVariable("MOAI_MAX_TOKENS");
         if (int.TryParse(env, out var n) && n > 0)
         {
-            return Math.Clamp(n, 256, 200_000);
+            return Math.Clamp(n, 256, ApiMaxOutputTokens);
         }
 
-        return 16384;   // 큰 단일 파일(예: 게임 index.html) Write 가 중간에 잘려 'path' 누락되던 문제 완화
+        // GLM 계열은 추론과 본문이 이 한도를 함께 쓴다. 16384 였을 땐 어려운 과제에서 추론만으로 한도를 다 써
+        // 본문·툴콜 없이 잘리는 일이 반복됐다(큰 단일 파일 Write 가 잘리던 문제도 함께 줄인다).
+        return 65_536;
     }
 
     // 응답 헤더(첫 바이트) 도착 대기 상한. env MOAI_HEADER_TIMEOUT_SECONDS 로 조정(기본 300s, 0=비활성).
