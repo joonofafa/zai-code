@@ -77,7 +77,17 @@ public sealed class FileEditTool : ITool
             yield break;
         }
 
-        var content = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
+        // 인코딩·BOM 을 보존한다. 판별한 인코딩으로 온전히 풀리지 않는 파일(CP949 등)은 고치지 않는다 —
+        // UTF-8 로 읽어 다시 쓰면 편집한 곳만이 아니라 파일의 모든 비-ASCII 글자가 깨진다.
+        var bytes = await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false);
+        if (!TextFileCodec.TryDecodeStrict(bytes, out var content, out var encoding))
+        {
+            yield return new ToolOutput(
+                "This file is not valid UTF-8/UTF-16 text (a legacy encoding such as CP949?). Editing it would " +
+                "corrupt every non-ASCII character, so nothing was changed. Convert it first (e.g. with iconv) " +
+                "or edit it with a tool that knows its encoding.", IsError: true);
+            yield break;
+        }
 
         // Windows CRLF 파일 폴백: Read 도구는 줄 단위(\r 제거)로 보여주므로 모델이 만든
         // old_string/new_string 은 항상 LF-only 다. CRLF 파일에 그대로 ordinal 매칭하면
@@ -91,7 +101,8 @@ public sealed class FileEditTool : ITool
                 inp = inp with
                 {
                     OldString = normOld,
-                    NewString = inp.NewString.Replace("\n", "\r\n"),
+                    // new_string 에 CRLF 가 이미 섞여 있으면 그대로 바꾸면 \r\r\n 이 된다 — LF 로 맞춘 뒤 바꾼다.
+                    NewString = inp.NewString.Replace("\r\n", "\n").Replace("\n", "\r\n"),
                 };
             }
         }
@@ -114,7 +125,7 @@ public sealed class FileEditTool : ITool
             ? content.Replace(inp.OldString, inp.NewString)
             : ReplaceFirst(content, inp.OldString, inp.NewString);
 
-        await File.WriteAllTextAsync(path, updated, ct).ConfigureAwait(false);
+        await File.WriteAllBytesAsync(path, TextFileCodec.Encode(updated, encoding), ct).ConfigureAwait(false);
         yield return new ToolOutput($"Edited {path} ({(inp.ReplaceAll ? count : 1)} replacement(s))");
     }
 

@@ -49,6 +49,74 @@ public class FileToolsTests : IDisposable
         return (sb.ToString(), err);
     }
 
+    private static string EditJson(string path, string oldS, string newS) =>
+        JsonSerializer.Serialize(new { path, old_string = oldS, new_string = newS });
+
+    // Edit/Write 가 항상 BOM 없는 UTF-8 로 써서 BOM 이 사라지고 UTF-16 파일(.ps1·.reg 등)이 재인코딩됐다.
+    [Fact]
+    public async Task Edit_preserves_utf8_bom_and_utf16_encoding()
+    {
+        var bomPath = Path.Combine(_dir, "bom.txt");
+        File.WriteAllText(bomPath, "hello 세계\n", new UTF8Encoding(true));
+        var r = await Run(new FileEditTool(), EditJson(bomPath, "hello", "bye"));
+        Assert.False(r.IsError, r.Output);
+        var bytes = File.ReadAllBytes(bomPath);
+        Assert.Equal(new byte[] { 0xEF, 0xBB, 0xBF }, bytes[..3]);
+        Assert.Equal("bye 세계\n", new UTF8Encoding(true).GetString(bytes[3..]));
+
+        var u16 = Path.Combine(_dir, "u16.ps1");
+        File.WriteAllText(u16, "Write-Host 'a'\r\n", Encoding.Unicode);   // UTF-16 LE + BOM
+        r = await Run(new FileEditTool(), EditJson(u16, "'a'", "'b'"));
+        Assert.False(r.IsError, r.Output);
+        bytes = File.ReadAllBytes(u16);
+        Assert.Equal(new byte[] { 0xFF, 0xFE }, bytes[..2]);
+        Assert.Equal("Write-Host 'b'\r\n", Encoding.Unicode.GetString(bytes[2..]));
+
+        // Read 도 UTF-16 을 제대로 풀어 보여준다(예전엔 바이트를 UTF-8 로 읽어 깨졌다).
+        var read = await Run(new FileReadTool(), JsonSerializer.Serialize(new { path = u16 }));
+        Assert.Contains("Write-Host 'b'", read.Output);
+    }
+
+    // 레거시 인코딩(CP949 등) 파일은 UTF-8 로 읽으면 U+FFFD 로 바뀌어 저장 시 파일 전체가 깨진다 — 편집을 거부한다.
+    [Fact]
+    public async Task Edit_refuses_files_that_are_not_valid_utf8()
+    {
+        var path = Path.Combine(_dir, "legacy.txt");
+        var original = new byte[] { (byte)'a', (byte)'=', 0xC7, 0xD1, 0xB1, 0xDB, (byte)'\n' };   // "a=한글" in CP949
+        File.WriteAllBytes(path, original);
+        var r = await Run(new FileEditTool(), EditJson(path, "a=", "b="));
+        Assert.True(r.IsError);
+        Assert.Contains("not valid UTF-8", r.Output);
+        Assert.Equal(original, File.ReadAllBytes(path));
+    }
+
+    // CRLF 파일에서 old_string 은 LF 인데 new_string 에 CRLF 가 섞이면 \r\r\n 이 됐다.
+    [Fact]
+    public async Task Edit_on_crlf_file_does_not_double_carriage_returns()
+    {
+        var path = Path.Combine(_dir, "crlf.txt");
+        File.WriteAllText(path, "one\r\ntwo\r\n");
+        var r = await Run(new FileEditTool(), EditJson(path, "one\ntwo", "uno\r\ndos"));
+        Assert.False(r.IsError, r.Output);
+        Assert.Equal("uno\r\ndos\r\n", File.ReadAllText(path));
+    }
+
+    // 읽기에 실패한 파일은 '읽음'이 아니다 — 예전엔 시도만으로 표시돼, 내용을 못 본 파일을 Write 가 덮어쓸 수 있었다.
+    [Fact]
+    public async Task Failed_read_does_not_satisfy_read_before_write()
+    {
+        var path = Path.Combine(_dir, "broken.docx");
+        File.WriteAllText(path, "not a zip");
+        var ctx = new ToolContext(_dir, PermissionMode.Auto, new ReadTracker());
+
+        using var readDoc = JsonDocument.Parse(JsonSerializer.Serialize(new { path }));
+        await foreach (var _ in new FileReadTool().ExecuteAsync(readDoc.RootElement, ctx, default))
+        {
+        }
+
+        Assert.False(ctx.Reads!.WasRead(path));
+    }
+
     // 방금 Write 로 만든 파일은 Read 없이 바로 Edit·재Write 할 수 있다(쓴 내용은 모델이 안다).
     [Fact]
     public async Task Edit_and_rewrite_right_after_write_need_no_read()

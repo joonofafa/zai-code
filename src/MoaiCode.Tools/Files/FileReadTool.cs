@@ -66,8 +66,6 @@ public sealed class FileReadTool : ITool
             yield break;
         }
 
-        context.Reads?.MarkRead(path);
-
         string text;
         var truncatedBytes = false;
         string? readError = null;
@@ -114,7 +112,7 @@ public sealed class FileReadTool : ITool
                     total = (int)maxBytes;
                 }
 
-                text = Encoding.UTF8.GetString(buf, 0, total);
+                text = TextFileCodec.DecodeLenient(buf, total);
             }
             catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
             {
@@ -133,6 +131,9 @@ public sealed class FileReadTool : ITool
             yield return new ToolOutput(readError, IsError: true);
             yield break;
         }
+
+        // 내용을 실제로 받은 뒤에만 '읽음' — 실패한 읽기로 read-before-write 가 풀리면 못 본 파일을 덮어쓴다.
+        context.Reads?.MarkRead(path);
 
         var normalized = text.ReplaceLineEndings("\n");
         var lines = normalized.Length == 0 ? Array.Empty<string>() : normalized.Split('\n');

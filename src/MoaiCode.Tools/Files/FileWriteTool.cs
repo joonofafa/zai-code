@@ -73,10 +73,27 @@ public sealed class FileWriteTool : ITool
             Directory.CreateDirectory(dir);
         }
 
-        await File.WriteAllTextAsync(path, inp.Content ?? "", ct).ConfigureAwait(false);
+        // 기존 파일의 BOM 인코딩(UTF-8 BOM·UTF-16)은 유지한다 — 덮어쓰기로 인코딩이 바뀌면 Windows 도구가 깨진다.
+        var encoding = TextFileCodec.Detect(File.Exists(path) ? ReadHead(path) : []).Encoding;
+        await File.WriteAllBytesAsync(path, TextFileCodec.Encode(inp.Content ?? "", encoding), ct).ConfigureAwait(false);
         // 방금 쓴 내용은 모델이 안다 — 읽은 것으로 표시해 바로 Edit/재Write 할 수 있게 한다
         // (아니면 매번 Read 한 번을 더 해야 했다).
         context.Reads?.MarkRead(path);
         yield return new ToolOutput($"Wrote {(inp.Content ?? "").Length} bytes to {path}");
+    }
+
+    private static byte[] ReadHead(string path)
+    {
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            var head = new byte[3];
+            var n = fs.Read(head, 0, head.Length);
+            return head[..n];
+        }
+        catch (IOException)
+        {
+            return [];
+        }
     }
 }
