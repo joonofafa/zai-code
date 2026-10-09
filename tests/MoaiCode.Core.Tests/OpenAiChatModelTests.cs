@@ -218,6 +218,28 @@ public class OpenAiChatModelTests
         Assert.Equal(65_536, MaxTokensOf(handler.Bodies[3]));
     }
 
+    // 깨진(잘린) 인자를 {} 로 바꾸면 툴이 인자 없이 실행됐다 — 표식을 달아 엔진이 거절하게 한다.
+    [Fact]
+    public async Task Unparseable_tool_arguments_are_marked_not_emptied()
+    {
+        var sse =
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",\"function\":{\"name\":\"Write\",\"arguments\":\"{\\\"path\\\":\\\"a.txt\\\",\\\"content\\\":\\\"hel\"}}]},\"index\":0}]}\n\n" +
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\",\"index\":0}]}\n\n" +
+            "data: [DONE]\n\n";
+        var call = Assert.Single((await Collect(sse)).OfType<ToolCallRequested>()).Block;
+        Assert.True(ToolArguments.IsInvalid(call.Input));
+        Assert.StartsWith("{\"path\":\"a.txt\"", call.Input.GetProperty(ToolArguments.InvalidKey).GetString());
+    }
+
+    // [DONE]·finish_reason 없이 본문이 깨끗하게 끝나면 부분 응답이 완결된 답으로 저장됐다 — 끊김으로 보고한다.
+    [Fact]
+    public async Task Stream_ending_without_finish_is_a_transient_drop()
+    {
+        var sse = "data: {\"choices\":[{\"delta\":{\"content\":\"Half an ans\"},\"index\":0}]}\n\n";
+        var ex = await Assert.ThrowsAsync<MoaiCode.Providers.ProviderException>(() => Collect(sse));
+        Assert.True(ex.IsTransient);
+    }
+
     [Fact]
     public async Task Error_in_sse_body_surfaces_as_exception()
     {

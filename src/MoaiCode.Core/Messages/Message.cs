@@ -37,6 +37,19 @@ public sealed record TextBlock(string Text) : ContentBlock;
 
 public sealed record ToolUseBlock(string Id, string Name, JsonElement Input) : ContentBlock;
 
+/// <summary>
+/// 프로바이더가 툴 인자를 JSON 으로 해석하지 못했을 때(잘림 등) Input 객체에 싣는 표식 키 — 값은 원문 앞부분.
+/// 엔진은 이 호출을 실행하지 않고 오류 결과로 돌려준다. 예전엔 빈 객체 {} 로 바꿔 툴이 인자 없이 실행됐고,
+/// 기록에도 {} 가 남아 모델이 "보낸 적 없는 호출"의 오류를 보고 같은 호출을 되풀이했다.
+/// </summary>
+public static class ToolArguments
+{
+    public const string InvalidKey = "__invalid_json_arguments";
+
+    public static bool IsInvalid(JsonElement input) =>
+        input.ValueKind == JsonValueKind.Object && input.TryGetProperty(InvalidKey, out _);
+}
+
 /// <summary>토큰 사용량 (비용 트래킹용).</summary>
 public sealed record Usage(
     int InputTokens,

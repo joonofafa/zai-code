@@ -152,6 +152,12 @@ public static class Reminders
     // 권한 거부 (utils/messages.ts) — 거부 주체는 자동 위험 게이트·규칙·사용자 중 어느 쪽일 수도
     // 있다. 모델이 "사용자가 거부했다"고 단정·전가하는 것을 막는다(실제 사고: 사용자가 거부한 적
     // 없는데 모델이 "네가 거부했으니 안 했다"고 잘못 전파).
+    // 툴 호출 인자가 완전한 JSON 이 아니었다(대개 출력 도중 잘림) — 실행하지 않았음을 분명히 하고 다시 보내게 한다.
+    public const string InvalidToolArguments =
+        "The arguments of this tool call were not valid JSON (they were probably cut off), so nothing " +
+        "was executed. Send the call again with complete JSON arguments. If the content is large, split " +
+        "it into smaller steps (e.g. write a file in several smaller edits).";
+
     public const string PermissionDenied =
         "This tool use was denied by the permission gate — an automated risk check, the " +
         "configured permission rules, or the user. The tool use was rejected (eg. if it was a file " +

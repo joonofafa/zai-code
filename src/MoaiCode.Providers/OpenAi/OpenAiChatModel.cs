@@ -206,12 +206,16 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl, IOutputBoost
         // 툴콜도 없으면(=빈 응답) 모아둔 reasoning 을 답변으로 폴백 방출한다.
         var reasoning = new StringBuilder();
         var emittedContent = false;
+        // [DONE] 이나 finish_reason 을 받았는가. 둘 다 없이 본문이 '깨끗하게' 끝나면(상류가 끊긴 걸 게이트웨이가
+        // 정상 종료로 닫은 경우) 부분 응답을 완결된 답으로 저장했다 — 끊김으로 보고 재시도에 맡긴다.
+        var sawEnd = false;
 
         await foreach (var data in SseReader.ReadDataLinesAsync(stream, ct).ConfigureAwait(false))
         {
             if (DebugSse) DebugLog("data: " + data);
             if (data == "[DONE]")
             {
+                sawEnd = true;
                 break;
             }
 
@@ -282,8 +286,16 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl, IOutputBoost
                     && fr.ValueKind == JsonValueKind.String)
                 {
                     stopReason = fr.GetString() ?? stopReason;
+                    sawEnd = true;
                 }
             }
+        }
+
+        if (!sawEnd)
+        {
+            throw new ProviderException(
+                L10n.Get("providers.streamEndedEarly", "no finish_reason or [DONE]"),
+                ErrorCategory.NetworkTransient);
         }
 
         // 빈 응답 폴백: content 도 툴콜도 없는데 reasoning 만 왔다면(추론 모델), 그 reasoning 을
@@ -362,7 +374,9 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl, IOutputBoost
         }
         catch (JsonException)
         {
-            using var d = JsonDocument.Parse("{}");
+            var raw = json.Length > 2000 ? json[..2000] : json;
+            var marker = new JsonObject { [ToolArguments.InvalidKey] = raw };
+            using var d = JsonDocument.Parse(marker.ToJsonString());
             return d.RootElement.Clone();
         }
     }

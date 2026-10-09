@@ -551,6 +551,14 @@ public sealed class QueryEngine
                     continue;
                 }
 
+                if (ToolArguments.IsInvalid(call.Input))
+                {
+                    _log($"tool args invalid: {call.Name}");
+                    _messages.Add(new ToolResultMessage(call.Id, Reminders.InvalidToolArguments, true));
+                    yield return new ToolExecuted(call.Name, call.Id, Reminders.InvalidToolArguments, true);
+                    continue;
+                }
+
                 if (!tool.IsReadOnly && !await _gate.AllowAsync(tool, call, ct).ConfigureAwait(false))
                 {
                     _log($"permission denied: {call.Name}");

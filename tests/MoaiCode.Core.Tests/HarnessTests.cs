@@ -488,6 +488,44 @@ public class OutputRecoveryTests
         Assert.Contains(engine.Messages, m => m is UserMessage u && u.Text == Reminders.ReasoningCutRecoveryDone);
     }
 
+    // 인자가 깨진 호출(프로바이더 표식)은 툴을 실행하지 않고 다시 보내라는 오류로 돌려준다.
+    [Fact]
+    public async Task Tool_call_with_invalid_arguments_is_not_executed()
+    {
+        var executed = false;
+        var tool = new LambdaTool("Write", () => executed = true);
+        var bad = JsonDocument.Parse($$"""{"{{ToolArguments.InvalidKey}}":"{\"path\":\"a"}""").RootElement.Clone();
+        var model = new ScriptedModel(
+            _ => new StreamEvent[] { new ToolCallRequested(new ToolUseBlock("c1", "Write", bad)), new TurnCompleted(new Usage(1, 1), "tool_calls") },
+            _ => Answer("ok"));
+        var engine = new QueryEngine(model, new ITool[] { tool });
+        engine.Seed(new[] { new SystemMessage("sys") });
+
+        var evs = await Run(engine);
+
+        Assert.False(executed);
+        var result = Assert.Single(evs.OfType<ToolExecuted>());
+        Assert.True(result.IsError);
+        Assert.Equal(Reminders.InvalidToolArguments, result.Output);
+    }
+
+    private sealed class LambdaTool(string name, Action onRun) : ITool
+    {
+        public string Name => name;
+        public string Description => "";
+        public bool IsReadOnly => true;
+        public bool IsConcurrencySafe => true;
+        public JsonElement InputSchema { get; } = JsonDocument.Parse("""{"type":"object"}""").RootElement.Clone();
+
+        public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
+            JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
+        {
+            await Task.CompletedTask;
+            onRun();
+            yield return new ToolOutput("ran");
+        }
+    }
+
     // 출력 한도 확대는 엔진이 '본' 요청에만 건다 — 예전엔 모델이 스스로 다음 요청을 키워 사이에 낀
     // 컴팩션 요약이 가져갔다. 확대는 추론만 하다 잘린 직후 한 번뿐이다.
     [Fact]
