@@ -240,6 +240,18 @@ public class OpenAiChatModelTests
         Assert.True(ex.IsTransient);
     }
 
+    // z.ai 업무 코드(1113 잔액 부족)를 HTTP 상태로 써서 서버 오류로 분류·재시도했다. 1261 은 컨텍스트 초과다.
+    [Theory]
+    [InlineData(1113, "Insufficient balance or no resource package", false, false)]
+    [InlineData(1261, "Prompt exceeds max length", false, true)]
+    public async Task Zai_business_codes_are_not_http_statuses(int code, string message, bool transient, bool overflow)
+    {
+        var sse = "data: {\"error\":{\"code\":" + code + ",\"message\":\"" + message + "\"}}\n\ndata: [DONE]\n\n";
+        var ex = await Assert.ThrowsAsync<MoaiCode.Providers.ProviderException>(() => Collect(sse));
+        Assert.Equal(transient, ex.IsTransient);
+        Assert.Equal(overflow, ex.IsContextOverflow);
+    }
+
     [Fact]
     public async Task Error_in_sse_body_surfaces_as_exception()
     {

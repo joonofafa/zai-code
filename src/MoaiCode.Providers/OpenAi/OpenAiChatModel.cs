@@ -493,18 +493,20 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl, IOutputBoost
         => s.Length <= max ? s : s[..max] + "…";
 
     // SSE 본문 error 객체에서 상태코드 추출(code/status 가 숫자면 사용, 아니면 400=즉시 노출).
+    // SSE 본문 error 의 HTTP 상태. z.ai 는 code 에 업무 코드(1113 잔액 부족, 1261 프롬프트 초과 …)를 숫자로 줄 수 있다 —
+    // 그대로 상태로 쓰면 1113 이 5xx(서버 오류)로 분류돼 의미 없이 재시도됐다. HTTP 범위(100–599)만 상태로 본다.
     private static int ErrorStatus(JsonElement error)
     {
         if (error.ValueKind == JsonValueKind.Object)
         {
             if (error.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.Number
-                && c.TryGetInt32(out var ci))
+                && c.TryGetInt32(out var ci) && ci is >= 100 and <= 599)
             {
                 return ci;
             }
 
             if (error.TryGetProperty("status", out var s) && s.ValueKind == JsonValueKind.Number
-                && s.TryGetInt32(out var si))
+                && s.TryGetInt32(out var si) && si is >= 100 and <= 599)
             {
                 return si;
             }

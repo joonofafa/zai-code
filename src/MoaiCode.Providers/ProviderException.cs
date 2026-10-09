@@ -71,7 +71,9 @@ public sealed class ProviderException : Exception, IModelException
 
         if (status is 400 or 422)
         {
+            // z.ai: 1261 "Prompt exceeds max length"
             return m.Contains("context") || m.Contains("maximum context") || m.Contains("too long")
+                   || m.Contains("prompt exceeds max length")
                 ? ErrorCategory.ContextOverflow
                 : ErrorCategory.BadRequest;
         }
