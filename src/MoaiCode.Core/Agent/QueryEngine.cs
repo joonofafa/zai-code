@@ -266,7 +266,9 @@ public sealed class QueryEngine
         // 페이즈 진행 상태를 이 요청 시작 시점으로 동기화(요청 중 발생하는 페이즈 전환만 경계로 감지).
         _lastSeenPhase = _currentPhase?.Invoke();
 
-        var toolContext = new ToolContext(_workingDirectory, PermissionMode.Auto, _reads);
+        // 서브에이전트(Agent 툴)가 쓴 토큰을 이 엔진의 누적치에 더한다(/cost·헤드리스 usage).
+        var toolContext = new ToolContext(_workingDirectory, PermissionMode.Auto, _reads,
+            ReportUsage: u => CumulativeUsage = AddUsage(CumulativeUsage, u));
         var failureCounts = new Dictionary<string, int>(StringComparer.Ordinal);
         var successCounts = new Dictionary<string, int>(StringComparer.Ordinal);
         var dupNudged = new HashSet<string>(StringComparer.Ordinal);
@@ -981,6 +983,10 @@ public sealed class QueryEngine
                 {
                     sb.Append(d.Text);
                 }
+                else if (ev is TurnCompleted c)
+                {
+                    CumulativeUsage = AddUsage(CumulativeUsage, c.Usage);   // 메모리 수집 호출 토큰도 센다
+                }
             }
 
             SaveHarvestedMemories(sb.ToString());
@@ -1187,6 +1193,10 @@ public sealed class QueryEngine
             if (ev is TextDelta d)
             {
                 sb.Append(d.Text);
+            }
+            else if (ev is TurnCompleted c)
+            {
+                CumulativeUsage = AddUsage(CumulativeUsage, c.Usage);   // 요약 호출 토큰도 /cost 에 센다
             }
         }
 

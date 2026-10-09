@@ -551,6 +551,24 @@ public class OutputRecoveryTests
         Assert.True(reminderAt > resultAt && resultAt > 0, $"reminder={reminderAt} result={resultAt}");
     }
 
+    // 서브에이전트(Agent 툴)가 쓴 토큰이 버려져 /cost·헤드리스 usage 가 실제보다 작았다.
+    [Fact]
+    public async Task Sub_agent_tokens_are_added_to_the_parent_usage()
+    {
+        using var args = JsonDocument.Parse("""{"description":"d","prompt":"look"}""");
+        var model = new ScriptedModel(
+            _ => new StreamEvent[] { new ToolCallRequested(new ToolUseBlock("a1", "Agent", args.RootElement.Clone())), new TurnCompleted(new Usage(10, 1), "tool_calls") },
+            _ => new StreamEvent[] { new TextDelta("sub done"), new TurnCompleted(new Usage(100, 1), "stop") },   // 서브에이전트
+            _ => new StreamEvent[] { new TextDelta("ok"), new TurnCompleted(new Usage(20, 1), "stop") });
+        var agent = new AgentTool(model, Array.Empty<ITool>(), gate: new AutoApproveGate());
+        var engine = new QueryEngine(model, new ITool[] { agent });
+        engine.Seed(new[] { new SystemMessage("sys") });
+
+        await Run(engine);
+
+        Assert.Equal(130, engine.CumulativeUsage.InputTokens);
+    }
+
     // 출력 한도 확대는 엔진이 '본' 요청에만 건다 — 예전엔 모델이 스스로 다음 요청을 키워 사이에 낀
     // 컴팩션 요약이 가져갔다. 확대는 추론만 하다 잘린 직후 한 번뿐이다.
     [Fact]

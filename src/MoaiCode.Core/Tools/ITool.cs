@@ -32,7 +32,8 @@ public sealed class ReadTracker
 public sealed record ToolContext(
     string WorkingDirectory,
     PermissionMode Permission,
-    ReadTracker? Reads = null);
+    ReadTracker? Reads = null,
+    Action<MoaiCode.Core.Messages.Usage>? ReportUsage = null);   // 툴이 따로 쓴 모델 토큰(서브에이전트) 보고
 
 /// <summary>툴 실행 중 스트리밍되는 진행 이벤트.</summary>
 public abstract record ToolProgress;

@@ -102,6 +102,9 @@ public sealed class AgentTool : ITool
             }
         }
 
+        // 서브에이전트가 쓴 토큰은 부모 누적치에 넣는다(예전엔 버려져 /cost 가 실제보다 작았다).
+        context.ReportUsage?.Invoke(subEngine.CumulativeUsage);
+
         // 서브에이전트 원문에도 추론 마커가 섞여 있다 — 부모 컨텍스트를 오염시키지 않도록 제거.
         var output = ThinkFilter.Strip(sb.ToString());
         yield return new ToolOutput(output.Length == 0 ? "(sub-agent produced no output)" : output);
