@@ -117,6 +117,37 @@ public class FileToolsTests : IDisposable
         Assert.False(ctx.Reads!.WasRead(path));
     }
 
+    // 경로를 글자로만 비교해, 워크스페이스 안의 링크(ws/out -> 바깥)를 거치면 '밖 쓰기' 확인과
+    // 시스템 경로 차단(ws/etc -> /etc)을 모두 건너뛰었다.
+    [Fact]
+    public void Symlinks_out_of_the_workspace_are_followed()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;   // 심볼릭 링크 생성 권한이 필요하다
+        }
+
+        var ws = Path.Combine(_dir, "ws");
+        var outside = Path.Combine(_dir, "outside");
+        Directory.CreateDirectory(ws);
+        Directory.CreateDirectory(outside);
+        Directory.CreateSymbolicLink(Path.Combine(ws, "out"), outside);
+        Directory.CreateSymbolicLink(Path.Combine(ws, "sys"), "/etc");
+        Directory.CreateDirectory(Path.Combine(ws, "inner"));
+
+        Assert.True(MoaiCode.Tools.PathSafety.IsOutsideWorkspace(ws, "out/.profile"));
+        Assert.True(MoaiCode.Tools.PathSafety.IsOutsideWorkspace(ws, "out/new-dir/new.txt"));   // 아직 없는 꼬리
+        Assert.False(MoaiCode.Tools.PathSafety.IsOutsideWorkspace(ws, "inner/a.txt"));
+        Assert.False(MoaiCode.Tools.PathSafety.IsOutsideWorkspace(ws, "brand-new/a.txt"));
+        Assert.NotNull(MoaiCode.Tools.PathSafety.DenyWriteReason(Path.Combine(ws, "sys", "hosts")));
+        Assert.Null(MoaiCode.Tools.PathSafety.DenyWriteReason(Path.Combine(ws, "inner", "a.txt")));
+
+        // 워크스페이스 자체가 링크 경유로 열렸어도(실경로가 다름) 안쪽은 안쪽이다.
+        var wsLink = Path.Combine(_dir, "ws-link");
+        Directory.CreateSymbolicLink(wsLink, ws);
+        Assert.False(MoaiCode.Tools.PathSafety.IsOutsideWorkspace(wsLink, "inner/a.txt"));
+    }
+
     // 방금 Write 로 만든 파일은 Read 없이 바로 Edit·재Write 할 수 있다(쓴 내용은 모델이 안다).
     [Fact]
     public async Task Edit_and_rewrite_right_after_write_need_no_read()
