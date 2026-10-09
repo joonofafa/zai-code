@@ -141,6 +141,25 @@ public class OpenAiChatModelTests
         Assert.Equal("곰곰이 생각한 결과", text);
     }
 
+    // 잘린 응답의 추론은 TurnCompleted.Reasoning 으로 엔진에 넘어가고, 정상 응답이면 null.
+    [Fact]
+    public async Task Length_cut_reports_reasoning_on_turn_completed()
+    {
+        var cut =
+            "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"step one; \"},\"index\":0}]}\n\n" +
+            "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"step two\"},\"index\":0}]}\n\n" +
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"length\",\"index\":0}]}\n\ndata: [DONE]\n\n";
+        var done = await Collect(cut);
+        Assert.Equal("step one; step two", done.OfType<TurnCompleted>().Single().Reasoning);
+        Assert.Empty(done.OfType<TextDelta>());   // 잘린 추론을 답변으로 노출하지 않는다(기존 규칙 유지)
+
+        var ok =
+            "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"think\"},\"index\":0}]}\n\n" +
+            "data: {\"choices\":[{\"delta\":{\"content\":\"answer\"},\"index\":0}]}\n\n" +
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}]}\n\ndata: [DONE]\n\n";
+        Assert.Null((await Collect(ok)).OfType<TurnCompleted>().Single().Reasoning);
+    }
+
     private sealed class SequenceHandler(params string[] sses) : HttpMessageHandler
     {
         private int _i;

@@ -413,6 +413,132 @@ public class OutputRecoveryTests
             m is UserMessage u && u.Text.Contains("cut off"));  // 복구 리마인더 주입
     }
 
+    /// <summary>응답 순서를 대본으로 받는 모델. 각 호출 때 받은 메시지 목록도 기록한다.</summary>
+    private sealed class ScriptedModel(params Func<int, IEnumerable<StreamEvent>>[] script) : IChatModel
+    {
+        public List<IReadOnlyList<Message>> Seen { get; } = new();
+
+        public async IAsyncEnumerable<StreamEvent> StreamAsync(
+            IReadOnlyList<Message> messages, IReadOnlyList<ITool> tools,
+            [EnumeratorCancellation] CancellationToken ct = default)
+        {
+            await Task.Yield();
+            Seen.Add(messages.ToList());
+            var i = Seen.Count - 1;
+            foreach (var ev in script[Math.Min(i, script.Length - 1)](i))
+            {
+                yield return ev;
+            }
+        }
+    }
+
+    private static IEnumerable<StreamEvent> ReasoningCut(string reasoning)
+    {
+        yield return new TurnCompleted(new Usage(1, 1), "length") { Reasoning = reasoning };
+    }
+
+    private static IEnumerable<StreamEvent> Answer(string text)
+    {
+        yield return new TextDelta(text);
+        yield return new TurnCompleted(new Usage(1, 1), "stop");
+    }
+
+    private static IEnumerable<StreamEvent> CallTool(string name, string stop = "tool_calls")
+    {
+        using var doc = JsonDocument.Parse("{}");
+        yield return new ToolCallRequested(new ToolUseBlock("t-" + name + Guid.NewGuid().ToString("n")[..6], name, doc.RootElement.Clone()));
+        yield return new TurnCompleted(new Usage(1, 1), stop);
+    }
+
+    private static async Task<List<StreamEvent>> Run(QueryEngine engine)
+    {
+        var evs = new List<StreamEvent>();
+        await foreach (var ev in engine.SubmitAsync("go"))
+        {
+            evs.Add(ev);
+        }
+
+        return evs;
+    }
+
+    // 추론만 하다 잘린 응답: 그 추론을 다음 요청 한 번에 넘기고, 이어받은 응답이 끝나면 기록에서 덜어낸다.
+    [Fact]
+    public async Task Reasoning_cut_is_carried_into_the_next_request_once()
+    {
+        var model = new ScriptedModel(_ => ReasoningCut("PLAN-ALPHA: parse first, then test"), _ => Answer("done"));
+        var engine = new QueryEngine(model, Array.Empty<ITool>());
+        engine.Seed(new[] { new SystemMessage("sys") });
+
+        var evs = await Run(engine);
+
+        Assert.Equal("done", string.Concat(evs.OfType<TextDelta>().Select(d => d.Text)));
+        var carried = Assert.IsType<UserMessage>(model.Seen[1][^1]);
+        Assert.Contains("<previous_reasoning>", carried.Text);
+        Assert.Contains("PLAN-ALPHA: parse first, then test", carried.Text);
+        Assert.Contains("Do NOT start over", carried.Text);
+
+        // 이어받기가 끝났으니 추론 원문은 기록에 남지 않는다(이후 요청의 토큰 절약).
+        Assert.DoesNotContain(engine.Messages, m => m is UserMessage u && u.Text.Contains("PLAN-ALPHA"));
+        Assert.Contains(engine.Messages, m => m is UserMessage u && u.Text == Reminders.ReasoningCutRecoveryDone);
+    }
+
+    // 넘길 추론이 길면 끝부분(결론·계획 쪽)만 남기고 앞을 버렸다고 알린다.
+    [Fact]
+    public async Task Long_reasoning_cut_keeps_only_the_tail()
+    {
+        var reasoning = "HEAD-MARK " + new string('x', 150_000) + " TAIL-MARK";
+        var model = new ScriptedModel(_ => ReasoningCut(reasoning), _ => Answer("done"));
+        var engine = new QueryEngine(model, Array.Empty<ITool>());
+        engine.Seed(new[] { new SystemMessage("sys") });
+
+        await Run(engine);
+
+        var carried = Assert.IsType<UserMessage>(model.Seen[1][^1]).Text;
+        Assert.Contains("TAIL-MARK", carried);
+        Assert.DoesNotContain("HEAD-MARK", carried);
+        Assert.Contains("beginning was omitted", carried);
+        Assert.True(carried.Length < 101_000 + 2_000);
+    }
+
+    // 컷은 '연속' 횟수로 센다 — 정상 응답 사이사이 난 컷 4번은 모두 복구되고 작업이 끝까지 간다.
+    [Fact]
+    public async Task Output_cuts_separated_by_normal_responses_are_all_recovered()
+    {
+        var script = new List<Func<int, IEnumerable<StreamEvent>>>();
+        for (var k = 0; k < 4; k++)
+        {
+            var name = "Nope" + k;
+            script.Add(_ => ReasoningCut("thinking " + name));
+            script.Add(_ => CallTool(name));
+        }
+
+        script.Add(_ => Answer("finished"));
+        var model = new ScriptedModel(script.ToArray());
+        var engine = new QueryEngine(model, Array.Empty<ITool>(), maxTurns: 40);
+        engine.Seed(new[] { new SystemMessage("sys") });
+
+        var evs = await Run(engine);
+
+        Assert.Contains("finished", string.Concat(evs.OfType<TextDelta>().Select(d => d.Text)));
+        // 네 번째 컷(요청 1건 안에서 누적 4번째)도 추론 이어받기로 복구됐다.
+        Assert.Contains(model.Seen, msgs => msgs[^1] is UserMessage u && u.Text.Contains("thinking Nope3"));
+        Assert.DoesNotContain(evs, e => e is StreamNotice n && n.Text.Contains("output token limit"));
+    }
+
+    // 연속 컷 상한을 넘기면 잘린 툴 호출(인자 불완전)을 실행하지 않고 턴을 끝낸다.
+    [Fact]
+    public async Task Truncated_tool_calls_are_never_dispatched_after_repeated_cuts()
+    {
+        var engine = new QueryEngine(new ScriptedModel(_ => CallTool("Nope", stop: "length")), Array.Empty<ITool>(), maxTurns: 40);
+        engine.Seed(new[] { new SystemMessage("sys") });
+
+        var evs = await Run(engine);
+
+        Assert.DoesNotContain(evs, e => e is ToolExecuted);
+        Assert.Contains(evs, e => e is StreamNotice n && n.Text.Contains("output token limit"));
+        Assert.Equal("length", evs.OfType<TurnCompleted>().Last().StopReason);
+    }
+
     // max_turns 도달 후 최종 답변 시도가 출력 한도로 content 0자로 끝나는 glm 패턴:
     // 재시도(짧게 쓰라는 누지)로 살아나야 한다 — 예전엔 침묵 종료됐다.
     private sealed class MaxTurnsEmptyThenDoneModel : IChatModel

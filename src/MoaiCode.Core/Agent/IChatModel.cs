@@ -10,7 +10,14 @@ public sealed record TextDelta(string Text) : StreamEvent;
 
 public sealed record ToolCallRequested(ToolUseBlock Block) : StreamEvent;
 
-public sealed record TurnCompleted(Usage Usage, string StopReason) : StreamEvent;
+public sealed record TurnCompleted(Usage Usage, string StopReason) : StreamEvent
+{
+    /// <summary>
+    /// 출력 한도로 잘린 응답(stop=length)의 추론 원문(reasoning_content). 대화 기록에는 넣지 않는다 —
+    /// QueryEngine 이 "추론만 하다 잘린" 경우에만 다음 요청 한 번 이어받기용으로 쓴다. 그 외엔 null.
+    /// </summary>
+    public string? Reasoning { get; init; }
+}
 
 /// <summary>툴 실행 완료 (QueryEngine이 디스패치 후 방출, UI 표시용).</summary>
 public sealed record ToolExecuted(string ToolName, string ToolUseId, string Output, bool IsError) : StreamEvent;

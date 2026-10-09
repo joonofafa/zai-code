@@ -195,7 +195,10 @@ public sealed class QueryEngine
         var successCounts = new Dictionary<string, int>(StringComparer.Ordinal);
         var dupNudged = new HashSet<string>(StringComparer.Ordinal);
         var continuationNudges = 0;
-        var outputRecoveries = 0;
+        // 출력 한도 컷은 '연속' 횟수로 센다 — 긴 자율 작업에서 드문드문 나는 컷까지 합산하면 4번째 컷부터
+        // 복구 없이 잘린 응답이 그대로 이어졌다. 정상 응답이 오면 0 으로 돌아간다.
+        var consecutiveCuts = 0;
+        var carriedReasoningIds = new List<string>();   // 추론 이어받기 안내 메시지(이어받기 끝나면 짧게 바꾼다)
         var toolCallRetries = 0;
         var announceNudges = 0;
         var goalNudges = 0;
@@ -251,6 +254,7 @@ public sealed class QueryEngine
             var toolCalls = new List<ToolUseBlock>();
             var stopReason = "end_turn";
             Usage lastUsage = new(0, 0);
+            string? cutReasoning = null;   // stop=length 응답의 추론 원문(프로바이더가 넘겨줌)
 
             // 모델에 보내기 전 tool_use ↔ tool_result 짝을 보증한다. 실패-루프 가드가 툴 처리 도중
             // 턴을 끊거나, 손상된 세션을 /resume 하면 tool_result 없는 tool_use(고아)가 남아 Anthropic 등
@@ -316,6 +320,7 @@ public sealed class QueryEngine
                         case TurnCompleted c:
                             stopReason = c.StopReason;
                             lastUsage = c.Usage;
+                            cutReasoning = c.Reasoning;
                             _log($"model response: stop={c.StopReason} inTok={c.Usage.InputTokens} outTok={c.Usage.OutputTokens} cacheRd={c.Usage.CacheReadTokens} textChars={assistantText.Length} toolCalls={toolCalls.Count}");
                             break;
                     }
@@ -350,6 +355,7 @@ public sealed class QueryEngine
                         assistantText.Clear();
                         toolCalls.Clear();
                         stopReason = "end_turn";
+                        cutReasoning = null;
                         stream = _model.StreamAsync(_messages, _tools, ct).GetAsyncEnumerator(ct);
                     }
 
@@ -380,17 +386,51 @@ public sealed class QueryEngine
             // 잘린 툴 호출은 디스패치하지 말고 버린 뒤, 작게 나눠 이어쓰도록 유도한다. 툴콜 유무와 무관하게
             // 먼저 처리하는 게 핵심 — 예전엔 toolCalls.Count==0 일 때만 체크해, 잘린 Write 가 그대로 디스패치돼
             // 'path required' 로 실패·반복됐다(큰 단일 파일 생성 시).
-            if (IsOutputTruncated(stopReason) && outputRecoveries < 3)
+            if (IsOutputTruncated(stopReason))
             {
-                outputRecoveries++;
+                consecutiveCuts++;
                 if (blocks.Count > 0)
                 {
                     _messages.Add(new AssistantMessage(blocks));   // 텍스트만 보존(잘린 툴콜은 제외)
                 }
 
-                _messages.Add(new UserMessage(Reminders.OutputLimitRecovery));
-                continue;
+                if (consecutiveCuts <= MaxConsecutiveOutputCuts)
+                {
+                    // 추론만 하다 잘림(본문·툴콜 없음): 잘린 추론을 다음 요청 한 번에 넘긴다. 그냥 "이어서 하라"고 하면
+                    // 추론이 기록에 없어(OpenAI 호환 경로는 reasoning_content 를 기록에 넣지 않는다) 처음부터 다시
+                    // 생각하다 같은 한도에 또 걸렸다(벤치마크 실측: 응답 6번이 전부 추론만으로 끝남).
+                    if (cleanText.Length == 0 && toolCalls.Count == 0 && !string.IsNullOrEmpty(cutReasoning))
+                    {
+                        var (carried, headCut) = KeepTail(cutReasoning, MaxCarriedReasoningChars);
+                        var carry = new UserMessage(Reminders.ReasoningCutRecovery(carried, headCut));
+                        carriedReasoningIds.Add(carry.Id);
+                        _messages.Add(carry);
+                        _log($"output limit hit while reasoning -> carrying {carried.Length} chars of reasoning " +
+                             $"(cut {consecutiveCuts}/{MaxConsecutiveOutputCuts})");
+                    }
+                    else
+                    {
+                        _messages.Add(new UserMessage(Reminders.OutputLimitRecovery));
+                    }
+
+                    continue;
+                }
+
+                // 연속 컷 상한 초과: 잘린 툴 호출은 인자가 불완전하므로 절대 실행하지 않고 턴을 끝낸다
+                // (예전엔 상한을 넘기면 잘린 툴콜이 그대로 기록·디스패치되는 경로로 떨어졌다).
+                _log($"output limit hit {consecutiveCuts} times in a row -> stopping turn " +
+                     $"(dropped {toolCalls.Count} truncated tool calls)");
+                yield return new StreamNotice(
+                    $"the model hit its output token limit {consecutiveCuts} times in a row — stopping this turn");
+                _log($"done: stop={stopReason} turns={turn} ext={extensions}");
+                yield return new TurnCompleted(lastUsage, stopReason);
+                yield break;
             }
+
+            // 잘리지 않은 응답 — 연속 컷을 다시 세고, 이어받기용으로 실었던 추론 원문은 짧은 표시로 바꿔
+            // 이후 요청에 계속 실리지 않게 한다("한 번만" 넘기기 — 평소의 토큰 절약 유지).
+            consecutiveCuts = 0;
+            ReleaseCarriedReasoning(carriedReasoningIds);
 
             // 툴 호출을 function-call 이 아니라 본문 텍스트 마크업으로 뱉는 글리치(GLM 계열):
             //   Bash<arg_key>command</arg_key><arg_value>ls -la …</arg_value></tool_call>
@@ -1163,6 +1203,41 @@ public sealed class QueryEngine
     }
 
     // 출력이 토큰 한도로 잘렸는지 (OpenAI: length, Anthropic: max_tokens).
+    private const int MaxConsecutiveOutputCuts = 3;
+
+    // 이어받기로 넘길 추론의 최대 길이(문자). 넘치면 앞을 버리고 끝부분(결론·계획이 있는 쪽)을 남긴다.
+    private const int MaxCarriedReasoningChars = 100_000;
+
+    private static (string Text, bool HeadCut) KeepTail(string text, int maxChars)
+    {
+        if (text.Length <= maxChars)
+        {
+            return (text, false);
+        }
+
+        var start = text.Length - maxChars;
+        if (char.IsLowSurrogate(text[start]))
+        {
+            start++;   // 서로게이트 쌍 중간에서 자르지 않는다
+        }
+
+        return (text[start..], true);
+    }
+
+    private void ReleaseCarriedReasoning(List<string> ids)
+    {
+        foreach (var id in ids)
+        {
+            var i = _messages.FindIndex(m => m.Id == id);   // 컴팩션으로 사라졌으면 -1
+            if (i >= 0)
+            {
+                _messages[i] = new UserMessage(Reminders.ReasoningCutRecoveryDone);
+            }
+        }
+
+        ids.Clear();
+    }
+
     private static bool IsOutputTruncated(string stopReason) =>
         string.Equals(stopReason, "length", StringComparison.OrdinalIgnoreCase)
         || string.Equals(stopReason, "max_tokens", StringComparison.OrdinalIgnoreCase);

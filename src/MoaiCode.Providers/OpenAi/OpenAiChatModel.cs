@@ -301,7 +301,13 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl
                 new ToolUseBlock(b.Id, b.Name, ParseArgs(b.Args)));
         }
 
-        yield return new TurnCompleted(usage, stopReason);
+        // 잘린 응답이면 추론 원문을 엔진에 넘긴다(이어받기용, 기록에는 안 들어감).
+        yield return new TurnCompleted(usage, stopReason)
+        {
+            Reasoning = string.Equals(stopReason, "length", StringComparison.OrdinalIgnoreCase) && reasoning.Length > 0
+                ? reasoning.ToString()
+                : null,
+        };
     }
 
     private static void AccumulateToolCalls(JsonElement tcs, SortedDictionary<int, ToolCallBuilder> acc)

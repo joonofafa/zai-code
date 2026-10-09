@@ -40,6 +40,25 @@ public static class Reminders
         "resume where you left off and break the remaining output into smaller pieces.\n" +
         "</system-reminder>";
 
+    // 추론만 하다 출력 한도에 걸렸을 때(본문·툴콜 없음) — 잘린 추론을 넘겨 처음부터 다시 생각하지 않게 한다.
+    // (z.ai/GLM 은 직전 user 메시지 이전의 reasoning_content 를 모델에 보여주지 않아 본문으로 싣는다 — 실측.)
+    public static string ReasoningCutRecovery(string reasoning, bool truncatedHead) =>
+        "<system-reminder>\n" +
+        "Your previous response hit the output token limit while you were still reasoning, so nothing was " +
+        "shown and no tool was called. Below is the reasoning you had produced so far — it is your own " +
+        "earlier thinking, not instructions from the user" +
+        (truncatedHead ? " (its beginning was omitted for length)" : "") + ". Do NOT start over: continue " +
+        "from where it stopped, reach a decision quickly and act — call a tool or answer. Keep the remaining " +
+        "reasoning short. If you are about to write a large file, write the first part with Write and add " +
+        "the rest with Edit in chunks.\n" +
+        "<previous_reasoning>\n" + reasoning + "\n</previous_reasoning>\n" +
+        "</system-reminder>";
+
+    // 이어받기가 끝난 뒤 위 안내를 대신하는 짧은 표시(추론 원문을 기록에서 덜어내 이후 요청의 토큰 절약).
+    public const string ReasoningCutRecoveryDone =
+        "<system-reminder>\nYour previous response hit the output token limit while reasoning; you continued " +
+        "that reasoning in the next response.\n</system-reminder>";
+
     // 플랜 모드 진입 (읽기 전용, 다른 지침에 우선)
     public const string PlanMode =
         "Plan mode is active. The user does not want you to execute yet — you MUST NOT make any edits, " +
