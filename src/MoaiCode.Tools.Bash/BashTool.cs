@@ -141,19 +141,36 @@ public sealed class BashTool : ITool
         var stderrBuf = new StringBuilder();
         var bufLock = new object();
         var bufCapped = false;
-        void Append(StringBuilder buf, string s)
+        void Append(StringBuilder buf, char[] chunk, int count)
         {
             lock (bufLock)
             {
-                if (buf.Length >= MaxBufferChars)
+                var room = MaxBufferChars - buf.Length;
+                if (count > room)
                 {
                     bufCapped = true;   // 이후 출력은 버린다 — 부분 결과는 이미 충분히 커다란 의미.
-                    return;
                 }
 
-                buf.AppendLine(s);
+                if (room > 0)
+                {
+                    buf.Append(chunk, 0, Math.Min(count, room));
+                }
             }
         }
+
+        // 줄 단위(ToDelegate)가 아니라 조각 단위로 읽는다 — 줄바꿈 없는 거대한 출력(압축된 대형 파일·바이너리)은
+        // 한 줄이 끝날 때까지 통째로 메모리에 쌓였다(상한 검사는 줄 사이에서만). 상한을 넘어도 끝까지 읽어 버려
+        // 자식이 가득 찬 파이프에 막히지 않게 한다.
+        PipeTarget Capture(StringBuilder buf) => PipeTarget.Create(async (stream, token) =>
+        {
+            using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, bufferSize: 8192, leaveOpen: true);
+            var chunk = new char[8192];
+            int n;
+            while ((n = await reader.ReadAsync(chunk.AsMemory(), token).ConfigureAwait(false)) > 0)
+            {
+                Append(buf, chunk, n);
+            }
+        });
 
         string Snapshot()
         {
@@ -178,8 +195,8 @@ public sealed class BashTool : ITool
                 .WithWorkingDirectory(workDir)
                 .WithValidation(CommandResultValidation.None)
                 // 자식 출력은 UTF-8로 디코딩(Windows는 위에서 chcp 65001로 UTF-8 정규화, Unix는 기본 UTF-8).
-                .WithStandardOutputPipe(PipeTarget.ToDelegate(s => Append(stdoutBuf, s), Encoding.UTF8))
-                .WithStandardErrorPipe(PipeTarget.ToDelegate(s => Append(stderrBuf, s), Encoding.UTF8));
+                .WithStandardOutputPipe(Capture(stdoutBuf))
+                .WithStandardErrorPipe(Capture(stderrBuf));
             // 주의: 명령이 띄운 백그라운드 프로세스가 파이프 쓰기 끝을 물고 있으면 메인 프로세스가
             // 끝난 뒤에도 EOF 가 오지 않아 ExecuteAsync 대기가 풀리지 않는다(무한 대기 버그, 2026-09-25).
             // CancelAfter 토큰만으로는 이 대기를 깨울 수 없으므로 타임아웃은 독립 레이스로 판정하고,

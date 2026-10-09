@@ -73,6 +73,22 @@ public class BashToolExecutionTests
         return (sb.ToString(), err);
     }
 
+    // 출력을 줄 단위로 모아, 줄바꿈 없는 거대한 출력은 끝날 때까지 한 줄 전체가 메모리에 쌓였다(상한은 줄 사이에서만 검사).
+    [Fact]
+    public async Task Huge_output_without_newlines_is_capped_while_reading()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var (output, _) = await Run("""{"command":"head -c 5000000 /dev/zero | tr '\\0' a"}""");
+        // 수집 버퍼가 상한(200k)에서 멈췄다 — 예전엔 500만 자를 다 모은 뒤 잘랐다("4970000 more chars").
+        var m = System.Text.RegularExpressions.Regex.Match(output, @"truncated, (\d+) more chars");
+        Assert.True(m.Success, output[^200..]);
+        Assert.True(int.Parse(m.Groups[1].Value) <= 200_000, m.Value);
+    }
+
     [Fact]
     public async Task Executes_echo_and_captures_stdout()
     {
