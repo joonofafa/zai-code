@@ -25,6 +25,23 @@ public static class ZaiEndpoint
         return (IsOfficial(configured) ? configured! : DefaultBaseUrl).TrimEnd('/');
     }
 
+    /// <summary>이미지 생성 기본 엔드포인트(일반 API — 이미지 생성은 코딩 엔드포인트 경로에 없다).</summary>
+    public const string DefaultImageBaseUrl = "https://api.z.ai/api/paas/v4";
+
+    /// <summary>
+    /// 이미지 생성 베이스 URL. ZAI_IMAGE_BASE_URL 은 https 의 api.z.ai 호스트일 때만 받는다 — 키(Bearer)를
+    /// 실어 보내므로 임의 호스트로 새지 않게(예전엔 툴이 env 를 직접 읽어 화이트리스트를 우회했다).
+    /// </summary>
+    public static string ImageBaseUrl()
+    {
+        var configured = Environment.GetEnvironmentVariable("ZAI_IMAGE_BASE_URL");
+        return (Uri.TryCreate(configured, UriKind.Absolute, out var uri)
+                && uri.Scheme == Uri.UriSchemeHttps
+                && uri.Host.Equals("api.z.ai", StringComparison.OrdinalIgnoreCase)
+                ? configured!
+                : DefaultImageBaseUrl).TrimEnd('/');
+    }
+
     /// <summary>모델 id. MOAI_MODEL(런타임 /model 전환) → ZAI_MODEL → 기본값.</summary>
     public static string Model()
         => Environment.GetEnvironmentVariable("MOAI_MODEL")

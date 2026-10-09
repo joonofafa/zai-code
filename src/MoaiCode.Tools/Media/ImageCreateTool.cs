@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using MoaiCode.Core;
 using MoaiCode.Core.Tools;
 using MoaiCode.Core.Web;
 using MoaiCode.Localization;
@@ -81,9 +82,8 @@ public sealed class ImageCreateTool : ITool
             yield break;
         }
 
-        var baseUrl = Environment.GetEnvironmentVariable("ZAI_IMAGE_BASE_URL")
-                      ?? "https://api.z.ai/api/paas/v4";
-        var key = Environment.GetEnvironmentVariable("ZAI_API_KEY");
+        var baseUrl = ZaiEndpoint.ImageBaseUrl();
+        var key = ZaiEndpoint.ApiKey();
         if (string.IsNullOrWhiteSpace(key))
         {
             yield return new ToolOutput(

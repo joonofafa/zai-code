@@ -22,6 +22,27 @@ public sealed class ZaiEndpointTests
     public void Only_the_official_coding_endpoint_is_accepted(string? url, bool expected)
         => Assert.Equal(expected, ZaiEndpoint.IsOfficial(url));
 
+    // 이미지 생성 툴이 ZAI_IMAGE_BASE_URL 을 직접 읽어, 키(Bearer)를 아무 호스트로나 보낼 수 있었다.
+    [Theory]
+    [InlineData("https://evil.example/api/paas/v4", ZaiEndpoint.DefaultImageBaseUrl)]
+    [InlineData("http://api.z.ai/api/paas/v4", ZaiEndpoint.DefaultImageBaseUrl)]
+    [InlineData("https://api.z.ai.evil.com/api/paas/v4", ZaiEndpoint.DefaultImageBaseUrl)]
+    [InlineData(null, ZaiEndpoint.DefaultImageBaseUrl)]
+    [InlineData("https://api.z.ai/api/coding/paas/v4/", "https://api.z.ai/api/coding/paas/v4")]
+    public void ImageBaseUrl_only_accepts_z_ai_hosts(string? configured, string expected)
+    {
+        var prev = Environment.GetEnvironmentVariable("ZAI_IMAGE_BASE_URL");
+        try
+        {
+            Environment.SetEnvironmentVariable("ZAI_IMAGE_BASE_URL", configured);
+            Assert.Equal(expected, ZaiEndpoint.ImageBaseUrl());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("ZAI_IMAGE_BASE_URL", prev);
+        }
+    }
+
     [Fact]
     public void BaseUrl_falls_back_to_the_default_for_anything_unofficial()
     {
