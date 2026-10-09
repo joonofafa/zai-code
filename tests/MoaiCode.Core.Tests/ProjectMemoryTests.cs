@@ -104,4 +104,21 @@ public class ProjectMemoryTests
             }
         }
     }
+
+    // 한글 한 글자가 슬러그에서 9자(%XX ×3)라 깊은 한글 경로는 폴더 이름 한도(255)를 넘어, 세션·메모리가
+    // 조용히 저장되지 않았다. 넘을 때만 앞부분 + 경로 해시로 줄인다(짧은 경로의 기존 슬러그는 그대로).
+    [Fact]
+    public void Long_unicode_paths_get_a_bounded_unique_slug()
+    {
+        var baseDir = Path.Combine(Path.GetTempPath(), "업무자료", "2026년 사업계획", "기획팀 공유 문서", "보고서 초안", "세부 검토");
+        var a = Path.GetFileName(Path.GetDirectoryName(ProjectMemory.Dir(Path.Combine(baseDir, "가안")))!);
+        var b = Path.GetFileName(Path.GetDirectoryName(ProjectMemory.Dir(Path.Combine(baseDir, "나안")))!);
+
+        Assert.True(a.Length <= 255, $"slug length {a.Length}");
+        Assert.NotEqual(a, b);
+        Assert.Equal(a, Path.GetFileName(Path.GetDirectoryName(ProjectMemory.Dir(Path.Combine(baseDir, "가안")))!));   // 안정적
+
+        var shortSlug = Path.GetFileName(Path.GetDirectoryName(ProjectMemory.Dir("/x/moai-code"))!);
+        Assert.Equal("-x-moai%2Dcode", shortSlug);
+    }
 }

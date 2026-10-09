@@ -337,8 +337,26 @@ public static class ProjectMemory
             }
         }
 
+        // 폴더 이름 한도(NAME_MAX 255바이트)를 넘으면 디렉터리를 만들 수 없다 — 한글은 글자당 9자라 깊은 한글
+        // 경로에서 세션·메모리 저장이 조용히 실패했다. 넘을 때만 앞부분 + 전체 경로 해시로 줄인다('~' 는 위 규칙이
+        // 만들지 않는 글자라 일반 슬러그와 겹치지 않는다). 255 이하인 기존 슬러그는 그대로라 이관이 필요 없다.
+        if (sb.Length > MaxSlugLength)
+        {
+            var head = sb.ToString(0, MaxSlugLength - 17);
+            var pct = head.LastIndexOf('%');
+            if (pct >= head.Length - 2)
+            {
+                head = head[..pct];   // %XX 중간에서 자르지 않는다
+            }
+
+            var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(full)))[..16];
+            return head + "~" + hash;
+        }
+
         return sb.ToString();
     }
+
+    private const int MaxSlugLength = 255;
 
     // [옛 규칙 — 이관 판정 전용] 영숫자 외 전부 '-'. lossy 라 서로 다른 경로가 충돌할 수 있었다.
     private static string LegacyPathSlug(string full)
