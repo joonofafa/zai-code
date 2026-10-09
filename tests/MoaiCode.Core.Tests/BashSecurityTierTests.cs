@@ -122,4 +122,18 @@ public sealed class BashSecurityTierTests
         Assert.False(BashSecurity.NeedsConfirmation("rm file.txt"));
         Assert.True(BashSecurity.Check("rm /etc/hosts").Allowed); // 재귀가 아니면 차단하지 않음
     }
+
+    // 2026-10-09 사고: curl 이 든 파이프 많은 명령(757바이트)에서 Check 가 1000초 넘게 돌아 턴이 멈췄다.
+    // `(?:[^|]*\|[^|]*)+` 가 파이프 사이 구간을 두 갈래로 나누는 경우를 모두 역추적해 파이프 수에 지수적이었다
+    // (실측: 파이프 5개 0.7초, 6개 17초). 검사는 셸 실행 전 동기 경로라 Bash 타임아웃도 못 건다.
+    [Fact]
+    public void Long_curl_pipeline_is_checked_in_linear_time()
+    {
+        var seg = new string('a', 60);
+        var cmd = "curl -s http://127.0.0.1:8188/history" + string.Concat(Enumerable.Repeat(" | grep " + seg, 12));
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        Assert.True(BashSecurity.Check(cmd).Allowed);
+        BashSecurity.NeedsConfirmation(cmd);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2), $"took {sw.Elapsed}");
+    }
 }

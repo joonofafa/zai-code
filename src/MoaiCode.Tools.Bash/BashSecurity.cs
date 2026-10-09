@@ -167,8 +167,11 @@ public static class BashSecurity
         return Rm.IsRecursiveDelete(cmd) ? L10n.Get("tools.bashSecurity.recursiveDelete") : null;
     }
 
+    // NonBacktracking: 입력 길이에 선형인 매칭을 보장한다. 이 검사는 모델이 만든 임의 길이 명령에 대해
+    // 셸 실행 전 동기로 돌므로(Bash 타임아웃 밖), 역추적 엔진이면 패턴 하나만 잘못돼도 턴이 무한정 멈춘다
+    // (2026-10-09: `(?:[^|]*\|[^|]*)+` 가 파이프 많은 curl 명령에서 1000초 넘게 돎). 전후방 탐색·역참조는 쓸 수 없다.
     private static Regex Rx(string p) =>
-        new(p, RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        new(p, RegexOptions.IgnoreCase | RegexOptions.NonBacktracking);
 
     public static Verdict Check(string command)
     {
