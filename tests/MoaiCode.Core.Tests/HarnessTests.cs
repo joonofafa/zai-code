@@ -526,6 +526,31 @@ public class OutputRecoveryTests
         }
     }
 
+    // 턴 중 Shift+Tab(입력 감시 스레드)이 모드 안내를 넣으면 엔진이 고치는 목록에 바로 Add 했다 —
+    // 열거가 깨지거나 tool_use 와 tool_result 사이에 끼어 API 400 이 날 수 있었다. 요청 중에는 큐에 두고
+    // 툴 결과 짝이 맞춰진 뒤에 넣는다.
+    [Fact]
+    public async Task Reminder_added_mid_request_lands_after_the_tool_results()
+    {
+        QueryEngine? engine = null;
+        var model = new ScriptedModel(
+            _ =>
+            {
+                engine!.AddSystemReminder("MODE-CHANGED");
+                return CallTool("Nope");
+            },
+            _ => Answer("ok"));
+        engine = new QueryEngine(model, Array.Empty<ITool>());
+        engine.Seed(new[] { new SystemMessage("sys") });
+
+        await Run(engine);
+
+        var second = model.Seen[1];
+        var reminderAt = second.ToList().FindIndex(m => m is UserMessage u && u.Text.Contains("MODE-CHANGED"));
+        var resultAt = second.ToList().FindIndex(m => m is ToolResultMessage);
+        Assert.True(reminderAt > resultAt && resultAt > 0, $"reminder={reminderAt} result={resultAt}");
+    }
+
     // 출력 한도 확대는 엔진이 '본' 요청에만 건다 — 예전엔 모델이 스스로 다음 요청을 키워 사이에 낀
     // 컴팩션 요약이 가져갔다. 확대는 추론만 하다 잘린 직후 한 번뿐이다.
     [Fact]

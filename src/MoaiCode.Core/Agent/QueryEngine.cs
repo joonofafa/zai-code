@@ -106,7 +106,24 @@ public sealed class QueryEngine
     public int ContextWindowTokens => _compactTokens * 100 / 70;   // _compactTokens = 70% 지점에서 역산
 
     /// <summary>현재 대화의 추정 컨텍스트 토큰(chars/4). 컴팩션 판정과 같은 추정치.</summary>
-    public int EstimatedContextTokens => EstimateTokens(_messages);
+    // 상태줄이 입력 감시 스레드에서 읽는다 — 엔진 스레드가 목록을 고치는 중이면(Clear/AddRange 등) 열거가 깨지니
+    // 직전 값을 보여 준다(표시용 추정치라 한 박자 늦어도 된다).
+    public int EstimatedContextTokens
+    {
+        get
+        {
+            try
+            {
+                return _lastEstimate = EstimateTokens(_messages);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or IndexOutOfRangeException)
+            {
+                return _lastEstimate;
+            }
+        }
+    }
+
+    private volatile int _lastEstimate;
 
     /// <summary>세션 누적 토큰 사용량 (/cost 표시용).</summary>
     public Usage CumulativeUsage { get; private set; } = new(0, 0);
@@ -171,15 +188,74 @@ public sealed class QueryEngine
     /// </summary>
     public void AddSystemReminder(string text)
     {
-        if (!string.IsNullOrWhiteSpace(text))
+        if (string.IsNullOrWhiteSpace(text))
         {
-            _messages.Add(new UserMessage($"<system-reminder>\n{text.Trim()}\n</system-reminder>"));
+            return;
+        }
+
+        var msg = new UserMessage($"<system-reminder>\n{text.Trim()}\n</system-reminder>");
+        lock (_reminderLock)
+        {
+            // 요청 처리 중에는 다른 스레드(턴 중 Shift+Tab → 모드 안내)에서 들어올 수 있다 — 엔진 스레드가 목록을
+            // 고치는 중에 Add 하면 열거가 깨지거나 tool_use/tool_result 사이에 끼어 400 이 난다. 큐에 두었다가
+            // 엔진이 안전한 지점(루프 시작)에서 넣는다.
+            if (_inRequest)
+            {
+                _pendingReminders.Enqueue(msg);
+            }
+            else
+            {
+                _messages.Add(msg);
+            }
+        }
+    }
+
+    private readonly object _reminderLock = new();
+    private readonly Queue<UserMessage> _pendingReminders = new();
+    private bool _inRequest;   // _reminderLock 보호
+
+    // 요청 중 들어온 리마인더를 기록에 넣는다(엔진 스레드, 툴 결과 짝이 다 맞춰진 지점에서만). 끝이면 요청 상태를 푼다.
+    private void DrainReminders(bool endRequest = false)
+    {
+        lock (_reminderLock)
+        {
+            while (_pendingReminders.TryDequeue(out var m))
+            {
+                _messages.Add(m);
+            }
+
+            if (endRequest)
+            {
+                _inRequest = false;
+            }
         }
     }
 
     public async IAsyncEnumerable<StreamEvent> SubmitAsync(
         string userInput,
         [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        lock (_reminderLock)
+        {
+            _inRequest = true;
+        }
+
+        try
+        {
+            await foreach (var ev in SubmitCoreAsync(userInput, ct).ConfigureAwait(false))
+            {
+                yield return ev;
+            }
+        }
+        finally
+        {
+            DrainReminders(endRequest: true);
+        }
+    }
+
+    private async IAsyncEnumerable<StreamEvent> SubmitCoreAsync(
+        string userInput,
+        [EnumeratorCancellation] CancellationToken ct)
     {
         _messages.Add(new UserMessage(userInput));
         _goal = userInput;
@@ -221,6 +297,8 @@ public sealed class QueryEngine
 
         while (true)
         {
+            DrainReminders();
+
             // 세그먼트(maxTurns)를 소진하면, 상한 내에서 컨텍스트를 압축하고 턴을 연장한다.
             // 그냥 멈추지 않고 긴 작업을 이어가되, 무한 루프는 MaxTurnExtensions로 막는다.
             if (turn >= _maxTurns)
