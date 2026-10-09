@@ -35,6 +35,15 @@ upstream branding.
 | Solar Light    | Solarized Light                    | MIT            | Ethan Schoonover        |
 | Ivory Light    | Ayu Light                          | MIT            | Ike Ku                  |
 
+## 3. Third-party skills bundled with the product
+
+| Skill | License | Copyright holder | Source |
+|---|---|---|---|
+| mcp-builder | Apache-2.0 (LICENSE.txt included in the skill) | Anthropic, PBC | https://github.com/anthropics/skills |
+| webapp-testing | Apache-2.0 (LICENSE.txt included in the skill) | Anthropic, PBC | https://github.com/anthropics/skills |
+
+The other bundled skills are original works of this product (see `/license` for each skill's attribution).
+
 ---
 
 ## MIT License
@@ -91,7 +100,8 @@ POSSIBILITY OF SUCH DAMAGE.
 
 ## Apache License 2.0
 
-Applies to: PdfPig. No NOTICE file is distributed with PdfPig.
+Applies to: PdfPig (no NOTICE file is distributed with PdfPig) and the bundled skills mcp-builder and
+webapp-testing (each ships its own copy of this license as LICENSE.txt).
 
 ```text
 

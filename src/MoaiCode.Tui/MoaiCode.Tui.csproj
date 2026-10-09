@@ -10,6 +10,10 @@
     <ProjectReference Include="..\MoaiCode.Tools.Bash\MoaiCode.Tools.Bash.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <!-- /license 가 보여줄 제3자 고지 — 원본은 저장소 루트 문서 하나(게시본에도 실행 파일 옆에 같은 파일이 나간다). -->
+    <EmbeddedResource Include="..\..\THIRD_PARTY_NOTICES.md" LogicalName="THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES.md" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Spectre.Console" />
     <PackageReference Include="Markdig" />
   </ItemGroup>

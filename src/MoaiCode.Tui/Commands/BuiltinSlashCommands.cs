@@ -322,26 +322,80 @@ internal sealed class LicenseCommand : ISlashCommand
     public string Name => "license";
     public string Description => L10n.Get("slash.license.description");
 
+    // /license            → 제3자 라이브러리·테마 팔레트(THIRD_PARTY_NOTICES.md 표) + 로드된 스킬의 라이선스
+    // /license <이름|mit|bsd|apache> → 해당 라이브러리의 고지 줄 + 라이선스 전문
     public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
+        => Task.FromResult(new SlashResult(args.Length > 0
+            ? Detail(string.Join(' ', args).Trim(), ThirdPartyNotices.Text)
+            : Overview(ctx, ThirdPartyNotices.Text)));
+
+    internal static string Overview(SlashContext ctx, string notices)
     {
+        var sb = new System.Text.StringBuilder();
+        var entries = ThirdPartyNotices.Entries(notices);
+        if (entries.Count == 0)
+        {
+            sb.AppendLine(L10n.Get("slash.license.unavailable"));
+        }
+        else
+        {
+            sb.AppendLine(L10n.Get("slash.license.libraries"));
+            foreach (var e in entries.Where(e => e.Kind == "library"))
+            {
+                sb.AppendLine(string.Format(L10n.Get("slash.license.libRow"), e.Name, e.Version ?? "", e.License, e.Holder));
+            }
+
+            sb.AppendLine(L10n.Get("slash.license.themes"));
+            foreach (var e in entries.Where(e => e.Kind == "theme"))
+            {
+                sb.AppendLine(string.Format(L10n.Get("slash.license.themeRow"), e.Name, e.Source ?? "", e.License, e.Holder));
+            }
+        }
+
         var rows = ctx.GetSkillLicenses?.Invoke();
         if (rows is null || rows.Count == 0)
         {
-            return Task.FromResult(new SlashResult(L10n.Get("slash.license.none")));
+            sb.AppendLine(L10n.Get("slash.license.none"));
+        }
+        else
+        {
+            sb.AppendLine(L10n.Get("slash.license.header"));
+            foreach (var r in rows.OrderBy(r => r.Source).ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                sb.AppendLine(string.Format(
+                    L10n.Get("slash.license.row"),
+                    r.Name,
+                    r.Source,
+                    r.License is not null
+                        ? r.License
+                        : r.Source == "bundled" ? L10n.Get("slash.license.bundled") : L10n.Get("slash.license.unknown")));
+            }
         }
 
-        var lines = rows
-            .OrderBy(r => r.Source).ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(r => string.Format(
-                L10n.Get("slash.license.row"),
-                r.Name,
-                r.Source,
-                r.License is not null
-                    ? r.License
-                    : r.Source == "bundled" ? L10n.Get("slash.license.bundled") : L10n.Get("slash.license.unknown")))
-            .ToList();
-        return Task.FromResult(new SlashResult(
-            L10n.Get("slash.license.header") + "\n" + string.Join("\n", lines)));
+        sb.Append(L10n.Get("slash.license.textHint"));
+        return sb.ToString();
+    }
+
+    internal static string Detail(string query, string notices)
+    {
+        var key = query.ToLowerInvariant();
+        if (key is "mit" or "bsd" or "apache")
+        {
+            return ThirdPartyNotices.LicenseText(notices, key) ?? L10n.Get("slash.license.unavailable");
+        }
+
+        var hit = ThirdPartyNotices.Entries(notices)
+            .FirstOrDefault(e => e.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
+        if (hit is null)
+        {
+            return L10n.Get("slash.license.notFound", query);
+        }
+
+        var row = hit.Kind == "library"
+            ? string.Format(L10n.Get("slash.license.libRow"), hit.Name, hit.Version ?? "", hit.License, hit.Holder)
+            : string.Format(L10n.Get("slash.license.themeRow"), hit.Name, hit.Source ?? "", hit.License, hit.Holder);
+        var text = ThirdPartyNotices.LicenseKey(hit.License) is { } k ? ThirdPartyNotices.LicenseText(notices, k) : null;
+        return text is null ? row.Trim() : row.Trim() + "\n\n" + text;
     }
 }
 
