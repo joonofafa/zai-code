@@ -68,14 +68,20 @@ public sealed class BottomDock
 
     public BottomDock(Func<string> status) => _status = status;
 
+    // 스모크 하네스용 터미널 크기 고정(null 이면 실제 크기). 레이아웃 스모크는 가상 화면 크기를 정해 두고 그리는데,
+    // 실제 터미널 크기를 읽으면 실행한 창 크기에 따라 행이 화면 밖으로 나가 큰 터미널에서만 실패했다.
+    internal static (int Width, int Height)? SizeOverrideForTest;
+
     private static int Height()
     {
+        if (SizeOverrideForTest is { } s) return s.Height;
         try { var h = Console.WindowHeight; return h < 1 ? 24 : h; }
         catch { return 24; }
     }
 
     private static int Width()
     {
+        if (SizeOverrideForTest is { } s) return s.Width;
         try { var w = Console.WindowWidth; return w < 1 ? 80 : w; }
         catch { return 80; }
     }

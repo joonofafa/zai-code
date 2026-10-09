@@ -5,6 +5,11 @@ using System.Text;
 
 var dock = new BottomDock(new Func<string>(() => "STATUS-LINE"));
 
+// 가상 화면 크기(아래 미니 VT100 의 W×H)로 그리게 고정한다 — 실행한 터미널 크기와 무관하게 결정적.
+const int W = 60, H = 24;
+typeof(BottomDock).GetField("SizeOverrideForTest", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+    .SetValue(null, ((int, int)?)(W, H));
+
 var origOut = Console.Out;
 var captured = new StringBuilder();
 try
@@ -22,7 +27,6 @@ try
 finally { Console.SetOut(origOut); }
 
 // ── 미니 VT100: DECSTBM/CUP/EL/CR/LF/DECSC-DECRC/SGR. Draw 는 절대좌표만 쓰므로 wrap 생략. ──
-const int W = 60, H = 24;
 var cells = new char[W * H];
 int top = 0, bot = H - 1, cx = 0, cy = 0;
 (int, int)? saved = null;
