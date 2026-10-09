@@ -123,4 +123,18 @@ public sealed class PasteStoreTests
         Assert.Equal(0, PasteStore.PlaceholderLengthEndingAt("[not a token]", 13));
         Assert.Equal(0, PasteStore.PlaceholderLengthEndingAt("", 0));
     }
+
+    // '!'·'/' 로 시작하는 여러 줄을 붙여넣으면 화면엔 [Paste #N] 만 보이는데, 펼친 뒤 판정해서 셸로 실행됐다.
+    [Theory]
+    [InlineData("!Important: the deploy failed\ntouch /tmp/x")]
+    [InlineData("/clear the cache first\nthen rebuild")]
+    public void Pasted_text_is_routed_by_what_the_user_saw(string pasted)
+    {
+        var sb = new StringBuilder();
+        var pos = 0;
+        PasteStore.Insert(sb, ref pos, pasted);
+        var typed = sb.ToString();
+        Assert.Equal(ReplApp.InputKind.Turn, ReplApp.Classify(typed));
+        Assert.Equal(ReplApp.InputKind.Shell, ReplApp.Classify("!" + typed));   // 직접 친 '!' + 붙여넣기는 셸
+    }
 }

@@ -329,6 +329,16 @@ public sealed class ReplApp
         return false;
     }
 
+    internal enum InputKind { Turn, Command, Shell, Help }
+
+    // 입력 종류는 사용자가 화면에서 본 글(붙여넣기 표식이 접힌 상태)로 판정한다 — 펼친 뒤에 판정하면
+    // '!'·'/' 로 시작하는 붙여넣은 글이 화면엔 [Paste #N] 로만 보이는데 셸 명령·슬래시 명령으로 실행됐다.
+    internal static InputKind Classify(string typed) =>
+        typed.StartsWith('/') ? InputKind.Command
+        : typed.StartsWith('!') ? InputKind.Shell
+        : typed == "?" ? InputKind.Help
+        : InputKind.Turn;
+
     // 한 입력 라인 처리(슬래시/셸/도움말/에이전트 턴). REPL 종료면 true.
     private async Task<bool> ProcessInputAsync(string input, CancellationToken ct)
     {
@@ -340,22 +350,23 @@ public sealed class ReplApp
 
         // 붙여넣기 표식을 원문으로 되돌린 뒤 모델/세션에 전달한다.
         var expanded = PasteStore.Expand(trimmed);
+        var kind = Classify(trimmed);
 
-        if (expanded.StartsWith('/'))
+        if (kind == InputKind.Command)
         {
             return await HandleCommandAsync(expanded, ct).ConfigureAwait(false);
         }
 
         // '!' 접두: 사용자가 직접 친 셸 명령을 모델/권한 게이트를 거치지 않고 바로 실행하고,
         // 명령+출력을 대화 컨텍스트에 주입해 다음 턴에 모델이 참조할 수 있게 한다.
-        if (expanded.StartsWith('!'))
+        if (kind == InputKind.Shell)
         {
             await RunShellCommandAsync(expanded[1..].Trim(), ct).ConfigureAwait(false);
             return false;
         }
 
         // '?': 키맵/입력 문법 도움말.
-        if (expanded == "?")
+        if (kind == InputKind.Help)
         {
             ShowKeymap();
             return false;
