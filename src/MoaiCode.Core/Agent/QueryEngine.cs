@@ -198,7 +198,21 @@ public sealed class QueryEngine
         // 출력 한도 컷은 '연속' 횟수로 센다 — 긴 자율 작업에서 드문드문 나는 컷까지 합산하면 4번째 컷부터
         // 복구 없이 잘린 응답이 그대로 이어졌다. 정상 응답이 오면 0 으로 돌아간다.
         var consecutiveCuts = 0;
-        var carriedReasoningIds = new List<string>();   // 추론 이어받기 안내 메시지(이어받기 끝나면 짧게 바꾼다)
+        var boostNext = false;   // 추론만 하다 잘림 → 다음 '본' 요청의 출력 한도를 최대로(IOutputBoost)
+        // 이전 요청이 컷 상한·ESC·예외로 끝나 이어받기 원문(최대 10만 자)이 남았으면 여기서 접는다 — 남겨 두면
+        // 새 질문마다 실리고 "멈춘 곳에서 이어 하라"는 안내가 모델을 옛 작업으로 끌어당겼다.
+        ReleaseCarriedReasoning(_carriedReasoningIds);
+
+        // 본 요청(대화 기록 + 툴)의 스트림을 연다. 확대는 이 호출에만 걸린다 — 컴팩션·서브에이전트 요청은 가져가지 못한다.
+        IAsyncEnumerator<StreamEvent> OpenStream()
+        {
+            if (boostNext)
+            {
+                (_model as IOutputBoost)?.BoostNextRequest();
+            }
+
+            return _model.StreamAsync(_messages, _tools, ct).GetAsyncEnumerator(ct);
+        }
         var toolCallRetries = 0;
         var announceNudges = 0;
         var goalNudges = 0;
@@ -265,7 +279,7 @@ public sealed class QueryEngine
             // iterator 메서드는 try/catch 안에서 yield 할 수 없으므로, 예외가 나는 지점(첫 MoveNext)만
             // try로 감싸고 — 컨텍스트 초과 400은 토큰이 흘러나오기 전에 즉시 떨어진다 — 소비는 그 밖에서 한다.
             _log($"model request: turn={turn} msgs={_messages.Count} tools={_tools.Count}");
-            var stream = _model.StreamAsync(_messages, _tools, ct).GetAsyncEnumerator(ct);
+            var stream = OpenStream();
             var hasNext = false;
             for (var attempt = 0; ; attempt++)
             {
@@ -293,7 +307,7 @@ public sealed class QueryEngine
                     throw (Exception)overflow; // 더 줄일 게 없으면 원래 오류를 사용자에게 노출
                 }
 
-                stream = _model.StreamAsync(_messages, _tools, ct).GetAsyncEnumerator(ct);
+                stream = OpenStream();
             }
 
             var streamRetries = 0;
@@ -356,7 +370,7 @@ public sealed class QueryEngine
                         toolCalls.Clear();
                         stopReason = "end_turn";
                         cutReasoning = null;
-                        stream = _model.StreamAsync(_messages, _tools, ct).GetAsyncEnumerator(ct);
+                        stream = OpenStream();
                     }
 
                     if (retried)
@@ -394,6 +408,7 @@ public sealed class QueryEngine
                     _messages.Add(new AssistantMessage(blocks));   // 텍스트만 보존(잘린 툴콜은 제외)
                 }
 
+                boostNext = cleanText.Length == 0 && toolCalls.Count == 0;
                 if (consecutiveCuts <= MaxConsecutiveOutputCuts)
                 {
                     // 추론만 하다 잘림(본문·툴콜 없음): 잘린 추론을 다음 요청 한 번에 넘긴다. 그냥 "이어서 하라"고 하면
@@ -403,7 +418,7 @@ public sealed class QueryEngine
                     {
                         var (carried, headCut) = KeepTail(cutReasoning, MaxCarriedReasoningChars);
                         var carry = new UserMessage(Reminders.ReasoningCutRecovery(carried, headCut));
-                        carriedReasoningIds.Add(carry.Id);
+                        _carriedReasoningIds.Add(carry.Id);
                         _messages.Add(carry);
                         _log($"output limit hit while reasoning -> carrying {carried.Length} chars of reasoning " +
                              $"(cut {consecutiveCuts}/{MaxConsecutiveOutputCuts})");
@@ -420,6 +435,7 @@ public sealed class QueryEngine
                 // (예전엔 상한을 넘기면 잘린 툴콜이 그대로 기록·디스패치되는 경로로 떨어졌다).
                 _log($"output limit hit {consecutiveCuts} times in a row -> stopping turn " +
                      $"(dropped {toolCalls.Count} truncated tool calls)");
+                ReleaseCarriedReasoning(_carriedReasoningIds);
                 yield return new StreamNotice(
                     $"the model hit its output token limit {consecutiveCuts} times in a row — stopping this turn");
                 _log($"done: stop={stopReason} turns={turn} ext={extensions}");
@@ -430,7 +446,8 @@ public sealed class QueryEngine
             // 잘리지 않은 응답 — 연속 컷을 다시 세고, 이어받기용으로 실었던 추론 원문은 짧은 표시로 바꿔
             // 이후 요청에 계속 실리지 않게 한다("한 번만" 넘기기 — 평소의 토큰 절약 유지).
             consecutiveCuts = 0;
-            ReleaseCarriedReasoning(carriedReasoningIds);
+            boostNext = false;
+            ReleaseCarriedReasoning(_carriedReasoningIds);
 
             // 툴 호출을 function-call 이 아니라 본문 텍스트 마크업으로 뱉는 글리치(GLM 계열):
             //   Bash<arg_key>command</arg_key><arg_value>ls -la …</arg_value></tool_call>
@@ -1223,6 +1240,10 @@ public sealed class QueryEngine
 
         return (text[start..], true);
     }
+
+    // 추론 이어받기로 실은 안내 메시지 id(이어받기가 끝나면 짧은 표시로 바꾼다). 요청을 넘어 유지한다 —
+    // 컷 상한·ESC·예외로 요청이 끝나면 다음 SubmitAsync 시작 때 접는다.
+    private readonly List<string> _carriedReasoningIds = new();
 
     private void ReleaseCarriedReasoning(List<string> ids)
     {

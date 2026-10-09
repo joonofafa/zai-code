@@ -182,9 +182,10 @@ public class OpenAiChatModelTests
     private static int MaxTokensOf(string body) =>
         System.Text.Json.JsonDocument.Parse(body).RootElement.GetProperty("max_tokens").GetInt32();
 
-    // 추론만 하다 한도에서 잘린 다음 요청 한 번은 API 최대치, 정상 응답 뒤엔 기본값으로 돌아간다.
+    // 엔진이 확대를 요청한 다음 호출 한 번만 API 최대치이고, 그 뒤엔 기본값으로 돌아간다.
+    // 모델이 스스로 다음 요청을 키우지는 않는다(사이에 낀 다른 호출이 가져가던 문제).
     [Fact]
-    public async Task Reasoning_only_length_cut_boosts_next_request_max_tokens()
+    public async Task Boost_applies_to_exactly_the_next_call()
     {
         const string cut =
             "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"thinking...\"},\"index\":0}]}\n\n" +
@@ -194,11 +195,16 @@ public class OpenAiChatModelTests
             "data: {\"choices\":[{\"delta\":{\"content\":\"answer\"},\"index\":0}]}\n\n" +
             "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}]}\n\n" +
             "data: [DONE]\n\n";
-        var handler = new SequenceHandler(cut, ok, ok);
+        var handler = new SequenceHandler(cut, cut, ok, ok);
         var model = new OpenAiChatModel(new HttpClient(handler), "http://test/v1", "key", "glm-5.3");
         var history = new List<Message> { new UserMessage("hi") };
-        for (var i = 0; i < 3; i++)
+        for (var i = 0; i < 4; i++)
         {
+            if (i == 2)
+            {
+                model.BoostNextRequest();
+            }
+
             await foreach (var _ in model.StreamAsync(history, Array.Empty<ITool>(), default))
             {
             }
@@ -207,8 +213,9 @@ public class OpenAiChatModelTests
         var prev = Environment.GetEnvironmentVariable("MOAI_MAX_TOKENS");
         Assert.Null(prev);   // 기본값 가정(다른 테스트가 바꾸지 않음)
         Assert.Equal(65_536, MaxTokensOf(handler.Bodies[0]));
-        Assert.Equal(OpenAiChatModel.ApiMaxOutputTokens, MaxTokensOf(handler.Bodies[1]));
-        Assert.Equal(65_536, MaxTokensOf(handler.Bodies[2]));
+        Assert.Equal(65_536, MaxTokensOf(handler.Bodies[1]));   // 직전이 추론 컷이어도 스스로 키우지 않는다
+        Assert.Equal(OpenAiChatModel.ApiMaxOutputTokens, MaxTokensOf(handler.Bodies[2]));
+        Assert.Equal(65_536, MaxTokensOf(handler.Bodies[3]));
     }
 
     [Fact]

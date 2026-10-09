@@ -10,7 +10,7 @@ namespace MoaiCode.Providers;
 /// transient 오류(429/529/5xx)를 지수 백오프로 재시도 (TS withRetry 축약판).
 /// 일단 토큰이 방출되면 재시도하지 않음(부분 응답 중복 방지).
 /// </summary>
-public sealed class RetryingChatModel : IChatModel, IModelControl
+public sealed class RetryingChatModel : IChatModel, IModelControl, IOutputBoost
 {
     private readonly IChatModel _inner;
     private readonly int _maxRetries;
@@ -43,13 +43,30 @@ public sealed class RetryingChatModel : IChatModel, IModelControl
         _delay = delay ?? Task.Delay;
     }
 
-    public async IAsyncEnumerable<StreamEvent> StreamAsync(
+    private int _boost;
+
+    public void BoostNextRequest() => Interlocked.Exchange(ref _boost, 1);
+
+    // 확대 요청은 호출 시점에 받아 두고, 재시도마다 내부 모델에 다시 건다(실패한 시도가 소비해도 유지).
+    public IAsyncEnumerable<StreamEvent> StreamAsync(
         IReadOnlyList<Message> messages,
         IReadOnlyList<ITool> tools,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        CancellationToken ct = default)
+        => StreamCoreAsync(messages, tools, Interlocked.Exchange(ref _boost, 0) == 1, ct);
+
+    private async IAsyncEnumerable<StreamEvent> StreamCoreAsync(
+        IReadOnlyList<Message> messages,
+        IReadOnlyList<ITool> tools,
+        bool boost,
+        [EnumeratorCancellation] CancellationToken ct)
     {
         for (var attempt = 0; ; attempt++)
         {
+            if (boost)
+            {
+                (_inner as IOutputBoost)?.BoostNextRequest();
+            }
+
             var enumerator = _inner.StreamAsync(messages, tools, ct).GetAsyncEnumerator(ct);
             var yielded = false;
             var retry = false;

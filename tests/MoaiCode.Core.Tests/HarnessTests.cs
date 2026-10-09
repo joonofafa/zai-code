@@ -414,14 +414,20 @@ public class OutputRecoveryTests
     }
 
     /// <summary>응답 순서를 대본으로 받는 모델. 각 호출 때 받은 메시지 목록도 기록한다.</summary>
-    private sealed class ScriptedModel(params Func<int, IEnumerable<StreamEvent>>[] script) : IChatModel
+    private sealed class ScriptedModel(params Func<int, IEnumerable<StreamEvent>>[] script) : IChatModel, IOutputBoost
     {
         public List<IReadOnlyList<Message>> Seen { get; } = new();
+        public List<bool> Boosted { get; } = new();   // 요청마다 출력 한도 확대가 걸렸는가
+        private bool _boost;
+
+        public void BoostNextRequest() => _boost = true;
 
         public async IAsyncEnumerable<StreamEvent> StreamAsync(
             IReadOnlyList<Message> messages, IReadOnlyList<ITool> tools,
             [EnumeratorCancellation] CancellationToken ct = default)
         {
+            Boosted.Add(_boost);
+            _boost = false;
             await Task.Yield();
             Seen.Add(messages.ToList());
             var i = Seen.Count - 1;
@@ -480,6 +486,38 @@ public class OutputRecoveryTests
         // 이어받기가 끝났으니 추론 원문은 기록에 남지 않는다(이후 요청의 토큰 절약).
         Assert.DoesNotContain(engine.Messages, m => m is UserMessage u && u.Text.Contains("PLAN-ALPHA"));
         Assert.Contains(engine.Messages, m => m is UserMessage u && u.Text == Reminders.ReasoningCutRecoveryDone);
+    }
+
+    // 출력 한도 확대는 엔진이 '본' 요청에만 건다 — 예전엔 모델이 스스로 다음 요청을 키워 사이에 낀
+    // 컴팩션 요약이 가져갔다. 확대는 추론만 하다 잘린 직후 한 번뿐이다.
+    [Fact]
+    public async Task Output_boost_is_requested_only_for_the_retry_after_a_reasoning_cut()
+    {
+        var model = new ScriptedModel(_ => ReasoningCut("thinking"), _ => CallTool("Nope"), _ => Answer("done"));
+        var engine = new QueryEngine(model, Array.Empty<ITool>());
+        engine.Seed(new[] { new SystemMessage("sys") });
+
+        await Run(engine);
+
+        Assert.Equal(new[] { false, true, false }, model.Boosted);
+    }
+
+    // 컷 상한으로 멈춘 요청의 이어받기 원문(최대 10만 자)이 기록에 남아, 다음 질문마다 실리고
+    // "멈춘 곳에서 이어 하라"는 안내가 모델을 옛 작업으로 끌어당겼다.
+    [Fact]
+    public async Task Carried_reasoning_is_folded_when_the_request_stops_at_the_cut_limit()
+    {
+        var model = new ScriptedModel(
+            _ => ReasoningCut("OLD-PLAN"), _ => ReasoningCut("OLD-PLAN"), _ => ReasoningCut("OLD-PLAN"),
+            _ => ReasoningCut("OLD-PLAN"), _ => Answer("new answer"));
+        var engine = new QueryEngine(model, Array.Empty<ITool>(), maxTurns: 40);
+        engine.Seed(new[] { new SystemMessage("sys") });
+
+        var first = await Run(engine);
+        Assert.Contains(first, e => e is StreamNotice n && n.Text.Contains("output token limit"));
+
+        await Run(engine);   // 새 질문
+        Assert.DoesNotContain(model.Seen[^1], m => m is UserMessage u && u.Text.Contains("OLD-PLAN"));
     }
 
     // 넘길 추론이 길면 끝부분(결론·계획 쪽)만 남기고 앞을 버렸다고 알린다.

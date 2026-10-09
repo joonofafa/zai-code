@@ -15,7 +15,7 @@ namespace MoaiCode.Providers.OpenAi;
 /// OpenAI 호환 엔드포인트를 단일 경로로 지원 (TS openaiShim의 핵심 경로).
 /// Phase 1 범위: 텍스트 + 툴콜 스트리밍. reasoning 포맷 변형/responses API는 후속.
 /// </summary>
-public sealed class OpenAiChatModel : IChatModel, IModelControl
+public sealed class OpenAiChatModel : IChatModel, IModelControl, IOutputBoost
 {
     private readonly HttpClient _http;
     private readonly string _baseUrl;
@@ -107,10 +107,20 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl
         }
     }
 
-    public async IAsyncEnumerable<StreamEvent> StreamAsync(
+    public void BoostNextRequest() => Interlocked.Exchange(ref _boostOutput, 1);
+
+    // 확대 플래그는 '호출 시점'에 읽고 지운다(지연 실행되는 반복기 본문에서 읽으면 그 사이 다른 호출이 가져간다).
+    public IAsyncEnumerable<StreamEvent> StreamAsync(
         IReadOnlyList<Message> messages,
         IReadOnlyList<ITool> tools,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        CancellationToken ct = default)
+        => StreamCoreAsync(messages, tools, Interlocked.Exchange(ref _boostOutput, 0) == 1, ct);
+
+    private async IAsyncEnumerable<StreamEvent> StreamCoreAsync(
+        IReadOnlyList<Message> messages,
+        IReadOnlyList<ITool> tools,
+        bool boost,
+        [EnumeratorCancellation] CancellationToken ct)
     {
         var body = new JsonObject
         {
@@ -118,9 +128,9 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl
             ["stream"] = true,
             // max_tokens 미전송 시 일부 게이트웨이(open-moai 등)가 1024 로 캡핑 → 응답이 중간에 잘려
             // 모델이 작업을 끝내기 전에 멈춘다. 넉넉히 보낸다(env MOAI_MAX_TOKENS, 기본 8192).
-            // 직전 응답이 추론만 하다 한도에서 잘렸으면 이번 한 번은 API 최대치로 — 같은 한도로 다시 물으면
-            // 처음부터 다시 추론하다 똑같이 잘린다(어려운 과제에서 응답 6번이 전부 추론만으로 끝난 실측).
-            ["max_tokens"] = _boostOutput ? ApiMaxOutputTokens : MaxOutputTokens(),
+            // 직전 응답이 추론만 하다 한도에서 잘렸으면 엔진이 이번 한 번을 API 최대치로 올린다(IOutputBoost) —
+            // 같은 한도로 다시 물으면 처음부터 다시 추론하다 똑같이 잘린다(어려운 과제에서 응답 6번이 전부 추론만으로 끝난 실측).
+            ["max_tokens"] = boost ? ApiMaxOutputTokens : MaxOutputTokens(),
             ["messages"] = BuildMessages(messages),
         };
 
@@ -282,8 +292,6 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl
         // 토큰 한도 컷 시 content 도달 전에 잘리면, 잘린 reasoning 원문을 답변으로 흘려보내
         // 화면에 추론이 그대로 노출되는 사고가 있었다(2026-09-21). 이어쓰기 누지에 맡긴다.
         var hasTools = toolAccum.Values.Any(b => !string.IsNullOrEmpty(b.Name));
-        _boostOutput = string.Equals(stopReason, "length", StringComparison.OrdinalIgnoreCase)
-                       && !emittedContent && !hasTools;
         if (!emittedContent && !hasTools && reasoning.Length > 0
             && !string.Equals(stopReason, "length", StringComparison.OrdinalIgnoreCase))
         {
@@ -529,8 +537,8 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl
     // z.ai chat/completions 가 받는 max_tokens 상한(초과 시 400 '1210 max_tokens parameter is illegal').
     public const int ApiMaxOutputTokens = 131_072;
 
-    // 직전 응답이 본문·툴콜 없이 추론만 하다 stop=length 로 잘렸는가 — 다음 요청 한 번 한도를 최대로 올린다.
-    private volatile bool _boostOutput;
+    // 다음 StreamAsync 호출 한 번의 한도를 최대로 올릴지(1) — BoostNextRequest 가 켜고 StreamAsync 가 소비한다.
+    private int _boostOutput;
 
     private static int MaxOutputTokens()
     {
