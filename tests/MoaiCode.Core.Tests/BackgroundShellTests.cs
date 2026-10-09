@@ -146,7 +146,17 @@ public class BackgroundShellTests
         var reg = new BackgroundShellRegistry();
         var received = new List<BackgroundShellFinished>();
         using var gate = new SemaphoreSlim(0);
-        reg.OnShellFinished = f => { received.Add(f); gate.Release(); };
+        // 통보는 셸마다 다른 스레드풀 스레드에서 동시에 온다 — List 는 동시 Add 에 안전하지 않아 가끔 한 건이
+        // 사라졌다(간헐 실패의 원인). 잠금으로 직렬화한다.
+        reg.OnShellFinished = f =>
+        {
+            lock (received)
+            {
+                received.Add(f);
+            }
+
+            gate.Release();
+        };
 
         // 1) 정상 종료(exit 0)
         var ok = reg.Start("echo ok", Path.GetTempPath());
