@@ -569,6 +569,49 @@ public class OutputRecoveryTests
         Assert.Equal(130, engine.CumulativeUsage.InputTokens);
     }
 
+    /// <summary>앞 세 번은 답, 네 번째(본 요청)는 컨텍스트 초과, 이후 요약·답을 돌려주는 모델.</summary>
+    private sealed class OverflowOnceModel : IChatModel
+    {
+        public List<IReadOnlyList<Message>> Seen { get; } = new();
+
+        public async IAsyncEnumerable<StreamEvent> StreamAsync(
+            IReadOnlyList<Message> messages, IReadOnlyList<ITool> tools,
+            [EnumeratorCancellation] CancellationToken ct = default)
+        {
+            await Task.Yield();
+            Seen.Add(messages.ToList());
+            if (Seen.Count == 4)
+            {
+                throw new MoaiCode.Providers.ProviderException(400, "maximum context length exceeded");
+            }
+
+            yield return new TextDelta(Seen.Count == 5 ? "<summary>earlier work</summary>" : "ok " + Seen.Count);
+            yield return new TurnCompleted(new Usage(1, 1), "stop");
+        }
+    }
+
+    // 스트림 시작 시 컨텍스트 초과 → 강제 컴팩션 경로만 원래 요청을 다시 고정하지 않았다(다른 컴팩션 경로는 함).
+    [Fact]
+    public async Task Overflow_recovery_reanchors_the_goal()
+    {
+        var model = new OverflowOnceModel();
+        var engine = new QueryEngine(model, Array.Empty<ITool>());
+        engine.Seed(new[] { new SystemMessage("sys") });
+        for (var i = 0; i < 3; i++)
+        {
+            await foreach (var _ in engine.SubmitAsync("warm-up " + i))
+            {
+            }
+        }
+
+        await foreach (var _ in engine.SubmitAsync("GOAL-XYZ fix the parser"))
+        {
+        }
+
+        var retry = model.Seen[^1];
+        Assert.Contains(retry, m => m is UserMessage u && u.Text.Contains("GOAL-XYZ") && u.Text.Contains("<system-reminder>"));
+    }
+
     // 출력 한도 확대는 엔진이 '본' 요청에만 건다 — 예전엔 모델이 스스로 다음 요청을 키워 사이에 낀
     // 컴팩션 요약이 가져갔다. 확대는 추론만 하다 잘린 직후 한 번뿐이다.
     [Fact]

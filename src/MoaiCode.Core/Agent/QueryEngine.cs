@@ -387,6 +387,13 @@ public sealed class QueryEngine
                     throw (Exception)overflow; // 더 줄일 게 없으면 원래 오류를 사용자에게 노출
                 }
 
+                // 다른 컴팩션 경로와 같이 요약에 묻힌 원래 요청을 다시 고정한다(표류 방지).
+                var overflowAnchor = GoalReminder();
+                if (overflowAnchor.Length > 0)
+                {
+                    _messages.Add(new UserMessage(overflowAnchor));
+                }
+
                 stream = OpenStream();
             }
 
