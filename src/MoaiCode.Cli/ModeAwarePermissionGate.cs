@@ -9,7 +9,7 @@ using MoaiCode.Tui.Commands;
 
 namespace MoaiCode.Cli;
 
-public sealed class ModeAwarePermissionGate : IPermissionGate
+public sealed class ModeAwarePermissionGate : IPermissionGate, IReadOnlyToolGate
 {
     private readonly AgentRuntimeState _state;
     private readonly IPermissionGate _inner;
@@ -35,6 +35,17 @@ public sealed class ModeAwarePermissionGate : IPermissionGate
         _confirmer = confirmer;
         _classifier = classifier;
         _rules = rules;
+    }
+
+    public bool DeniesReadOnly(ITool tool, ToolUseBlock call)
+    {
+        if (_rules?.Evaluate(tool, call) != RuleMatch.Deny)
+        {
+            return false;
+        }
+
+        Console.Error.WriteLine(L10n.Get("permission.denyRule"));
+        return true;
     }
 
     public async ValueTask<bool> AllowAsync(ITool tool, ToolUseBlock call, CancellationToken ct)

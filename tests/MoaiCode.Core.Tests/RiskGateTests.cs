@@ -197,6 +197,20 @@ public sealed class RiskGateTests
         Assert.Equal(1, inner.Calls);
     }
 
+    // 엔진은 읽기 전용 툴에 게이트를 태우지 않아, permissions.deny ["WebFetch"] 같은 명시적 규칙이 무시됐다.
+    [Fact]
+    public void Deny_rules_apply_to_read_only_tools()
+    {
+        var rules = new MoaiCode.Config.PermissionRules(deny: new[] { "WebFetch" });
+        var gate = new ModeAwarePermissionGate(
+            new AgentRuntimeState { Mode = AgentMode.Act }, new AutoApproveGate(), Path.GetTempPath(), rules: rules);
+        using var doc = JsonDocument.Parse("""{"url":"https://example.com"}""");
+        var call = new ToolUseBlock("id", "WebFetch", doc.RootElement.Clone());
+
+        Assert.True(gate.DeniesReadOnly(new FakeTool("WebFetch", readOnly: true), call));
+        Assert.False(gate.DeniesReadOnly(new FakeTool("Read", readOnly: true), call));
+    }
+
     [Fact]
     public async Task Plan_mode_still_blocks_writes_before_anything_else()
     {

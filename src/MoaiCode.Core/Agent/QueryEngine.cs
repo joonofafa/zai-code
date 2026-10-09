@@ -559,7 +559,11 @@ public sealed class QueryEngine
                     continue;
                 }
 
-                if (!tool.IsReadOnly && !await _gate.AllowAsync(tool, call, ct).ConfigureAwait(false))
+                // 읽기 전용 툴은 확인을 거치지 않되, 명시적 deny 규칙(IReadOnlyToolGate)은 지킨다.
+                var allowed = tool.IsReadOnly
+                    ? !(_gate is IReadOnlyToolGate ro && ro.DeniesReadOnly(tool, call))
+                    : await _gate.AllowAsync(tool, call, ct).ConfigureAwait(false);
+                if (!allowed)
                 {
                     _log($"permission denied: {call.Name}");
                     _messages.Add(new ToolResultMessage(call.Id, Reminders.PermissionDenied, true));
