@@ -66,4 +66,5 @@ echo ""
 echo "📄 통합 체크섬: dist/SHASUMS256.txt"
 cat dist/SHASUMS256.txt
 
-[[ $fail -eq 0 ]] && echo "" && echo "✅ 6개 플랫폼 전체 완료" || { echo ""; echo "⚠️ 일부 실패"; exit 1; }
+echo "   → 각 dist/<rid>/ 의 실행 파일과 THIRD_PARTY_NOTICES.md 를 함께 복사하세요(제3자 라이선스 고지 — 배포 시 동봉 필수)."
+[[ $fail -eq 0 ]] && echo "" && echo "✅ ${#RIDS[@]}개 플랫폼 전체 완료" || { echo ""; echo "⚠️ 일부 실패"; exit 1; }

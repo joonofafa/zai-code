@@ -74,6 +74,8 @@ mv "${TMP}" "${VERSIONED}"
 # 링크는 ${OUT}/zaiCode 파일이어야 런처 경로(dist/<rid>/zaiCode)가 유지된다. 상대경로는
 # 링크 위치(dist/<rid>/) 기준으로 해석되므로 ../ 로 dist/versions 를 가리킨다.
 ln -s "../versions/${RID}/${STAMP}-$$/zaiCode" "${OUT}/zaiCode"
+# 제3자 고지도 같은 자리에 둔다 — 배포본을 dist/<rid>/ 에서 복사해 가므로 함께 보여야 한다.
+ln -s "../versions/${RID}/${STAMP}-$$/THIRD_PARTY_NOTICES.md" "${OUT}/THIRD_PARTY_NOTICES.md"
 
 # 오래된 버전 보관본 정리(최근 5개만 유지 — 옛 세션이 잡고 있는 inode 는 unlink 로도 안전).
 ls -1dt "$(dirname "${VERSIONED}")"/[0-9]*-* 2>/dev/null | tail -n +6 | xargs -r rm -rf
@@ -87,5 +89,5 @@ fi
 echo ""
 echo "✅ 게시 완료: ${OUT}/zaiCode -> versions/${RID}/${STAMP}-$$/zaiCode"
 echo "   SHA-256: $(cut -d' ' -f1 "${VERSIONED}/zaiCode.sha256")"
-echo "   → 이 파일 하나만 복사하면 런타임 설치 없이 실행됩니다. (검증: sha256sum -c zaiCode.sha256)"
+echo "   → 실행 파일과 THIRD_PARTY_NOTICES.md 를 함께 복사하세요(제3자 라이선스 고지 — 배포 시 동봉 필수). 런타임 설치 없이 실행됩니다. (검증: versions 폴더에서 sha256sum -c zaiCode.sha256)"
 echo "   ⚠ 심볼릭 링크 교체 방식이라 기존 세션도 계속 동작하지만, 새 기능은 재시작해야 씁니다."
