@@ -24,6 +24,11 @@ public sealed class VtParser
 
     private readonly List<byte> _buf = new();
     private bool _inPaste;
+    // 상한을 넘은 붙여넣기: 앞부분은 이미 내보냈고 종료 마커까지 버리는 중. 남은 바이트를 키로 파싱하면
+    // 줄바꿈마다 Enter(제출)가 됐다. 마커가 끝내 안 와도 입력이 영영 막히지 않게 버리는 양에도 상한을 둔다.
+    private bool _pasteOverflowed;
+    private long _pasteDiscarded;
+    private const long MaxPasteDiscardBytes = 64_000_000;
     private readonly List<byte> _paste = new();
 
     /// <summary>바이트 청크를 먹이고 이번에 확정된 이벤트들을 반환. 미완성 시퀀스는 내부 보존.</summary>
@@ -85,15 +90,20 @@ public sealed class VtParser
         var idx = IndexOf(_buf, PasteEnd, 0);
         if (idx >= 0)
         {
-            for (var i = 0; i < idx; i++)
+            if (!_pasteOverflowed)
             {
-                _paste.Add(_buf[i]);
+                for (var i = 0; i < idx; i++)
+                {
+                    _paste.Add(_buf[i]);
+                }
+
+                outEvents.Add(new PasteEvent(Encoding.UTF8.GetString(_paste.ToArray())));
             }
 
             _buf.RemoveRange(0, idx + PasteEnd.Length);
-            outEvents.Add(new PasteEvent(Encoding.UTF8.GetString(_paste.ToArray())));
             _paste.Clear();
             _inPaste = false;
+            _pasteOverflowed = false;
             return true;
         }
 
@@ -103,19 +113,32 @@ public sealed class VtParser
         if (_buf.Count > keep)
         {
             var moved = _buf.Count - keep;
-            for (var i = 0; i < moved; i++)
+            if (_pasteOverflowed)
             {
-                _paste.Add(_buf[i]);
+                _pasteDiscarded += moved;
+            }
+            else
+            {
+                for (var i = 0; i < moved; i++)
+                {
+                    _paste.Add(_buf[i]);
+                }
             }
 
             _buf.RemoveRange(0, moved);
         }
 
-        if (_paste.Count > MaxPasteBytes)
+        if (!_pasteOverflowed && _paste.Count > MaxPasteBytes)
         {
             outEvents.Add(new PasteEvent(Encoding.UTF8.GetString(_paste.ToArray())));
             _paste.Clear();
-            _inPaste = false;
+            _pasteOverflowed = true;
+            _pasteDiscarded = 0;
+        }
+        else if (_pasteOverflowed && _pasteDiscarded > MaxPasteDiscardBytes)
+        {
+            _inPaste = false;   // 종료 마커를 잃은 것으로 보고 일반 입력으로 돌아간다
+            _pasteOverflowed = false;
             return true;
         }
 
