@@ -18,6 +18,7 @@ public sealed class McpClient : IAsyncDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _pump;
     private long _nextId;
+    private bool _closed;   // 서버 stdout 이 끝났다(서버 종료) — 이후 요청은 즉시 실패(_lock 보호)
 
     public McpClient(IMcpTransport transport)
     {
@@ -106,6 +107,11 @@ public sealed class McpClient : IAsyncDisposable
         var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_lock)
         {
+            if (_closed)
+            {
+                throw new McpException(ServerExited);
+            }
+
             _pending[id] = tcs;
         }
 
@@ -179,9 +185,12 @@ public sealed class McpClient : IAsyncDisposable
                 using (doc)
                 {
                     var root = doc.RootElement;
-                    if (!root.TryGetProperty("id", out var idEl) || idEl.ValueKind != JsonValueKind.Number)
+                    // 서버 발신 notification/request(method 가 있음)는 무시 — 서버 요청(ping 등)의 id 가
+                    // 우리 대기 요청 id 와 겹치면 그 요청을 엉뚱한 값으로 끝내 버렸다.
+                    if (!root.TryGetProperty("id", out var idEl) || idEl.ValueKind != JsonValueKind.Number
+                        || root.TryGetProperty("method", out _))
                     {
-                        continue; // 서버 발신 notification/request는 스켈레톤에서 무시
+                        continue;
                     }
 
                     var id = idEl.GetInt64();
@@ -215,7 +224,25 @@ public sealed class McpClient : IAsyncDisposable
         {
             // dispose
         }
+        finally
+        {
+            // 응답 스트림이 끝났다(서버 종료·크래시) — 대기 중 요청을 타임아웃(120초)까지 두지 않고 즉시 실패시킨다.
+            List<TaskCompletionSource<JsonElement>> orphans;
+            lock (_lock)
+            {
+                _closed = true;
+                orphans = _pending.Values.ToList();
+                _pending.Clear();
+            }
+
+            foreach (var t in orphans)
+            {
+                t.TrySetException(new McpException(ServerExited));
+            }
+        }
     }
+
+    private const string ServerExited = "MCP server exited";
 
     private static JsonElement EmptySchema()
     {

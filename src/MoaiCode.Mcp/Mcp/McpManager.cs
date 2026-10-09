@@ -17,10 +17,11 @@ public sealed class McpManager : IAsyncDisposable
     {
         foreach (var config in configs)
         {
+            McpClient? client = null;
             try
             {
                 var transport = StdioTransport.Start(config);
-                var client = new McpClient(transport);
+                client = new McpClient(transport);
                 await client.InitializeAsync(ct).ConfigureAwait(false);
                 var tools = await client.ListToolsAsync(ct).ConfigureAwait(false);
                 foreach (var t in tools)
@@ -33,6 +34,11 @@ public sealed class McpManager : IAsyncDisposable
             catch (Exception ex)
             {
                 _errors.Add($"{config.Name}: {ex.Message}");
+                // 초기화에 실패한(멈춘) 서버 프로세스를 남기지 않는다 — _clients 에 없으니 종료 때도 정리되지 않았다.
+                if (client is not null)
+                {
+                    await client.DisposeAsync().ConfigureAwait(false);
+                }
             }
         }
     }

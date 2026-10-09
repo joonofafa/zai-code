@@ -36,6 +36,36 @@ public class McpTests
         Assert.Equal("${unterminated", McpConfigLoader.ExpandEnv("${unterminated"));
     }
 
+    /// <summary>응답 없이 종료되는 서버 — 요청을 받자마자 stdout 이 닫힌다(EOF).</summary>
+    private sealed class ExitingMcpServer : IMcpTransport
+    {
+        private readonly Channel<string> _in = Channel.CreateUnbounded<string>();
+
+        public ChannelReader<string> Incoming => _in.Reader;
+
+        public Task SendAsync(string message, CancellationToken ct)
+        {
+            _in.Writer.TryComplete();
+            return Task.CompletedTask;
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    // 서버가 죽어 stdout 이 EOF 가 돼도 대기 중 요청이 풀리지 않아, 시작(initialize)·도구 호출이
+    // 요청 타임아웃(120초)까지 조용히 멈췄다.
+    [Fact]
+    public async Task Requests_fail_fast_when_the_server_exits()
+    {
+        await using var client = new McpClient(new ExitingMcpServer());
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await Assert.ThrowsAsync<McpException>(() => client.InitializeAsync(CancellationToken.None));
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(5), $"took {sw.Elapsed}");
+
+        // 이미 닫힌 뒤의 요청도 즉시 실패한다.
+        await Assert.ThrowsAsync<McpException>(() => client.ListToolsAsync(CancellationToken.None));
+    }
+
     /// <summary>인메모리 MCP 서버 — JSON-RPC 요청에 즉시 응답.</summary>
     private sealed class FakeMcpServer : IMcpTransport
     {
