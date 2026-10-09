@@ -52,6 +52,8 @@ public static class AppBootstrap
 
         // 1) 설정 머지 (user → project → env)
         var settings = SettingsLoader.Load(cwd);
+        // settings.json 의 logLevel(trace…off). 예전엔 읽기만 하고 적용하지 않아 "off" 여도 INFO 가 기록됐다.
+        MoaiLog.Configure(settings.LogLevel);
         L10n.SetLanguage(settings.Language);
         TuiTheme.Apply(settings.Theme);   // 시맨틱 테마 적용(6종, invalid→carbon-dark 폴백)
         ApplySettingsToEnv(settings);
