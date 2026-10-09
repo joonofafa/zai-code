@@ -20,9 +20,14 @@ public sealed class TerminalSession : IDisposable
     private const string EnableFeatures = "\u001b[?2004h\u001b[?1004h";
     private const string DisableFeatures = "\u001b[?1004l\u001b[?2004l";
 
+    // 시그널 종료 때 화면 상태도 되돌린다: 커서 저장 → 스크롤 영역 해제(DECSTBM 은 커서를 맨 위로 옮긴다) →
+    // 커서 복원 → 커서 표시. 정상 종료는 입력창이 스스로 정리하므로 시그널 경로에서만 쓴다.
+    private const string ResetScreen = "\u001b7\u001b[r\u001b8\u001b[?25h";
+
     private readonly TerminalMode _mode;
     private readonly TerminalInput _input;
     private readonly EventHandler _onProcessExit;
+    private readonly List<System.Runtime.InteropServices.PosixSignalRegistration> _signals = new();
     private bool _disposed;
 
     public TerminalSession()
@@ -38,6 +43,40 @@ public sealed class TerminalSession : IDisposable
 
         _onProcessExit = (_, _) => RestoreTerminal();
         AppDomain.CurrentDomain.ProcessExit += _onProcessExit;
+
+        // SIGTERM(kill)·SIGHUP·SIGQUIT 에는 ProcessExit 가 오지 않아, 셸이 raw 모드(-icanon -echo)·남은 스크롤 영역·
+        // 숨은 커서로 먹통이 됐다. 복원만 하고 기본 동작(종료)은 그대로 둔다(Cancel 안 함).
+        foreach (var sig in new[]
+                 {
+                     System.Runtime.InteropServices.PosixSignal.SIGTERM,
+                     System.Runtime.InteropServices.PosixSignal.SIGHUP,
+                     System.Runtime.InteropServices.PosixSignal.SIGQUIT,
+                 })
+        {
+            try
+            {
+                _signals.Add(System.Runtime.InteropServices.PosixSignalRegistration.Create(sig, _ =>
+                {
+                    try
+                    {
+                        if (!Console.IsOutputRedirected)
+                        {
+                            Console.Write(ResetScreen);
+                        }
+                    }
+                    catch
+                    {
+                        // 터미널이 이미 닫혔을 수 있다(SIGHUP).
+                    }
+
+                    RestoreTerminal();
+                }));
+            }
+            catch (PlatformNotSupportedException)
+            {
+                // 이 플랫폼에서 지원하지 않는 시그널
+            }
+        }
     }
 
     public TerminalInput Input => _input;
@@ -51,6 +90,12 @@ public sealed class TerminalSession : IDisposable
 
         _disposed = true;
         AppDomain.CurrentDomain.ProcessExit -= _onProcessExit;
+        foreach (var s in _signals)
+        {
+            s.Dispose();
+        }
+
+        _signals.Clear();
         RestoreTerminal();
         _input.Dispose();
     }
