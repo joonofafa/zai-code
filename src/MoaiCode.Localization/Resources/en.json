@@ -84,6 +84,7 @@
   "repl.help": "Help: /help\nSession: /resume\nInterrupt: ESC or Ctrl + C",
   "repl.unknownCommand": "Unknown command: /{0}",
   "repl.commandError": "/{0} failed: {1}",
+  "repl.shellInterrupted": "(interrupted)",
   "repl.emptyResponse": "(Empty response — the model returned no content. Try a different model with /model.)",
   "repl.aborted": "⊘ Interrupted",
   "repl.bgWaiting": "You can keep typing; results will be reported when done.",

@@ -452,6 +452,9 @@ public sealed class ReplApp
             FileName = file,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            // stdin 을 물려주지 않는다 — 입력 리더 스레드가 fd 0 을 계속 읽고 있어 자식과 키를 나눠 가졌다
+            // (`read`·비밀번호 프롬프트가 멈추고, 친 글자가 나중에 입력창에 나타남). 자식은 즉시 EOF 를 받는다.
+            RedirectStandardInput = true,
             UseShellExecute = false,
             WorkingDirectory = Directory.GetCurrentDirectory(),
         };
@@ -491,13 +494,26 @@ public sealed class ReplApp
             proc.OutputDataReceived += (_, e) => Sink(e.Data, false);
             proc.ErrorDataReceived += (_, e) => Sink(e.Data, true);
             proc.Start();
+            proc.StandardInput.Close();
             proc.BeginOutputReadLine();
             proc.BeginErrorReadLine();
-            try
+
+            // raw 모드라 Ctrl+C 가 SIGINT 가 되지 않는다 — 실행 중 ESC/Ctrl+C 를 직접 읽어 트리를 끊는다.
+            // 그 사이 다른 키는 버린다(큐에 남으면 명령이 끝난 뒤 빈 입력창의 Ctrl+C 가 앱 종료가 됐다).
+            using var interrupt = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            var exited = proc.WaitForExitAsync(CancellationToken.None);
+            while (!exited.IsCompleted && !interrupt.IsCancellationRequested)
             {
-                await proc.WaitForExitAsync(ct).ConfigureAwait(false);
+                if (!Console.IsInputRedirected && IsInterrupt(PollInputEvent()))
+                {
+                    interrupt.Cancel();
+                    break;
+                }
+
+                await Task.WhenAny(exited, Task.Delay(40, CancellationToken.None)).ConfigureAwait(false);
             }
-            catch (OperationCanceledException)
+
+            if (!exited.IsCompleted)
             {
                 try
                 {
@@ -508,7 +524,13 @@ public sealed class ReplApp
                     // best-effort: 취소 시 자식 프로세스 정리.
                 }
 
-                throw;
+                ct.ThrowIfCancellationRequested();   // 앱 종료면 위로 전파, 사용자 중단이면 결과를 남긴다
+                await exited.ConfigureAwait(false);
+                AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]{Markup.Escape(L10n.Get("repl.shellInterrupted"))}[/]");
+            }
+            else
+            {
+                await exited.ConfigureAwait(false);
             }
 
             exit = proc.ExitCode;
@@ -1411,6 +1433,19 @@ public sealed class ReplApp
         return sb.ToString();
     }
 
+    // 기다리지 않고 입력 이벤트 하나를 꺼낸다. 세션 중에는 공용 리더(raw+VtParser)가 stdin 을 소유하고,
+    // 세션 밖(비-raw 폴백)에서는 Console 로 폴백한다.
+    private static Input.InputEvent? PollInputEvent()
+    {
+        var shared = Input.TerminalInput.Shared;
+        return shared is not null
+            ? shared.TryReadEvent(0)
+            : (Console.KeyAvailable ? new Input.KeyEvent(Console.ReadKey(intercept: true)) : null);
+    }
+
+    private static bool IsInterrupt(Input.InputEvent? ev) =>
+        ev is Input.CancelEvent || (ev is Input.KeyEvent esc && esc.Key.Key == ConsoleKey.Escape);
+
     // ESC 워처: 턴 동안 백그라운드로 ESC 를 감지해 turnCts 를 취소. IsPrompting(권한/선택 위젯이
     // stdin 점유) 중에는 절대 키를 읽지 않아 입력 충돌을 피한다. non-blocking(KeyAvailable) 폴링.
     private IDisposable StartEscWatcher(CancellationTokenSource turnCts)
@@ -1430,17 +1465,13 @@ public sealed class ReplApp
                     var hit = false;
                     try
                     {
-                        // 턴 중에는 공용 리더(raw+VtParser)가 stdin 을 소유한다 — 여기서 이벤트를 소비한다.
-                        // 세션 밖(비-raw 폴백)에서는 Console 로 폴백.
-                        var shared = Input.TerminalInput.Shared;
+                        // 턴 중에는 공용 리더가 stdin 을 소유한다 — 여기서 이벤트를 소비한다(PollInputEvent).
                         if (!ConsolePrompt.IsPrompting)
                         {
-                            Input.InputEvent? ev = shared is not null
-                                ? shared.TryReadEvent(0)
-                                : (Console.KeyAvailable ? new Input.KeyEvent(Console.ReadKey(intercept: true)) : null);
+                            var ev = PollInputEvent();
 
                             // ESC/Ctrl+C 는 어느 경로든 턴 취소.
-                            if (ev is Input.CancelEvent || (ev is Input.KeyEvent esc && esc.Key.Key == ConsoleKey.Escape))
+                            if (IsInterrupt(ev))
                             {
                                 hit = true;
                             }
