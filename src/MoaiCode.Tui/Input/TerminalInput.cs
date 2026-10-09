@@ -31,6 +31,9 @@ public sealed class TerminalInput : IDisposable
     private readonly Thread _reader;
     private volatile bool _eof;
     private volatile bool _stopped;
+    // 파서에 단독 ESC 가 대기하기 시작한 시각(TickCount64, 0 = 대기 없음). _lock 보호. ESC 는 이 시각부터
+    // EscTimeoutMs 가 지나야 확정한다 — 깨어난 즉시 확정하면 따로 도착한 `[A` 가 ESC + 글자가 됐다.
+    private long _escSince;
 
     public TerminalInput(Stream? stdin = null)
     {
@@ -95,6 +98,8 @@ public sealed class TerminalInput : IDisposable
                 {
                     _events.Enqueue(ev);
                 }
+
+                _escSince = _parser.PendingIsEscape ? (_escSince == 0 ? Environment.TickCount64 : _escSince) : 0;
             }
 
             _signal.Set();
@@ -127,16 +132,10 @@ public sealed class TerminalInput : IDisposable
 
             if (pendingEsc)
             {
-                _signal.WaitOne(EscTimeoutMs);
+                _signal.WaitOne(EscRemainingMs());
                 lock (_lock)
                 {
-                    if (_events.Count == 0 && _parser.PendingIsEscape)
-                    {
-                        foreach (var ev in _parser.Flush())
-                        {
-                            _events.Enqueue(ev);
-                        }
-                    }
+                    FlushEscIfExpired();
                 }
             }
             else
@@ -171,20 +170,39 @@ public sealed class TerminalInput : IDisposable
             pendingEsc = _parser.PendingIsEscape;
         }
 
-        var wait = pendingEsc ? Math.Min(timeoutMs, EscTimeoutMs) : timeoutMs;
+        var wait = pendingEsc ? Math.Min(timeoutMs, EscRemainingMs()) : timeoutMs;
         _signal.WaitOne(wait);
 
         lock (_lock)
         {
-            if (_events.Count == 0 && _parser.PendingIsEscape)
+            FlushEscIfExpired();
+            return _events.Count > 0 ? _events.Dequeue() : null;
+        }
+    }
+
+    // 단독 ESC 확정까지 남은 시간(ms). 대기 중이 아니면 EscTimeoutMs.
+    private int EscRemainingMs()
+    {
+        lock (_lock)
+        {
+            return _escSince == 0
+                ? EscTimeoutMs
+                : (int)Math.Clamp(EscTimeoutMs - (Environment.TickCount64 - _escSince), 0, EscTimeoutMs);
+        }
+    }
+
+    // _lock 안에서 호출. 큐가 비었고 단독 ESC 가 EscTimeoutMs 이상 기다렸으면 Escape 로 확정한다.
+    private void FlushEscIfExpired()
+    {
+        if (_events.Count == 0 && _parser.PendingIsEscape
+            && _escSince != 0 && Environment.TickCount64 - _escSince >= EscTimeoutMs)
+        {
+            foreach (var ev in _parser.Flush())
             {
-                foreach (var ev in _parser.Flush())
-                {
-                    _events.Enqueue(ev);
-                }
+                _events.Enqueue(ev);
             }
 
-            return _events.Count > 0 ? _events.Dequeue() : null;
+            _escSince = 0;
         }
     }
 
