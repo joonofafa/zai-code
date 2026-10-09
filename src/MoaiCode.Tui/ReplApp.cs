@@ -73,7 +73,8 @@ public sealed class ReplApp
         _ctx = ctx;
         _slash = slash;
         _interactive = !Console.IsInputRedirected;
-        _sessionId = "sess-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        // 같은 폴더에서 같은 초에 둘을 띄우면 같은 id 라 서로의 세션 파일을 덮어썼다 — 짧은 난수를 붙인다(stream-json 과 동일).
+        _sessionId = "sess-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..4];
 
         // raw 라인에디터(히스토리/자동완성). 문제 시 MOAI_SIMPLE_INPUT=1 로 평문 입력으로 폴백.
         var simple = Environment.GetEnvironmentVariable("MOAI_SIMPLE_INPUT");
