@@ -329,4 +329,29 @@ public class BackgroundResumeTests
             Console.SetOut(origOut);
         }
     }
+
+    // 입력창 편집: Backspace·Delete·←/→ 가 서로게이트 쌍(이모지)을 반쪽만 다뤄 깨진 글자(�)가 제출됐다.
+    [Theory]
+    [InlineData("x\U0001F600\u007f\r", "x")]                          // Backspace
+    [InlineData("x\U0001F600y\u001b[D\u001b[Dz\r", "xz\U0001F600y")]  // ← 두 번 = 글자 두 개
+    [InlineData("x\U0001F600\u001b[H\u001b[C\u001b[3~\r", "x")]       // Home, →, Delete
+    public void Composer_edits_whole_surrogate_pairs(string keys, string expected)
+    {
+        var origOut = Console.Out;
+        var origShared = TerminalInput.Shared;
+        try
+        {
+            Console.SetOut(new StringWriter());
+            var dock = DockOver(new MemoryStream(Encoding.UTF8.GetBytes(keys)), out var input);
+            using (input)
+            {
+                Assert.Equal(expected, dock.ReadLine([], [], null));
+            }
+        }
+        finally
+        {
+            Console.SetOut(origOut);
+            TerminalInput.Shared = origShared;
+        }
+    }
 }

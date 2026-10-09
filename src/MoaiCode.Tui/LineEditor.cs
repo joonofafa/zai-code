@@ -199,21 +199,21 @@ public static class LineEditor
                     {
                         // 붙여넣기 표식은 한 글자씩이 아니라 통째로 지운다.
                         var n = PasteStore.PlaceholderLengthEndingAt(buf.ToString(), pos);
-                        var del = n > 0 ? n : 1;
+                        var del = n > 0 ? n : TextCursor.PrevLength(buf, pos);
                         buf.Remove(pos - del, del); pos -= del; r.Refresh(buf, pos);
                     }
                     break;
 
                 case ConsoleKey.Delete:
-                    if (pos < buf.Length) { buf.Remove(pos, 1); r.Refresh(buf, pos); }
+                    if (pos < buf.Length) { buf.Remove(pos, TextCursor.NextLength(buf, pos)); r.Refresh(buf, pos); }
                     break;
 
                 case ConsoleKey.LeftArrow:
-                    if (pos > 0) { pos--; r.Refresh(buf, pos); }
+                    if (pos > 0) { pos -= TextCursor.PrevLength(buf, pos); r.Refresh(buf, pos); }
                     break;
 
                 case ConsoleKey.RightArrow:
-                    if (pos < buf.Length) { pos++; r.Refresh(buf, pos); }
+                    if (pos < buf.Length) { pos += TextCursor.NextLength(buf, pos); r.Refresh(buf, pos); }
                     break;
 
                 case ConsoleKey.Home:

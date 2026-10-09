@@ -534,18 +534,18 @@ public sealed class BottomDock
                 if (_pos > 0)
                 {
                     var n = PasteStore.PlaceholderLengthEndingAt(_buf.ToString(), _pos);
-                    var del = n > 0 ? n : 1;
+                    var del = n > 0 ? n : TextCursor.PrevLength(_buf, _pos);
                     _buf.Remove(_pos - del, del); _pos -= del; Draw(_buf, _pos);
                 }
                 break;
             case ConsoleKey.Delete:
-                if (_pos < _buf.Length) { _buf.Remove(_pos, 1); Draw(_buf, _pos); }
+                if (_pos < _buf.Length) { _buf.Remove(_pos, TextCursor.NextLength(_buf, _pos)); Draw(_buf, _pos); }
                 break;
             case ConsoleKey.LeftArrow:
-                if (_pos > 0) { _pos--; Draw(_buf, _pos); }
+                if (_pos > 0) { _pos -= TextCursor.PrevLength(_buf, _pos); Draw(_buf, _pos); }
                 break;
             case ConsoleKey.RightArrow:
-                if (_pos < _buf.Length) { _pos++; Draw(_buf, _pos); }
+                if (_pos < _buf.Length) { _pos += TextCursor.NextLength(_buf, _pos); Draw(_buf, _pos); }
                 break;
             case ConsoleKey.Home:
                 _pos = 0; Draw(_buf, _pos);
