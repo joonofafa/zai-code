@@ -15,6 +15,9 @@ public static class SelectList
     // 위젯은 콘솔 입력을 단독·동기 점유하므로 한 번에 하나의 Prompt만 활성 → 필드로 충분.
     private static int _numberWidth = 1;
 
+    // 위젯이 뜬 직후 확정 키를 무시하는 시간(미리 쳐 둔 키가 선택을 확정하지 않게).
+    private const int ArmDelayMs = 250;
+
     // 이번 Prompt 가 제목 줄을 그렸는지(선택 확정 시 위젯 전체를 정확히 지우기 위해 줄 수 계산에 사용).
     private static bool _titleShown;
 
@@ -60,11 +63,26 @@ public static class SelectList
         {
             Render(list, idx, first: true, pendingDelete);
 
+            // 위젯이 뜨기 전에 쳐 둔 키는 이 선택에 대한 답이 아니다 — 턴 중 입력창에 치던 Enter·숫자가
+            // 권한 대화상자에 떨어져 "허용"·"항상 허용"을 고르곤 했다. 쌓인 키를 버리고, 뜬 직후 잠깐은
+            // 확정 키(Enter·숫자)를 받지 않는다(이동·Esc 는 받는다).
+            while (Input.TerminalInput.Shared?.TryReadEvent(0) is not null)
+            {
+            }
+
+            var armedAt = Environment.TickCount64 + ArmDelayMs;
+
             while (true)
             {
                 if (ReadKey(cancel) is not { } key)
                 {
                     return -1;   // 만료(취소)
+                }
+
+                if (Environment.TickCount64 < armedAt
+                    && (key.KeyChar is '\r' or '\n' or (>= '1' and <= '9') || key.Key == ConsoleKey.Enter))
+                {
+                    continue;
                 }
 
                 if (key.KeyChar == '\r' || key.KeyChar == '\n')
