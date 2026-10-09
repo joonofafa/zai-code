@@ -82,8 +82,23 @@ public sealed class PermissionRules : IPermissionRuleStore
     }
 
     private bool IsSegmentAllowed(string toolName, string segment) =>
-        ReadOnlyBashCommands.Contains(FirstToken(segment) ?? string.Empty)
+        (ReadOnlyBashCommands.Contains(FirstToken(segment) ?? string.Empty) && !WritesOrExecutes(segment))
         || _allow.Any(p => PermissionRule.MatchesSegment(p, toolName, segment));
+
+    // 읽기 전용 목록의 명령이라도 인자에 따라 파일을 쓰거나 다른 프로그램을 실행한다 — 그 경우는 자동 승인하지 않는다.
+    // uniq IN OUT(출력 파일), tree -o FILE, rg --pre CMD(파일마다 실행), file -C(magic 컴파일 결과 기록).
+    private static bool WritesOrExecutes(string segment)
+    {
+        var tokens = segment.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        return tokens[0] switch
+        {
+            "uniq" => tokens.Skip(1).Count(t => t == "-" || !t.StartsWith('-')) >= 2,
+            "tree" => tokens.Skip(1).Any(t => t == "-o" || t.StartsWith("--output", StringComparison.Ordinal)),
+            "rg" => tokens.Skip(1).Any(t => t == "--pre" || t.StartsWith("--pre=", StringComparison.Ordinal)),
+            "file" => tokens.Skip(1).Any(t => t == "--compile" || (t.StartsWith('-') && !t.StartsWith("--", StringComparison.Ordinal) && t.Contains('C'))),
+            _ => false,
+        };
+    }
 
     // 파일을 건드리지 않는 조회 명령. 규칙을 쌓지 않아도 이만큼은 묻지 않는다
     // (BashSecurity 의 읽기 전용 목록과 같은 취지 — Config 는 Tools.Bash 를 참조할 수 없어 여기 둔다).

@@ -36,6 +36,9 @@ public sealed class BashSegmentPermissionTests
     [InlineData("git status --short | wc -l")]
     [InlineData("ls -la | tail -3")]
     [InlineData("cat a.txt | grep foo | uniq")]
+    [InlineData("grep x a.txt | uniq -c | head")]
+    [InlineData("ls | rg -n foo | tree -L 2")]
+    [InlineData("ls | file -b x.png")]
     public void Compound_command_is_allowed_when_every_segment_is(string command)
         => Assert.Equal(RuleMatch.Allow, Eval(command, "Bash(git status:*)"));
 
@@ -48,6 +51,13 @@ public sealed class BashSegmentPermissionTests
     [InlineData("find . -name '*.tmp' -delete")]
     [InlineData("sort -o list.txt input.txt")]
     [InlineData("grep x f && sed -i s/a/b/ ~/.bashrc")]
+    // 읽기 전용 목록에 있어도 인자로 쓰기·실행이 되는 경우: uniq 출력 파일, tree -o, rg --pre, file -C.
+    [InlineData("cat a | uniq - ~/.bashrc")]
+    [InlineData("ls | uniq in.txt out.txt")]
+    [InlineData("ls; tree -o ~/.profile")]
+    [InlineData("ls | rg --pre ./evil.sh foo")]
+    [InlineData("ls | rg --pre=./evil.sh foo")]
+    [InlineData("ls; file -C -m mymagic")]
     public void Mutating_commands_are_never_auto_allowed(string command)
         => Assert.Equal(RuleMatch.None, Eval(command));
 
