@@ -358,7 +358,16 @@ public sealed class BottomDock
         }
 
         _turnMode = true;
+        ResetHistoryCursor();
         Draw(_buf, _pos);   // 턴 모드로 composer 재그림(save/restore)
+    }
+
+    // 턴에 들어갈 때 히스토리 위치를 끝(=쓰는 중인 초안)으로 다시 맞춘다. ReadLine 때 잡은 위치는 방금 보낸 줄이
+    // 히스토리에 추가되기 전 값이라, 턴 중 ↑ 가 그 줄을 건너뛰고 ↓ 로 돌아와도 초안이 사라졌다.
+    private void ResetHistoryCursor()
+    {
+        _histIdx = _hist.Count;
+        _savedCurrent = "";
     }
 
     /// <summary>턴 종료 — 턴 모드 해제. 다음 ReadLine 의 Draw 가 실제 커서로 정상 렌더한다.</summary>
@@ -388,6 +397,7 @@ public sealed class BottomDock
         }
         _lastCursorRow = scrollBottom;
         _turnMode = true;
+        ResetHistoryCursor();
         Draw(_buf, _pos);   // 턴 모드 재그림(save/restore — 출력 커서 보존)
     }
 

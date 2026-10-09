@@ -354,4 +354,40 @@ public class BackgroundResumeTests
             TerminalInput.Shared = origShared;
         }
     }
+
+    // 턴 중 ↑/↓: 프롬프트를 열 때의 히스토리 위치가 방금 보낸 줄이 추가된 뒤에도 그대로라, ↑ 가 방금 보낸 줄을
+    // 건너뛰고 ↓ 로 돌아와도 쓰던 초안이 사라졌다.
+    [Fact]
+    public void History_during_a_turn_starts_at_the_just_sent_line_and_keeps_the_draft()
+    {
+        var origOut = Console.Out;
+        var origShared = TerminalInput.Shared;
+        try
+        {
+            Console.SetOut(new StringWriter());
+            var history = new List<string> { "older" };
+            var dock = DockOver(new MemoryStream(Encoding.UTF8.GetBytes("just-sent\r")), out var input);
+            using (input)
+            {
+                Assert.Equal("just-sent", dock.ReadLine(history, [], null));
+                history.Add("just-sent");   // ReplApp.AddHistory
+                dock.KeepComposerForTurn("just-sent");
+
+                foreach (var c in "draft")
+                {
+                    dock.HandleEvent(new KeyEvent(new ConsoleKeyInfo(c, ConsoleKey.NoName, false, false, false)));
+                }
+
+                dock.HandleEvent(new KeyEvent(new ConsoleKeyInfo('\0', ConsoleKey.UpArrow, false, false, false)));
+                Assert.Equal("just-sent", dock.CurrentText);
+                dock.HandleEvent(new KeyEvent(new ConsoleKeyInfo('\0', ConsoleKey.DownArrow, false, false, false)));
+                Assert.Equal("draft", dock.CurrentText);
+            }
+        }
+        finally
+        {
+            Console.SetOut(origOut);
+            TerminalInput.Shared = origShared;
+        }
+    }
 }
