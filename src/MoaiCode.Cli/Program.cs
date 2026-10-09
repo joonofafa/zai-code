@@ -266,6 +266,18 @@ root.SetAction(async (ParseResult pr, CancellationToken ct) =>
     }
 
     var printPrompt = pr.GetValue(printOpt);
+    // `cat prompt | zaiCode -p --output-format json`: 값 없는 -p 는 stdin 을 프롬프트로 읽는다(claude CLI 와 같음).
+    // 예전엔 REPL 로 빠져 배너가 stdout 에 찍히고 JSON 이 나오지 않은 채 종료 코드 0 이었다.
+    if (string.IsNullOrEmpty(printPrompt) && pr.GetResult(printOpt) is not null)
+    {
+        printPrompt = Console.IsInputRedirected ? (await Console.In.ReadToEndAsync(ct)).Trim() : "";
+        if (printPrompt.Length == 0)
+        {
+            Console.Error.WriteLine(L10n.Get("cli.print.noPrompt"));
+            return 1;
+        }
+    }
+
     if (!string.IsNullOrEmpty(printPrompt))
     {
         return await RunHeadlessAsync(printPrompt, pr.GetValue(rootModelOpt), pr.GetValue(rootOutputFormatOpt) ?? "text", ct);

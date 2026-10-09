@@ -12,6 +12,13 @@ namespace MoaiCode.Cli;
 /// </summary>
 public static class HeadlessRunner
 {
+    // 헤드리스·stream-json 공통: 출력 한도에 걸린 채 (마지막 툴 호출 뒤) 답 없이 끝났는가 → 종료 코드 3.
+    internal static bool EndedAtLimitWithoutAnswer(string stopReason, bool answered) =>
+        !answered && string.Equals(stopReason, "length", StringComparison.OrdinalIgnoreCase);
+
+    internal const string NoAnswerMessage =
+        "the model hit its output token limit without producing an answer (see MOAI_MAX_TOKENS).";
+
     public static Task<int> RunAsync(QueryEngine engine, string prompt, CancellationToken ct)
         => RunAsync(engine, prompt, ct, "text");
 
@@ -26,7 +33,8 @@ public static class HeadlessRunner
         var run = new StringBuilder();
         var full = new StringBuilder();
 
-        var produced = false;   // 답변 텍스트가 한 번이라도 나왔는가(출력 모드 무관)
+        // 마지막 툴 호출 뒤에 답변 텍스트가 나왔는가 — 앞 턴의 예고문("먼저 살펴보겠습니다")은 답이 아니다.
+        var answered = false;
 
         void FlushText()
         {
@@ -42,7 +50,7 @@ public static class HeadlessRunner
                 return;
             }
 
-            produced = true;
+            answered = true;
             if (json)
             {
                 if (full.Length > 0) full.Append('\n');
@@ -67,6 +75,7 @@ public static class HeadlessRunner
                         break;
                     case ToolCallRequested t:
                         FlushText();
+                        answered = false;
                         Console.Error.WriteLine($"→ {t.Block.Name}");
                         break;
                     case ToolExecuted x:
@@ -98,11 +107,10 @@ public static class HeadlessRunner
 
         // 출력 한도에 걸린 채 답 없이 끝났으면 실패로 알린다 — 예전엔 종료 코드 0 에 빈 출력이라
         // 호출자(스크립트·브리지)가 성공으로 오인했다.
-        if (errCode is null && string.Equals(stopReason, "length", StringComparison.OrdinalIgnoreCase)
-            && !produced)
+        if (errCode is null && EndedAtLimitWithoutAnswer(stopReason, answered))
         {
             errCode = 3;
-            errMsg = "the model hit its output token limit without producing an answer (see MOAI_MAX_TOKENS).";
+            errMsg = NoAnswerMessage;
         }
 
         var u = engine.CumulativeUsage;

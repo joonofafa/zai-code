@@ -1,6 +1,7 @@
 {
   "app.description": "Z.ai Code — coding-agent CLI",
   "cli.prompt.description": "Prompt to execute",
+  "cli.print.noPrompt": "zaiCode: -p needs a prompt (as its value or on stdin)",
   "cli.model.description": "Override the model ID",
   "cli.run.description": "Run one prompt and exit (for scripts/CI)",
   "cli.tools.description": "List available tools",

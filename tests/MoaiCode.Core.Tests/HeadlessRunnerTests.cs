@@ -93,6 +93,77 @@ public sealed class HeadlessRunnerTests
         }
     }
 
+    /// <summary>첫 응답에 예고문 + 툴 호출, 이후엔 본문 없이 출력 한도로만 끝나는 모델.</summary>
+    private sealed class PreambleThenLengthCutModel : IChatModel
+    {
+        private int _calls;
+
+        public async IAsyncEnumerable<StreamEvent> StreamAsync(
+            IReadOnlyList<Message> messages,
+            IReadOnlyList<ITool> tools,
+            [EnumeratorCancellation] CancellationToken ct = default)
+        {
+            await Task.Yield();
+            if (_calls++ == 0)
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse("{}");
+                yield return new TextDelta("I'll inspect the repository first.");
+                yield return new ToolCallRequested(new ToolUseBlock("t1", "NoSuchTool", doc.RootElement.Clone()));
+                yield return new TurnCompleted(new Usage(1, 1), "tool_calls");
+                yield break;
+            }
+
+            yield return new TurnCompleted(new Usage(1, 1), "length");
+        }
+    }
+
+    private static async Task<(int Code, string Stdout)> RunCapturedAsync(
+        IChatModel model, Func<QueryEngine, Task<int>> run)
+    {
+        var originalOut = Console.Out;
+        var originalErr = Console.Error;
+        var sw = new StringWriter();
+        Console.SetOut(sw);
+        Console.SetError(new StringWriter());
+        try
+        {
+            var engine = new QueryEngine(model, Array.Empty<ITool>(), workingDirectory: Path.GetTempPath());
+            return (await run(engine), sw.ToString());
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Console.SetError(originalErr);
+        }
+    }
+
+    // 앞 턴의 예고문("먼저 살펴보겠습니다")이 있어도, 마지막 툴 호출 뒤에 답이 없으면 답 없는 실행이다.
+    [Fact]
+    public async Task Preamble_before_a_tool_call_is_not_an_answer()
+    {
+        var (code, _) = await RunCapturedAsync(new PreambleThenLengthCutModel(),
+            e => HeadlessRunner.RunAsync(e, "hi", CancellationToken.None));
+        Assert.Equal(3, code);
+    }
+
+    // stream-json 의 result 도 헤드리스와 같은 규칙: 도중 툴 실패는 성공, 답 없는 한도 컷은 실패(3).
+    [Fact]
+    public async Task Stream_json_result_follows_headless_rules()
+    {
+        var (ok, okOut) = await RunCapturedAsync(new FailingToolThenAnswerModel(),
+            e => StreamJsonRunner.RunOnceAsync(e, "hi", CancellationToken.None));
+        Assert.Equal(0, ok);
+        var okResult = System.Text.Json.Nodes.JsonNode.Parse(okOut.Trim().Split('\n')[^1])!;
+        Assert.Equal("success", (string?)okResult["subtype"]);
+        Assert.False((bool)okResult["is_error"]!);
+
+        var (cut, cutOut) = await RunCapturedAsync(new PreambleThenLengthCutModel(),
+            e => StreamJsonRunner.RunOnceAsync(e, "hi", CancellationToken.None));
+        Assert.Equal(3, cut);
+        var cutResult = System.Text.Json.Nodes.JsonNode.Parse(cutOut.Trim().Split('\n')[^1])!;
+        Assert.True((bool)cutResult["is_error"]!);
+    }
+
     // 답 없이 출력 한도로 끝난 실행은 실패(종료 코드 3)로 알린다 — 예전엔 0 + 빈 출력.
     [Fact]
     public async Task Length_cut_without_answer_fails_the_run()

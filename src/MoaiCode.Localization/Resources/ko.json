@@ -1,6 +1,7 @@
 {
   "app.description": "Z.ai Code — 코딩 에이전트 CLI",
   "cli.prompt.description": "실행할 프롬프트",
+  "cli.print.noPrompt": "zaiCode: -p 에는 프롬프트가 필요합니다(값으로 주거나 stdin 으로 넘기세요)",
   "cli.model.description": "모델 ID 오버라이드",
   "cli.run.description": "프롬프트를 한 번 실행하고 종료 (스크립트/CI용)",
   "cli.tools.description": "사용 가능한 툴 목록",

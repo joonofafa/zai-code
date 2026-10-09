@@ -239,7 +239,7 @@ public static class StreamJsonRunner
     {
         var run = new StringBuilder();     // 아직 안 내보낸 텍스트 런
         var full = new StringBuilder();    // 이번 턴 전체 답변(result 용)
-        var hadError = false;
+        var answered = false;   // 마지막 툴 호출 뒤 답변 텍스트가 나왔는가(HeadlessRunner 와 같은 규칙)
         var stopReason = "end_turn";
         string? errMsg = null;
         var errCode = 0;
@@ -265,6 +265,7 @@ public static class StreamJsonRunner
             }
 
             full.Append(clean);
+            answered = true;
             EmitAssistant(sessionId, TextBlockNode(clean));
         }
 
@@ -280,11 +281,12 @@ public static class StreamJsonRunner
 
                     case ToolCallRequested t:
                         FlushText();
+                        answered = false;
                         EmitAssistant(sessionId, ToolUseNode(t.Block));
                         break;
 
                     case ToolExecuted x:
-                        hadError |= x.IsError;
+                        // 툴 실패는 실행 실패가 아니다 — 모델이 결과를 보고 이어서 고친다(HeadlessRunner 와 동일).
                         EmitToolResult(sessionId, x);
                         break;
 
@@ -310,8 +312,14 @@ public static class StreamJsonRunner
 
         FlushText();
 
+        if (errCode == 0 && HeadlessRunner.EndedAtLimitWithoutAnswer(stopReason, answered))
+        {
+            errCode = 3;
+            errMsg = HeadlessRunner.NoAnswerMessage;
+        }
+
         var u = engine.CumulativeUsage;
-        var isError = errCode != 0 || hadError;
+        var isError = errCode != 0;
         var result = new JsonObject
         {
             ["type"] = "result",
