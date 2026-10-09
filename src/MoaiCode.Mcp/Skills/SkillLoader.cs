@@ -76,7 +76,7 @@ public static class SkillLoader
         {
             content = File.ReadAllText(path);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return null;
         }

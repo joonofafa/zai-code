@@ -22,7 +22,8 @@ public static class FrontmatterParser
             return (meta, content);
         }
 
-        var fmBlock = normalized[4..end];
+        // `---\n---` 이면 닫는 펜스 앞 개행이 여는 펜스의 개행(인덱스 3)이라 end=3 — 빈 블록이다.
+        var fmBlock = end > 4 ? normalized[4..end] : string.Empty;
         foreach (var rawLine in fmBlock.Split('\n'))
         {
             var line = rawLine.Trim();

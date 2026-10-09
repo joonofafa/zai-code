@@ -46,6 +46,18 @@ public class SkillTests : IDisposable
         Assert.Equal("just a body", body);
     }
 
+    // `---\n---` (빈 프론트매터) 가 범위 예외를 던져, 그 파일 하나로 zaiCode 시작 자체가 죽었다.
+    [Theory]
+    [InlineData("---\n---\nbody\n")]
+    [InlineData("---\r\n---\r\nbody\r\n")]
+    [InlineData("---\n\n---\nbody\n")]
+    public void Frontmatter_empty_block_yields_body(string content)
+    {
+        var (meta, body) = FrontmatterParser.Parse(content);
+        Assert.Empty(meta);
+        Assert.Equal("body", body.Trim());
+    }
+
     [Fact]
     public void Loader_finds_single_file_and_dir_skills()
     {
