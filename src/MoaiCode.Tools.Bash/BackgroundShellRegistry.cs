@@ -55,11 +55,12 @@ public sealed class BackgroundShell
     /// <summary>셸 프로세스 PID(setsid 로 띄웠으면 PGID 와 같다) — 그룹 종료용.</summary>
     internal int ProcessId { get; set; }
 
-    internal void Append(string line)
+    // 출력 조각을 그대로 붙인다(줄 단위로 모으지 않는다 — 줄바꿈 없는 거대한 출력이 한 줄 통째로 메모리에 쌓이지 않게).
+    internal void AppendText(ReadOnlySpan<char> text)
     {
         lock (_lock)
         {
-            _buffer.Append(line).Append('\n');
+            _buffer.Append(text);
             if (_buffer.Length > _maxChars)
             {
                 // 상한 초과 시 앞부분(오래된 출력)을 버리고 꼬리를 남긴다. 아직 안 읽은 구간이 잘렸으면 표시.
@@ -183,7 +184,16 @@ public sealed class BackgroundShellRegistry
         var shell = new BackgroundShell(id, command, _maxChars);
         var (exe, args) = ResolveShell(command);
 
-        var stdout = PipeTarget.ToDelegate(shell.Append, Encoding.UTF8);
+        var stdout = PipeTarget.Create(async (stream, token) =>
+        {
+            using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, bufferSize: 8192, leaveOpen: true);
+            var chunk = new char[8192];
+            int n;
+            while ((n = await reader.ReadAsync(chunk.AsMemory(), token).ConfigureAwait(false)) > 0)
+            {
+                shell.AppendText(chunk.AsSpan(0, n));
+            }
+        });
         (exe, args) = BashTool.InNewProcessGroup(exe, args);   // 그룹 종료(Kill)가 떨어져 나간 자식까지 닿게
         var execution = Cli.Wrap(exe)
             .WithArguments(args)
