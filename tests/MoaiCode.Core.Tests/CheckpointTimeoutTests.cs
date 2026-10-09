@@ -65,6 +65,27 @@ public sealed class CheckpointTimeoutTests : IDisposable
             $"2차 호출이 {sw2.Elapsed.TotalMilliseconds:0}ms — 비활성화 후엔 즉시 반환해야 함");
     }
 
+    // git 은 바로 끝났는데 그 자식(백그라운드 gc·fsmonitor 데몬 등)이 출력 파이프를 물고 있으면, 종료 대기(상한 있음)
+    // 뒤의 출력 끝까지 읽기에는 상한이 없어 턴이 그대로 멈췄다(Bash 툴이 2026-09-25 에 겪은 것과 같은 유형).
+    [Fact]
+    public async Task Git_child_holding_the_output_pipe_does_not_hang()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        File.WriteAllText(_shim, "#!/bin/sh\n(sleep 30) &\nexit 0\n");
+        Process.Start(new ProcessStartInfo("chmod", $"+x {_shim}") { UseShellExecute = false })!.WaitForExit();
+        var work = Path.Combine(_dir, "work");
+        Directory.CreateDirectory(work);
+        var store = new CheckpointStore(work, Path.Combine(_dir, ".cp"), gitTimeout: TimeSpan.FromSeconds(1), gitPath: _shim);
+
+        var sw = Stopwatch.StartNew();
+        Assert.Equal(string.Empty, await store.CreateAsync("first"));
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(10), $"took {sw.Elapsed.TotalSeconds:0.0}s");
+    }
+
     [Fact]
     public async Task Normal_git_within_timeout_still_creates_a_checkpoint()
     {

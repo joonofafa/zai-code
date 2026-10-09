@@ -279,6 +279,18 @@ public sealed class CheckpointStore
                 L10n.Get("persistence.gitTimeoutFmt", _gitTimeout.TotalSeconds, string.Join(' ', argv)));
         }
 
+        // git 은 끝났어도 그 자식(백그라운드 gc·fsmonitor 데몬 등)이 파이프를 물고 있으면 EOF 가 오지 않는다 —
+        // 출력 끝까지 읽기에도 같은 상한을 건다(넘으면 타임아웃과 같게 처리: 이 세션의 체크포인트를 끈다).
+        try
+        {
+            await Task.WhenAll(stdoutTask, stderrTask).WaitAsync(_gitTimeout, ct).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            throw new TimeoutException(
+                L10n.Get("persistence.gitTimeoutFmt", _gitTimeout.TotalSeconds, string.Join(' ', argv)));
+        }
+
         var stdout = await stdoutTask.ConfigureAwait(false);
         var stderr = await stderrTask.ConfigureAwait(false);
         var output = string.IsNullOrWhiteSpace(stdout) ? stderr : stdout;

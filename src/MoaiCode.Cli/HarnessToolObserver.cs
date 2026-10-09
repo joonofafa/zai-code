@@ -102,13 +102,24 @@ public sealed class HarnessToolObserver : IToolObserver
         string workingDirectory,
         CancellationToken ct)
     {
-        var psi = new ProcessStartInfo(ResolveShell(), ResolveArgs(command))
+        var psi = new ProcessStartInfo(ResolveShell())
         {
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
         };
+        // Unix 는 인자를 목록으로 넘긴다 — 문자열로 감싸 따옴표 처리하면 .NET 인자 파서가 역슬래시를 그대로 두어
+        // `printf '%s\n' 'a\.b'` 같은 명령의 역슬래시가 두 배가 됐다. cmd.exe 는 자체 규칙이라 원문을 그대로 넘긴다.
+        if (OperatingSystem.IsWindows())
+        {
+            psi.Arguments = "/c " + command;
+        }
+        else
+        {
+            psi.ArgumentList.Add("-c");
+            psi.ArgumentList.Add(command);
+        }
 
         using var p = Process.Start(psi);
         if (p is null)
@@ -129,8 +140,9 @@ public sealed class HarnessToolObserver : IToolObserver
             text = Truncate(text.Trim());
             return $"{label}: `{command}` exited {p.ExitCode}\n{text}";
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
+            // 타임아웃이든 사용자 중단(ESC)이든 실행 중인 lint/test 를 남기지 않는다.
             try
             {
                 p.Kill(entireProcessTree: true);
@@ -140,18 +152,17 @@ public sealed class HarnessToolObserver : IToolObserver
                 // best-effort
             }
 
+            if (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+
             return $"{label}: `{command}` timed out after 300000ms";
         }
     }
 
     private static string ResolveShell()
         => OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/bash";
-
-    private static string ResolveArgs(string command)
-        => OperatingSystem.IsWindows() ? "/c " + command : "-c " + Quote(command);
-
-    private static string Quote(string command)
-        => "\"" + command.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
 
     private static string Truncate(string s)
         => s.Length <= MaxOutput ? s : s[..MaxOutput] + $"\n... (truncated, {s.Length - MaxOutput} more chars)";
