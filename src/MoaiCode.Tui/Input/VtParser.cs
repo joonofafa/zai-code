@@ -208,7 +208,16 @@ public sealed class VtParser
             return ParseSs3(outEvents);
         }
 
-        // ESC + 키 → Alt 수식. (b1 이 멀티바이트 선두면 단순화해 그 바이트만 Alt+문자로 처리.)
+        // ESC 다음이 또 ESC(빠른 ESC 두 번·Alt+화살표) 이거나 UTF-8 멀티바이트 선두(ESC 직후 한글)면 Alt 조합이 아니다 —
+        // 예전엔 그 한 바이트를 Alt+글자로 만들어 ESC 가 사라지고 뒤 시퀀스·글자가 깨졌다(`[A` 가 글자로, 한글이 U+FFFD 로).
+        // 앞의 ESC 만 Escape 로 내보내고 뒤는 따로 파싱한다.
+        if (b1 == Esc || b1 >= 0x80)
+        {
+            outEvents.Add(Key('\u001b', ConsoleKey.Escape));
+            return 1;
+        }
+
+        // ESC + 키 → Alt 수식.
         outEvents.Add(new KeyEvent(new ConsoleKeyInfo((char)b1, MapLetterOrDigit((char)b1), shift: false, alt: true, control: false)));
         return 2;
     }

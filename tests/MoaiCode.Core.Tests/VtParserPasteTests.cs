@@ -25,4 +25,22 @@ public sealed class VtParserPasteTests
         var keys = events.OfType<KeyEvent>().ToList();
         Assert.Equal('x', Assert.Single(keys).Key.KeyChar);   // 붙여넣기 뒤에 친 글자만 키로 나온다
     }
+
+    // ESC 뒤 바이트를 무조건 Alt+글자로 만들어, ESC 두 번·ESC 직후 한글·ESC ESC [A 가 깨졌다.
+    [Fact]
+    public void Escape_followed_by_escape_or_multibyte_is_not_an_alt_combo()
+    {
+        var parser = new VtParser();
+        var evs = parser.Push("\u001b\u001b[A"u8).Concat(parser.Flush()).OfType<KeyEvent>().ToList();
+        Assert.Equal(new[] { ConsoleKey.Escape, ConsoleKey.UpArrow }, evs.Select(e => e.Key.Key));
+
+        parser = new VtParser();
+        evs = parser.Push(Encoding.UTF8.GetBytes("\u001b한")).Concat(parser.Flush()).OfType<KeyEvent>().ToList();
+        Assert.Equal(ConsoleKey.Escape, evs[0].Key.Key);
+        Assert.Equal('한', evs[1].Key.KeyChar);
+
+        parser = new VtParser();
+        evs = parser.Push("\u001bx"u8).OfType<KeyEvent>().ToList();   // 일반 Alt+x 는 그대로
+        Assert.True(Assert.Single(evs).Key.Modifiers.HasFlag(ConsoleModifiers.Alt));
+    }
 }
