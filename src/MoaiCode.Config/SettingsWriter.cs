@@ -13,15 +13,7 @@ public static class SettingsWriter
     {
         path ??= DefaultPath;
 
-        JsonObject obj;
-        try
-        {
-            obj = (File.Exists(path) ? JsonNode.Parse(File.ReadAllText(path)) as JsonObject : null) ?? new JsonObject();
-        }
-        catch
-        {
-            obj = new JsonObject();
-        }
+        var obj = Load(path);
 
         foreach (var kv in values)
         {
@@ -44,15 +36,7 @@ public static class SettingsWriter
     {
         path ??= DefaultPath;
 
-        JsonObject obj;
-        try
-        {
-            obj = (File.Exists(path) ? JsonNode.Parse(File.ReadAllText(path)) as JsonObject : null) ?? new JsonObject();
-        }
-        catch
-        {
-            obj = new JsonObject();
-        }
+        var obj = Load(path);
 
         var perms = obj["permissions"] as JsonObject ?? new JsonObject();
         perms["allow"] = ToArray(allow);
@@ -60,6 +44,32 @@ public static class SettingsWriter
         obj["permissions"] = perms;
 
         Write(path, obj);
+    }
+
+    // 로더(SettingsLoader)와 같은 JSONC 규칙으로 읽는다 — 예전엔 주석·끝 쉼표가 있으면 파싱 실패를 빈 객체로
+    // 삼켜 파일 전체를 새 키 하나로 덮어썼다(deny 규칙·프록시 소실). 정말 깨진 파일은 덮어쓰지 않고 거부한다.
+    private static JsonObject Load(string path)
+    {
+        if (!File.Exists(path))
+        {
+            return new JsonObject();
+        }
+
+        try
+        {
+            var node = JsonNode.Parse(
+                File.ReadAllText(path),
+                documentOptions: new JsonDocumentOptions
+                {
+                    CommentHandling = JsonCommentHandling.Skip,
+                    AllowTrailingCommas = true,
+                });
+            return node as JsonObject ?? new JsonObject();
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidOperationException($"{path} is not valid JSON; not overwriting it: {ex.Message}", ex);
+        }
     }
 
     private static JsonArray ToArray(IReadOnlyList<string> items)

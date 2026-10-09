@@ -146,12 +146,22 @@ public sealed class PermissionRules : IPermissionRuleStore
         return true;
     }
 
-    // _path 가 null 이면(테스트) 영속화를 생략한다.
+    // _path 가 null 이면(테스트) 영속화를 생략한다. 설정 파일이 깨져 저장을 거부해도(SettingsWriter) 규칙은
+    // 이번 세션 메모리에 남기고 턴을 깨뜨리지 않는다 — 사용자의 파일을 덮어쓰는 것보다 낫다.
     private void Persist()
     {
-        if (_path is not null)
+        if (_path is null)
+        {
+            return;
+        }
+
+        try
         {
             SettingsWriter.SetPermissions(_allow, _deny, _path);
+        }
+        catch (InvalidOperationException ex)
+        {
+            MoaiLog.Warn($"permission rules not persisted: {ex.GetType().Name}");
         }
     }
 

@@ -109,6 +109,42 @@ public sealed class PermissionRulesStoreTests : IDisposable
         Assert.Contains("Bash(ls)", loaded.AllowRules);
     }
 
+    // 로더는 JSONC(주석·끝 쉼표)를 받는데 쓰기는 일반 JSON 으로 파싱해, 실패하면 빈 객체로 파일 전체를 덮어썼다 —
+    // `/model` 한 번에 deny 규칙·permission 모드·프록시가 사라졌다.
+    [Fact]
+    public void SettingsWriter_keeps_jsonc_files_intact()
+    {
+        File.WriteAllText(_path, """
+            {
+              // user note
+              "permission": "deny",
+              "permissions": { "deny": ["Bash(rm -rf)"], },
+            }
+            """);
+        SettingsWriter.Set(new Dictionary<string, string?> { ["language"] = "ko" }, _path);
+
+        var loaded = SettingsLoader.ApplyJson(Settings.Default, File.ReadAllText(_path));
+        Assert.Equal("ko", loaded.Language);
+        Assert.Contains("Bash(rm -rf)", loaded.DenyRules);
+        Assert.Equal(PermissionMode.Deny, loaded.Permission);
+    }
+
+    [Fact]
+    public void SettingsWriter_refuses_to_overwrite_an_unparseable_file()
+    {
+        const string broken = "{ \"permission\": \"deny\", oops }";
+        File.WriteAllText(_path, broken);
+        Assert.Throws<InvalidOperationException>(() =>
+            SettingsWriter.Set(new Dictionary<string, string?> { ["language"] = "ko" }, _path));
+        Assert.Equal(broken, File.ReadAllText(_path));
+
+        // "항상 허용" 저장 실패가 턴을 깨뜨리지는 않는다(규칙은 이번 세션 메모리에만 적용).
+        var r = new PermissionRules(path: _path);
+        r.AddAllow("Bash(ls)");
+        Assert.Contains("Bash(ls)", r.Allow);
+        Assert.Equal(broken, File.ReadAllText(_path));
+    }
+
     [Fact]
     public void Loader_reads_top_level_and_nested_forms()
     {
