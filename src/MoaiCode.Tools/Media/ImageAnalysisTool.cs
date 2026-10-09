@@ -9,9 +9,7 @@ using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Tools;
 using MoaiCode.Core.Web;
 using MoaiCode.Localization;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Metadata;
-using SixLabors.ImageSharp.Processing;
+using StbImageSharp;
 
 namespace MoaiCode.Tools.Media;
 
@@ -292,9 +290,10 @@ public sealed class ImageAnalysisTool : ITool
         => $"data:{(string.IsNullOrEmpty(mediaType) ? "image/png" : mediaType)};base64,{Convert.ToBase64String(bytes)}";
 
     /// <summary>
-    /// 짧은 변이 <see cref="MinShortEdge"/> 미만인 래스터 이미지를 Lanczos 로 확대한다.
+    /// 짧은 변이 <see cref="MinShortEdge"/> 미만인 래스터 이미지를 Lanczos3 로 확대한다.
     /// 비전 모델은 낮은 해상도의 작은 글씨를 뭉개서 읽으므로 업스케일이 OCR 품질을 크게 올린다.
-    /// 디코드 실패·애니메이션 GIF 등 처리 불가한 입력은 원본을 그대로 돌려준다(보조 경로이므로).
+    /// 디코드는 StbImageSharp(PNG·JPEG·BMP·TGA·PSD), 확대·PNG 저장은 <see cref="Raster"/>.
+    /// 디코드 불가(WebP 등)·GIF(애니메이션일 수 있음) 같은 입력은 원본을 그대로 돌려준다(보조 경로이므로).
     /// 단, 치수 상한 초과(decompression bomb)는 예외를 던져 호출자가 에러로 보고하게 한다.
     /// </summary>
     public static (byte[] Bytes, string MediaType) EnsureMinEdge(byte[] bytes, string mediaType)
@@ -305,13 +304,18 @@ public sealed class ImageAnalysisTool : ITool
         int width, height;
         try
         {
-            var info = Image.Identify(bytes);
+            using var header = new MemoryStream(bytes, writable: false);
+            if (ImageInfo.FromStream(header) is not { } info)
+            {
+                return (bytes, mediaType); // 비이미지·지원 밖 형식 → 원본 폴백
+            }
+
             width = info.Width;
             height = info.Height;
         }
         catch
         {
-            return (bytes, mediaType); // 비이미지 등 식별 실패 → 원본 폴백
+            return (bytes, mediaType); // 식별 실패 → 원본 폴백
         }
 
         if (Math.Max(width, height) > MaxPixelsOnLongEdge)
@@ -320,28 +324,46 @@ public sealed class ImageAnalysisTool : ITool
                 L10n.Get("tools.imageAnalysis.dimsTooLarge", width, height, MaxPixelsOnLongEdge));
         }
 
+        var shortEdge = Math.Min(width, height);
+        var scale = Math.Min(MinShortEdge / (double)shortEdge, MaxUpscaleFactor);
+        if (scale <= 1 || IsGif(bytes))
+        {
+            return (bytes, mediaType);   // 충분히 크거나 GIF(첫 프레임만 남기면 애니메이션이 사라진다)
+        }
+
         try
         {
-            using var image = Image.Load(bytes);
-            var shortEdge = Math.Min(image.Width, image.Height);
-            var scale = Math.Min(MinShortEdge / (double)shortEdge, MaxUpscaleFactor);
-            if (scale <= 1)
-            {
-                return (bytes, mediaType);
-            }
+            var image = ImageResult.FromMemory(bytes, ColorComponents.RedGreenBlueAlpha);
+            // 원본에 알파가 없으면 RGB 로 저장해 크기를 줄인다(디코드는 항상 RGBA 로 받는다).
+            var hasAlpha = image.SourceComp is ColorComponents.RedGreenBlueAlpha or ColorComponents.GreyAlpha;
+            var pixels = hasAlpha ? image.Data : DropAlpha(image.Data);
+            var channels = hasAlpha ? 4 : 3;
 
             var newWidth = Math.Max(1, (int)Math.Round(image.Width * scale));
             var newHeight = Math.Max(1, (int)Math.Round(image.Height * scale));
-            image.Mutate(ctx => ctx.Resize(newWidth, newHeight, KnownResamplers.Lanczos3));
-
-            using var ms = new MemoryStream();
-            image.SaveAsPng(ms); // 업스케일본은 무손실 PNG 로 재인코딩(손실 압축 반복 방지)
-            return (ms.ToArray(), "image/png");
+            var resized = Raster.Resize(pixels, image.Width, image.Height, channels, newWidth, newHeight);
+            // 업스케일본은 무손실 PNG 로 재인코딩(손실 압축 반복 방지)
+            return (Raster.EncodePng(resized, newWidth, newHeight, channels), "image/png");
         }
         catch
         {
             return (bytes, mediaType);
         }
+    }
+
+    private static bool IsGif(byte[] b) => b.Length >= 6 && b[0] == 'G' && b[1] == 'I' && b[2] == 'F';
+
+    private static byte[] DropAlpha(byte[] rgba)
+    {
+        var rgb = new byte[rgba.Length / 4 * 3];
+        for (int i = 0, j = 0; i < rgba.Length; i += 4, j += 3)
+        {
+            rgb[j] = rgba[i];
+            rgb[j + 1] = rgba[i + 1];
+            rgb[j + 2] = rgba[i + 2];
+        }
+
+        return rgb;
     }
 
     private static string MediaForExtension(string ext) => ext.ToLowerInvariant() switch

@@ -1,7 +1,7 @@
 using System.Text.Json;
 using MoaiCode.Core.Tools;
 using MoaiCode.Tools.Media;
-using SixLabors.ImageSharp;
+using StbImageSharp;
 using Xunit;
 
 // ImageAnalysis(z.ai 비전 모델): 입력 검증·응답 파싱·data URL 조립.
@@ -93,27 +93,42 @@ public sealed class ImageAnalysisTests
         Assert.StartsWith("data:image/png;base64,", url);
     }
 
+    // 시험용 PNG: 채널마다 좌표로 정해지는 무늬(Raster.EncodePng — 예전엔 ImageSharp 로 만들었다).
+    private static byte[] Png(int w, int h, int channels = 4, Func<int, int, int, byte>? px = null)
+    {
+        px ??= (x, y, c) => c == 3 ? (byte)255 : (byte)((x * 7 + y * 13 + c * 50) & 0xFF);
+        var data = new byte[w * h * channels];
+        for (var y = 0; y < h; y++)
+        {
+            for (var x = 0; x < w; x++)
+            {
+                for (var c = 0; c < channels; c++)
+                {
+                    data[(y * w + x) * channels + c] = px(x, y, c);
+                }
+            }
+        }
+
+        return Raster.EncodePng(data, w, h, channels);
+    }
+
+    private static ImageResult Decode(byte[] png) => ImageResult.FromMemory(png, ColorComponents.RedGreenBlueAlpha);
+
     [Fact]
     public void EnsureMinEdge_upscales_small_image()
     {
-        using var src = new Image<SixLabors.ImageSharp.PixelFormats.Rgba32>(100, 40);
-        using var ms = new MemoryStream();
-        src.SaveAsPng(ms);
-        var (bytes, media) = ImageAnalysisTool.EnsureMinEdge(ms.ToArray(), "image/png");
+        var (bytes, media) = ImageAnalysisTool.EnsureMinEdge(Png(100, 40), "image/png");
 
-        using var outImg = Image.Load(bytes);
-        Assert.Equal(3, outImg.Width / 100);   // 3배(최대 배율) 확대
-        Assert.Equal(120, outImg.Height);       // 40 * 3
+        var outImg = Decode(bytes);
+        Assert.Equal(300, outImg.Width);   // 3배(최대 배율) 확대
+        Assert.Equal(120, outImg.Height);  // 40 * 3
         Assert.Equal("image/png", media);
     }
 
     [Fact]
     public void EnsureMinEdge_keeps_large_image_untouched()
     {
-        using var src = new Image<SixLabors.ImageSharp.PixelFormats.Rgba32>(1024, 768);
-        using var ms = new MemoryStream();
-        src.SaveAsPng(ms);
-        var original = ms.ToArray();
+        var original = Png(1024, 768, channels: 3);
 
         var (bytes, media) = ImageAnalysisTool.EnsureMinEdge(original, "image/png");
         Assert.Same(original, bytes);   // 재인코딩 없이 원본 그대로
@@ -133,13 +148,75 @@ public sealed class ImageAnalysisTests
     public void EnsureMinEdge_caps_at_3x()
     {
         // 10px 짧은 변은 51.2배가 필요하지만 3배 제한 → 30px.
-        using var src = new Image<SixLabors.ImageSharp.PixelFormats.Rgba32>(10, 20);
-        using var ms = new MemoryStream();
-        src.SaveAsPng(ms);
-        var (bytes, _) = ImageAnalysisTool.EnsureMinEdge(ms.ToArray(), "image/png");
+        var (bytes, _) = ImageAnalysisTool.EnsureMinEdge(Png(10, 20), "image/png");
 
-        using var outImg = Image.Load(bytes);
+        var outImg = Decode(bytes);
         Assert.Equal(30, outImg.Width);
         Assert.Equal(60, outImg.Height);
+    }
+
+    // 원본에 알파가 없으면 확대본도 RGB 로 저장한다(크기 절약). 알파가 있으면 유지.
+    [Fact]
+    public void EnsureMinEdge_keeps_alpha_only_when_source_has_it()
+    {
+        var rgb = Decode(ImageAnalysisTool.EnsureMinEdge(Png(50, 50, channels: 3), "image/png").Bytes);
+        Assert.Equal(ColorComponents.RedGreenBlue, rgb.SourceComp);
+
+        var rgba = Decode(ImageAnalysisTool.EnsureMinEdge(Png(50, 50, channels: 4), "image/png").Bytes);
+        Assert.Equal(ColorComponents.RedGreenBlueAlpha, rgba.SourceComp);
+    }
+
+    // 헤더상 치수가 상한을 넘으면(decompression bomb) 디코드 전에 거부한다.
+    [Fact]
+    public void EnsureMinEdge_rejects_oversized_dimensions_before_decoding()
+    {
+        var huge = Png(12_001, 2, channels: 3, px: (_, _, _) => 0);
+        Assert.Throws<InvalidDataException>(() => ImageAnalysisTool.EnsureMinEdge(huge, "image/png"));
+    }
+
+    // 디코드할 수 없는 형식(WebP 등)과 GIF(애니메이션 보존)는 원본 그대로 보낸다.
+    [Fact]
+    public void EnsureMinEdge_passes_through_gif_and_undecodable_formats()
+    {
+        // 1x1 GIF89a
+        var gif = Convert.FromBase64String("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7");
+        Assert.Same(gif, ImageAnalysisTool.EnsureMinEdge(gif, "image/gif").Bytes);
+
+        var webpLike = "RIFF\0\0\0\0WEBPVP8 "u8.ToArray();
+        Assert.Same(webpLike, ImageAnalysisTool.EnsureMinEdge(webpLike, "image/webp").Bytes);
+    }
+
+    // Raster.EncodePng 는 무손실이다 — 디코드하면 같은 픽셀이 나온다(RGB·RGBA 모두).
+    [Theory]
+    [InlineData(3)]
+    [InlineData(4)]
+    public void EncodePng_round_trips_pixels(int channels)
+    {
+        const int w = 37, h = 23;
+        var data = new byte[w * h * channels];
+        new Random(7).NextBytes(data);
+        var png = Raster.EncodePng(data, w, h, channels);
+
+        var back = ImageResult.FromMemory(png, channels == 4 ? ColorComponents.RedGreenBlueAlpha : ColorComponents.RedGreenBlue);
+        Assert.Equal((w, h), (back.Width, back.Height));
+        Assert.Equal(data, back.Data);
+    }
+
+    // 단색은 확대해도 단색(가중치 정규화), 경계 밖 참조는 가장자리로 클램프.
+    [Fact]
+    public void Resize_keeps_a_flat_color_flat()
+    {
+        var data = new byte[8 * 6 * 4];
+        for (var i = 0; i < data.Length; i += 4)
+        {
+            (data[i], data[i + 1], data[i + 2], data[i + 3]) = ((byte)200, (byte)30, (byte)90, (byte)255);
+        }
+
+        var up = Raster.Resize(data, 8, 6, 4, 24, 18);
+        Assert.Equal(24 * 18 * 4, up.Length);
+        for (var i = 0; i < up.Length; i += 4)
+        {
+            Assert.Equal((200, 30, 90, 255), (up[i], up[i + 1], up[i + 2], up[i + 3]));
+        }
     }
 }

@@ -7,7 +7,8 @@
     <ProjectReference Include="..\MoaiCode.Localization\MoaiCode.Localization.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <!-- ImageAnalysis: 짧은 변이 작은 이미지의 자동 업스케일(OCR 품질). -->
-    <PackageReference Include="SixLabors.ImageSharp" />
+    <!-- ImageAnalysis: 작은 이미지 자동 업스케일(OCR 품질)의 디코드. Unlicense OR MIT, 순수 관리 코드.
+         (SixLabors.ImageSharp 는 Split License — 기업 내부 상업적 사용은 상용 라이선스 대상이라 교체.) -->
+    <PackageReference Include="StbImageSharp" />
   </ItemGroup>
 </Project>
