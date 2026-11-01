@@ -45,8 +45,9 @@ public static class AppBootstrap
     /// stream-json 영속 모드(true)면 확인 게이트를 만들어 confirmer 로 연결하고 결과에도 실어 준다.
     /// 확인 필요 판정이 permission_request 이벤트로 나가고 permission_response 로 돌아온다.
     /// </param>
+    /// <param name="modelOverride">실행 인자 --model. 저장된 모델보다 우선하되 이번 실행에만 쓴다.</param>
     public static async Task<AppRuntime> BuildAsync(
-        bool interactive, bool verbose, bool streamJsonPermissions, CancellationToken ct)
+        bool interactive, bool verbose, bool streamJsonPermissions, CancellationToken ct, string? modelOverride = null)
     {
         var cwd = Directory.GetCurrentDirectory();
 
@@ -58,10 +59,12 @@ public static class AppBootstrap
         TuiTheme.Apply(settings.Theme);   // 시맨틱 테마 적용(6종, invalid→carbon-dark 폴백)
         ApplySettingsToEnv(settings);
 
-        // 2) 자격증명: env에 없으면 저장소에서 주입
+        // 2) 프로바이더: /provider·/model 저장값 → 환경변수 → 기본값. 키는 credentials.json 우선.
         ResolveCredentials();
+        var profile = ProviderResolver.Resolve(settings, new FileCredentialStore(), modelOverride);
+        ActiveProvider.Current = profile;
 
-        var model = ProviderFactory.CreateDefault(out var providerDesc);
+        var model = ProviderFactory.Create(profile, out var providerDesc);
 
         // Bash + 백그라운드 셸(run_in_background) 조회/종료 — CLI 전용(GUI 는 Bash 자체를 제외).
         var toolList = new List<ITool>(ToolRegistry.BuiltIn) { new BashTool(), new BashOutputTool(), new KillShellTool() };
@@ -213,7 +216,7 @@ public static class AppBootstrap
             // 컨텍스트 창: 명시 설정(contextWindow) > 모델별 스펙 테이블 자동 조회. 기본 모델 glm-5.3 → 1M.
             contextWindowTokens: settings.ContextWindowTokens > 0
                 ? settings.ContextWindowTokens
-                : ZaiEndpoint.ContextWindow((model as IModelControl)?.CurrentModel),
+                : ZaiEndpoint.ContextWindow(profile.Model),
             pendingTasks: () => taskStore.All().Any(t => t.Status != MoaiCode.Tools.Tasks.TaskStatus.Completed),
             maxToolResultChars: maxToolResultChars,
             harvestMemories: true,
@@ -241,8 +244,10 @@ public static class AppBootstrap
             model as IModelControl,
             chosen =>
             {
-                SettingsWriter.Set(new Dictionary<string, string?> { ["model"] = chosen });
-                Environment.SetEnvironmentVariable("MOAI_MODEL", chosen);
+                var current = ActiveProvider.Current;
+                SettingsWriter.SetProvider(
+                    ProviderCatalog.Id(current.Kind), new Dictionary<string, string?> { ["model"] = chosen });
+                ActiveProvider.Current = current with { Model = chosen };
             },
             // /usage: 모델별 로컬 토큰 누적.
             new UsageStore(),
@@ -304,9 +309,7 @@ public static class AppBootstrap
             : OperatingSystem.IsLinux() ? "linux"
             : "unknown";
 
-        var model = settings.Model
-            ?? Environment.GetEnvironmentVariable("MOAI_MODEL")
-            ?? Environment.GetEnvironmentVariable("ZAI_MODEL");
+        var model = ActiveProvider.Current.Model;
         var modelDescription = string.IsNullOrEmpty(model)
             ? null
             : $"You are powered by the model {model}.";
@@ -415,20 +418,6 @@ public static class AppBootstrap
 
     private static void ApplySettingsToEnv(Settings s)
     {
-        if (!string.IsNullOrEmpty(s.Model)
-            && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MOAI_MODEL"))
-            && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ZAI_MODEL")))
-        {
-            Environment.SetEnvironmentVariable("MOAI_MODEL", s.Model);
-        }
-
-        if (!string.IsNullOrEmpty(s.BaseUrl)
-            && IsZaiBaseUrl(s.BaseUrl)
-            && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ZAI_BASE_URL")))
-        {
-            Environment.SetEnvironmentVariable("ZAI_BASE_URL", s.BaseUrl);
-        }
-
         if (!string.IsNullOrEmpty(s.ReasoningEffort)
             && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT"))
             && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ZAI_REASONING_EFFORT"))
@@ -448,16 +437,9 @@ public static class AppBootstrap
     private static void ResolveCredentials()
     {
         // 환경변수(launcher 스크립트 등)가 우선. 비어 있을 때만 저장소(auth set)에서 복원.
-        RestoreFromStore("ZAI_API_KEY");
+        // 프로바이더 키는 ProviderResolver 가 저장소를 먼저 본다(여기서 환경변수로 옮기지 않는다).
         RestoreFromStore("GEMINI_API_KEY"); // WebSearch(Gemini) — auth set gemini 로 저장한 키
     }
-
-    private static bool IsZaiBaseUrl(string value)
-        => Uri.TryCreate(value, UriKind.Absolute, out var uri)
-           && uri.Scheme == Uri.UriSchemeHttps
-           && uri.Host.Equals("api.z.ai", StringComparison.OrdinalIgnoreCase)
-           && uri.AbsolutePath.TrimEnd('/').Equals(
-               "/api/coding/paas/v4", StringComparison.OrdinalIgnoreCase);
 
     private static void RestoreFromStore(string name)
     {

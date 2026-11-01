@@ -9,9 +9,16 @@ namespace MoaiCode.Config;
 public sealed record Settings
 {
     public PermissionMode Permission { get; init; } = PermissionMode.Ask;
-    public string? Provider { get; init; }
+
+    /// <summary>예전 최상위 model 키(z.ai 시절 /model 이 저장하던 곳). providers.zai.model 이 없을 때만 z.ai 모델로 쓴다.</summary>
     public string? Model { get; init; }
-    public string? BaseUrl { get; init; }
+
+    /// <summary>대화 프로바이더 id(zai|openai|anthropic|openrouter|vllm). 없으면 zai. /provider 가 저장한다.</summary>
+    public string? ActiveProvider { get; init; }
+
+    /// <summary>프로바이더별 선택값(주소·모델·이미지 분석 모델). 키는 여기가 아니라 credentials.json 에 둔다.</summary>
+    public IReadOnlyDictionary<string, ProviderSettings> Providers { get; init; } =
+        new Dictionary<string, ProviderSettings>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>사용자 인터페이스 언어(ko|en). 기본(base)은 영어. 한국어 사용자는 명시적으로 ko 로 설정한다(한국어권 배포본은 이 값을 포함).</summary>
     public string Language { get; init; } = "en";
@@ -77,3 +84,7 @@ public sealed record Settings
 
     public static Settings Default { get; } = new();
 }
+
+/// <summary>settings.json 의 providers.&lt;id&gt; 항목.</summary>
+/// <param name="VisionModel">이미지 분석 모델. 빈 문자열은 "사용 안 함"(null 은 기본값).</param>
+public sealed record ProviderSettings(string? BaseUrl, string? Model, string? VisionModel);

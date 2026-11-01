@@ -54,8 +54,8 @@ public static class ZaiEndpoint
            ?? Environment.GetEnvironmentVariable("ZAI_VISION_MODEL")
            ?? DefaultVisionModel;
 
-    /// <summary>기본 비전 모델. 코딩 엔드포인트·코딩 키로 그대로 호출 검증됨(2026-09-12).</summary>
-    public const string DefaultVisionModel = "glm-4.6v";
+    /// <summary>기본 비전 모델. Coding Plan 정식 지원 멀티모달(예전엔 런처가 ZAI_VISION_MODEL 로 넣던 값).</summary>
+    public const string DefaultVisionModel = "glm-5.3-flash";
 
     /// <summary>
     /// 모델별 컨텍스트 창(토큰). 공식 문서 기준(2026-09-20): docs.z.ai/guides/llm, /guides/vlm.

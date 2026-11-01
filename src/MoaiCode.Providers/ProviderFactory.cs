@@ -6,9 +6,8 @@ using MoaiCode.Providers.OpenAi;
 namespace MoaiCode.Providers;
 
 /// <summary>
-/// Z.ai 환경변수 기반 모델 생성.
-/// Z.ai의 OpenAI-compatible wire format을 사용하지만, 요청 대상은 항상 Z.ai API이다.
-/// 키가 없으면 오프라인 EchoChatModel로 폴백한다.
+/// 프로바이더 프로필로 대화 모델을 만든다. Z.ai·OpenAI·OpenRouter·vLLM 은 OpenAI 호환 chat/completions 를 쓴다.
+/// 요청을 보낼 수 없는 프로필(키·모델·주소 누락)은 오프라인 EchoChatModel 로 대신하고 이유를 설명에 담는다.
 /// </summary>
 public static class ProviderFactory
 {
@@ -19,19 +18,31 @@ public static class ProviderFactory
     };
 
     public static IChatModel CreateDefault(out string description)
+        => Create(ActiveProvider.Current, out description);
+
+    public static IChatModel Create(ProviderProfile profile, out string description)
     {
-        var key = ZaiEndpoint.ApiKey();
-        if (string.IsNullOrWhiteSpace(key))
+        var name = ProviderCatalog.DisplayName(profile.Kind);
+        if (!profile.IsUsable)
         {
-            description = L10n.Get("providers.echoOffline");
+            description = L10n.Get("providers.echoOffline", name, Missing(profile));
             return new EchoChatModel();
         }
 
-        var baseUrl = ZaiEndpoint.BaseUrl();
-        var model = ZaiEndpoint.Model();
+        if (profile.Kind == ProviderKind.Anthropic)
+        {
+            description = L10n.Get("providers.notImplemented", name);
+            return new EchoChatModel();
+        }
 
-        description = $"Z.ai · {model} @ {baseUrl}";
-        return new RetryingChatModel(new OpenAiChatModel(SharedHttp, baseUrl, key, model));
+        description = $"{name} · {profile.Model} @ {profile.BaseUrl}";
+        return new RetryingChatModel(
+            new OpenAiChatModel(SharedHttp, profile.BaseUrl!, profile.ApiKey ?? string.Empty, profile.Model!));
     }
 
+    // 무엇이 빠졌는지 — 상태줄·/model 안내에 그대로 보여 준다.
+    private static string Missing(ProviderProfile p)
+        => string.IsNullOrEmpty(p.BaseUrl) ? "base URL"
+            : string.IsNullOrEmpty(p.Model) ? "model"
+            : ProviderCatalog.KeyName(p.Kind);
 }

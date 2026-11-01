@@ -30,6 +30,41 @@ public static class SettingsWriter
         Write(path, obj);
     }
 
+    /// <summary>
+    /// providers.&lt;id&gt; 의 필드 일부만 머지 저장(나머지 필드·다른 프로바이더 보존, 값 null 은 필드 삭제).
+    /// <paramref name="activate"/> 면 activeProvider 도 그 id 로 바꾼다.
+    /// </summary>
+    public static void SetProvider(
+        string id, IReadOnlyDictionary<string, string?> fields, bool activate = false, string? path = null)
+    {
+        path ??= DefaultPath;
+
+        var obj = Load(path);
+
+        var providers = obj["providers"] as JsonObject ?? new JsonObject();
+        var entry = providers[id] as JsonObject ?? new JsonObject();
+        foreach (var kv in fields)
+        {
+            if (kv.Value is null)
+            {
+                entry.Remove(kv.Key);
+            }
+            else
+            {
+                entry[kv.Key] = kv.Value;
+            }
+        }
+
+        providers[id] = entry;
+        obj["providers"] = providers;
+        if (activate)
+        {
+            obj["activeProvider"] = id;
+        }
+
+        Write(path, obj);
+    }
+
     /// <summary>permissions.allow/deny 배열을 저장(기존 다른 키 보존).</summary>
     public static void SetPermissions(
         IReadOnlyList<string> allow, IReadOnlyList<string> deny, string? path = null)

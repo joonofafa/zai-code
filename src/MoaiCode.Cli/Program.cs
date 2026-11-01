@@ -23,12 +23,7 @@ var root = new RootCommand(L10n.Get("app.description"));
 // 헤드리스 1회 실행 공용 로직 (run 서브커맨드 / 루트의 -p 플래그가 공유).
 static async Task<int> RunHeadlessAsync(string prompt, string? model, string outputFormat, CancellationToken ct)
 {
-    if (!string.IsNullOrEmpty(model))
-    {
-        Environment.SetEnvironmentVariable("MOAI_MODEL", model);
-    }
-
-    var rt = await AppBootstrap.BuildAsync(interactive: false, verbose: false, ct);
+    var rt = await AppBootstrap.BuildAsync(interactive: false, verbose: false, streamJsonPermissions: false, ct, modelOverride: model);
     await using var _ = rt.Mcp;
     rt.Ctx.State.LastUserRequest = prompt;   // 위험 판정 분류기용 원문 요청
     return string.Equals(outputFormat, "stream-json", StringComparison.OrdinalIgnoreCase)
@@ -39,12 +34,7 @@ static async Task<int> RunHeadlessAsync(string prompt, string? model, string out
 // stdin 의 NDJSON 턴을 EOF 까지 처리하는 영속 모드 (--input-format stream-json).
 static async Task<int> RunStreamLoopAsync(string? model, CancellationToken ct)
 {
-    if (!string.IsNullOrEmpty(model))
-    {
-        Environment.SetEnvironmentVariable("MOAI_MODEL", model);
-    }
-
-    var rt = await AppBootstrap.BuildAsync(interactive: false, verbose: false, streamJsonPermissions: true, ct);
+    var rt = await AppBootstrap.BuildAsync(interactive: false, verbose: false, streamJsonPermissions: true, ct, modelOverride: model);
     await using var _ = rt.Mcp;
     return await StreamJsonRunner.RunLoopAsync(rt.Ctx.Engine, rt.PermissionGate, ct);
 }
@@ -286,7 +276,7 @@ root.SetAction(async (ParseResult pr, CancellationToken ct) =>
     var interactive = !Console.IsInputRedirected;
 
     var rt = await AppBootstrap.BuildAsync(
-        interactive: interactive, verbose: true, ct);
+        interactive: interactive, verbose: true, streamJsonPermissions: false, ct, modelOverride: pr.GetValue(rootModelOpt));
     await using var _ = rt.Mcp;
 
     var app = new ReplApp(rt.Ctx, SlashRegistry.CreateDefault());

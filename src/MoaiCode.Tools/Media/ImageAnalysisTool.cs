@@ -82,11 +82,20 @@ public sealed class ImageAnalysisTool : ITool
             yield break;
         }
 
-        var key = ZaiEndpoint.ApiKey();
-        var baseUrl = ZaiEndpoint.BaseUrl();
-        if (string.IsNullOrWhiteSpace(key))
+        // 대화 프로바이더의 접속 정보로 /model 에서 고른 이미지 분석 모델을 부른다.
+        var provider = ActiveProvider.Current;
+        if (string.IsNullOrWhiteSpace(provider.VisionModel))
         {
-            yield return new ToolOutput(L10n.Get("tools.imageAnalysis.noKey"), IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.imageAnalysis.noModel"), IsError: true);
+            yield break;
+        }
+
+        var key = provider.ApiKey ?? string.Empty;
+        var baseUrl = provider.BaseUrl;
+        if (string.IsNullOrWhiteSpace(baseUrl) || (key.Length == 0 && ProviderCatalog.RequiresKey(provider.Kind)))
+        {
+            yield return new ToolOutput(
+                L10n.Get("tools.imageAnalysis.noKey", ProviderCatalog.KeyName(provider.Kind)), IsError: true);
             yield break;
         }
 
@@ -143,7 +152,7 @@ public sealed class ImageAnalysisTool : ITool
         string answer = string.Empty;
         try
         {
-            answer = await AskAsync(baseUrl!, key!, bytes, mediaType, inp.Prompt!, timeoutCts.Token)
+            answer = await AskAsync(provider, baseUrl!, key, bytes, mediaType, inp.Prompt!, timeoutCts.Token)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
@@ -188,18 +197,19 @@ public sealed class ImageAnalysisTool : ITool
     }
 
     private static async Task<string> AskAsync(
-        string baseUrl, string key, byte[] bytes, string mediaType, string prompt, CancellationToken ct)
+        ProviderProfile provider, string baseUrl, string key, byte[] bytes, string mediaType, string prompt, CancellationToken ct)
     {
         using var client = ToolHttp.CreateApi();
-        client.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key);
+        if (key.Length > 0)
+        {
+            client.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key);
+        }
 
         var dataUrl = BuildDataUrl(mediaType, bytes);
         var payload = new Dictionary<string, object>(StringComparer.Ordinal)
         {
-            ["model"] = ZaiEndpoint.VisionModel(),
-            // 비전 호출은 답변 본문이 목적이라 reasoning 토큰은 끈다(지연·비용 절감, 검증됨).
-            ["thinking"] = new Dictionary<string, string>(StringComparer.Ordinal) { ["type"] = "disabled" },
+            ["model"] = provider.VisionModel!,
             ["messages"] = new object[]
             {
                 new Dictionary<string, object>(StringComparer.Ordinal)
@@ -225,6 +235,13 @@ public sealed class ImageAnalysisTool : ITool
                 },
             },
         };
+
+        if (provider.Kind == ProviderKind.Zai)
+        {
+            // 비전 호출은 답변 본문이 목적이라 reasoning 토큰은 끈다(지연·비용 절감, 검증됨). z.ai 전용 필드다 —
+            // 다른 서버(vLLM 등)는 모르는 필드를 400 으로 거부한다.
+            payload["thinking"] = new Dictionary<string, string>(StringComparer.Ordinal) { ["type"] = "disabled" };
+        }
 
         using var resp = await client
             .PostAsJsonAsync($"{baseUrl.TrimEnd('/')}/chat/completions", payload, ct)

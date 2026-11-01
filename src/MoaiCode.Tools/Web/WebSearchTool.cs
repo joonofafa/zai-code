@@ -67,9 +67,18 @@ public sealed class WebSearchTool : ITool
             yield break;
         }
 
-        var key = ZaiEndpoint.ApiKey();
-        var baseUrl = ZaiEndpoint.BaseUrl();
-        if (string.IsNullOrWhiteSpace(key))
+        // z.ai 내장 web_search 는 z.ai 프로바이더에서만 쓴다(다른 프로바이더의 검색은 별도 경로).
+        var provider = ActiveProvider.Current;
+        if (provider.Kind != ProviderKind.Zai)
+        {
+            yield return new ToolOutput(
+                L10n.Get("tools.webSearch.unsupportedProvider", ProviderCatalog.DisplayName(provider.Kind)), IsError: true);
+            yield break;
+        }
+
+        var key = provider.ApiKey;
+        var baseUrl = provider.BaseUrl;
+        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(provider.Model))
         {
             yield return new ToolOutput(L10n.Get("tools.webSearch.noKey"), IsError: true);
             yield break;
@@ -82,7 +91,7 @@ public sealed class WebSearchTool : ITool
         string? body = null;
         try
         {
-            body = await CallAsync(baseUrl!, key!, inp, timeoutCts.Token).ConfigureAwait(false);
+            body = await CallAsync(baseUrl!, key!, provider.Model!, inp, timeoutCts.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
@@ -106,14 +115,13 @@ public sealed class WebSearchTool : ITool
             : new ToolOutput(Reminders.UntrustedToolOutput + rendered);
     }
 
-    private static async Task<string> CallAsync(string baseUrl, string key, Input inp, CancellationToken ct)
+    private static async Task<string> CallAsync(string baseUrl, string key, string model, Input inp, CancellationToken ct)
     {
         using var client = ToolHttp.CreateApi();
         client.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key);
 
         var count = Math.Clamp(inp.Limit ?? 5, 1, 50);
-        var model = ZaiEndpoint.Model();
 
         // 검색 결과만 필요하므로 모델 답변은 최소로 자른다(max_tokens=1). 결과는 답변이 아니라
         // 최상위 web_search 배열로 오기 때문에, 토큰을 더 써도 얻는 게 없다.

@@ -82,8 +82,17 @@ public sealed class ImageCreateTool : ITool
             yield break;
         }
 
+        // 이미지 생성은 z.ai 일반 API 기능이라 z.ai 프로바이더에서만 쓴다.
+        var provider = ActiveProvider.Current;
+        if (provider.Kind != ProviderKind.Zai)
+        {
+            yield return new ToolOutput(
+                L10n.Get("tools.imageCreate.unsupportedProvider", ProviderCatalog.DisplayName(provider.Kind)), IsError: true);
+            yield break;
+        }
+
         var baseUrl = ZaiEndpoint.ImageBaseUrl();
-        var key = ZaiEndpoint.ApiKey();
+        var key = provider.ApiKey;
         if (string.IsNullOrWhiteSpace(key))
         {
             yield return new ToolOutput(

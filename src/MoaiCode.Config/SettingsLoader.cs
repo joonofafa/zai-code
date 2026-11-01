@@ -96,8 +96,14 @@ public static class SettingsLoader
                 // 상속하지 않는다. Claude Code 의 model(예: "opus[1m]")이 새어들어와 게이트웨이 404 를
                 // 내던 문제 방지 — moai 는 ~/.moai + env(+/model) 에서만 모델을 받는다.
                 Model = allowModel ? GetString(root, "model", "model_id") ?? baseline.Model : baseline.Model,
-                Provider = allowSensitive ? GetString(root, "provider") ?? baseline.Provider : baseline.Provider,
-                BaseUrl = allowSensitive ? GetString(root, "baseUrl", "base_url") ?? baseline.BaseUrl : baseline.BaseUrl,
+                // 프로바이더 선택·주소는 키가 실려 나가는 곳을 정한다 — 사용자 레이어(~/.zaicode)에서만 받는다.
+                // 예전 최상위 provider/baseUrl 키(upstream 서버 시절 잔재)는 읽지 않는다.
+                ActiveProvider = allowSensitive && allowModel
+                    ? GetString(root, "activeProvider") ?? baseline.ActiveProvider
+                    : baseline.ActiveProvider,
+                Providers = allowSensitive && allowModel
+                    ? MergeProviders(baseline.Providers, root)
+                    : baseline.Providers,
                 Language = L10n.NormalizeLanguage(GetString(root, "language", "locale", "uiLanguage", "ui_language"))
                            ?? baseline.Language,
                 Theme = GetString(root, "theme") ?? baseline.Theme,
@@ -173,9 +179,6 @@ public static class SettingsLoader
 
     public static Settings ApplyEnv(Settings baseline)
     {
-        var model = Environment.GetEnvironmentVariable("MOAI_MODEL")
-                    ?? Environment.GetEnvironmentVariable("ZAI_MODEL");
-        var baseUrl = Environment.GetEnvironmentVariable("ZAI_BASE_URL");
         var language = L10n.NormalizeLanguage(Environment.GetEnvironmentVariable("MOAI_LANGUAGE"));
         var theme = Environment.GetEnvironmentVariable("MOAI_THEME")
                     ?? Environment.GetEnvironmentVariable("ZAI_THEME");
@@ -198,8 +201,6 @@ public static class SettingsLoader
 
         return baseline with
         {
-            Model = model ?? baseline.Model,
-            BaseUrl = baseUrl ?? baseline.BaseUrl,
             Language = language ?? baseline.Language,
             Theme = theme ?? baseline.Theme,
             ReasoningEffort = effort ?? baseline.ReasoningEffort,
@@ -213,6 +214,34 @@ public static class SettingsLoader
             ConfineToWorkspace = confine ?? baseline.ConfineToWorkspace,
             MaxTurns = maxTurns ?? baseline.MaxTurns,
         };
+    }
+
+    // providers.<id>.{baseUrl, model, visionModel} — 레이어 사이에는 프로바이더 항목 단위로 덮어쓴다.
+    private static IReadOnlyDictionary<string, ProviderSettings> MergeProviders(
+        IReadOnlyDictionary<string, ProviderSettings> baseline, JsonElement root)
+    {
+        if (!root.TryGetProperty("providers", out var providers) || providers.ValueKind != JsonValueKind.Object)
+        {
+            return baseline;
+        }
+
+        var merged = new Dictionary<string, ProviderSettings>(baseline, StringComparer.OrdinalIgnoreCase);
+        foreach (var p in providers.EnumerateObject())
+        {
+            if (p.Value.ValueKind != JsonValueKind.Object || ProviderCatalog.Parse(p.Name) is not { } kind)
+            {
+                continue;
+            }
+
+            // visionModel 은 빈 문자열("사용 안 함")도 값이라 GetString(빈 값 무시)을 쓰지 않는다.
+            var vision = p.Value.TryGetProperty("visionModel", out var v) && v.ValueKind == JsonValueKind.String
+                ? v.GetString()
+                : null;
+            merged[ProviderCatalog.Id(kind)] = new ProviderSettings(
+                GetString(p.Value, "baseUrl"), GetString(p.Value, "model"), vision);
+        }
+
+        return merged;
     }
 
     private static string? GetString(JsonElement obj, params string[] keys)
