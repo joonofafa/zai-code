@@ -22,8 +22,11 @@ namespace MoaiCode.Tools.Media;
 /// Z.ai API 계약: POST https://api.z.ai/api/paas/v4/images/generations (Bearer).
 /// 저장된 PNG 는 DocxCreate/PptxCreate 의 image 필드로 문서에 삽입할 수 있다.
 /// </summary>
-public sealed class ImageCreateTool : ITool
+public sealed class ImageCreateTool : ITool, IConditionalTool
 {
+    /// <summary>z.ai 일반 API 기능이라 Z.ai 프로바이더에서만 보인다.</summary>
+    public bool IsAvailable => ActiveProvider.Current.Kind == ProviderKind.Zai;
+
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(120);
 
     public string Name => "ImageCreate";

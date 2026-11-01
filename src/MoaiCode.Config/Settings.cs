@@ -87,4 +87,5 @@ public sealed record Settings
 
 /// <summary>settings.json 의 providers.&lt;id&gt; 항목.</summary>
 /// <param name="VisionModel">이미지 분석 모델. 빈 문자열은 "사용 안 함"(null 은 기본값).</param>
-public sealed record ProviderSettings(string? BaseUrl, string? Model, string? VisionModel);
+/// <param name="ContextWindow">모델 목록이 알려 준 컨텍스트 창(모델을 고를 때 함께 저장).</param>
+public sealed record ProviderSettings(string? BaseUrl, string? Model, string? VisionModel, int? ContextWindow = null);

@@ -21,15 +21,18 @@ namespace MoaiCode.Tools.Web;
 /// 근거 표시라 제목 없이 리다이렉트 URL 만 오고, (b) 검색 여부를 모델이 재량으로 정해 "검색해줘"
 /// 라고 해도 0건이 나오는 경우가 있었다. 검색 도구로는 z.ai 쪽이 안정적이라 교체했다.
 /// </summary>
-public sealed class WebSearchTool : ITool
+public sealed class WebSearchTool : ITool, IConditionalTool
 {
+    /// <summary>vLLM 은 검색 기능이 없다 — 나머지는 프로바이더 내장 검색을 쓴다.</summary>
+    public bool IsAvailable => ActiveProvider.Current.Kind != ProviderKind.Vllm;
+
     private const string DefaultSearchEngine = "search-prime";
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(90);
 
     public string Name => "WebSearch";
 
     public string Description => """
-        Searches the web and returns ranked results (title, url, snippet, publish date).
+        Searches the web and returns the findings with their sources (title, url, snippet).
 
         Usage:
         - Provide a natural-language query. Optional: limit (1-50, default 5).
@@ -67,9 +70,9 @@ public sealed class WebSearchTool : ITool
             yield break;
         }
 
-        // z.ai 내장 web_search 는 z.ai 프로바이더에서만 쓴다(다른 프로바이더의 검색은 별도 경로).
+        // 대화 프로바이더의 내장 검색을 쓴다(z.ai 는 web_search 결과 목록, 나머지는 ProviderWebSearch). vLLM 은 없음.
         var provider = ActiveProvider.Current;
-        if (provider.Kind != ProviderKind.Zai)
+        if (!IsAvailable)
         {
             yield return new ToolOutput(
                 L10n.Get("tools.webSearch.unsupportedProvider", ProviderCatalog.DisplayName(provider.Kind)), IsError: true);
@@ -78,9 +81,9 @@ public sealed class WebSearchTool : ITool
 
         var key = provider.ApiKey;
         var baseUrl = provider.BaseUrl;
-        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(provider.Model))
+        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(provider.Model) || string.IsNullOrWhiteSpace(baseUrl))
         {
-            yield return new ToolOutput(L10n.Get("tools.webSearch.noKey"), IsError: true);
+            yield return new ToolOutput(L10n.Get("tools.webSearch.noKey", ProviderCatalog.KeyName(provider.Kind)), IsError: true);
             yield break;
         }
 
@@ -88,16 +91,19 @@ public sealed class WebSearchTool : ITool
         timeoutCts.CancelAfter(Timeout);
 
         string? error = null;
-        string? body = null;
+        var rendered = "";
         try
         {
-            body = await CallAsync(baseUrl!, key!, provider.Model!, inp, timeoutCts.Token).ConfigureAwait(false);
+            rendered = provider.Kind == ProviderKind.Zai
+                ? Render(await CallAsync(baseUrl!, key!, provider.Model!, inp, timeoutCts.Token).ConfigureAwait(false))
+                : await ProviderWebSearch.SearchAsync(provider, inp.Query!, Math.Clamp(inp.Limit ?? 5, 1, 50), timeoutCts.Token)
+                    .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
             error = L10n.Get("tools.webSearch.timeout", Timeout.TotalSeconds);
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex) when (ex is HttpRequestException or JsonException)
         {
             error = L10n.Get("tools.webSearch.requestFailed", ex.Message);
         }
@@ -108,7 +114,6 @@ public sealed class WebSearchTool : ITool
             yield break;
         }
 
-        var rendered = Render(body!);
         // 검색 결과(외부 콘텐츠)는 신뢰불가 — 인젝션 경계를 앞에 붙인다.
         yield return rendered.Length == 0
             ? new ToolOutput("(no results)")

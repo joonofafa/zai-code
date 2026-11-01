@@ -39,12 +39,15 @@ public static class ProviderResolver
             vision = saved?.VisionModel;
         }
 
+        var chosen = NonEmpty(modelOverride) ?? model;
         return new ProviderProfile(
             kind,
             baseUrl,
             key,
-            NonEmpty(modelOverride) ?? model,
-            NonEmpty(vision));   // 빈 문자열 = 이미지 분석 사용 안 함
+            chosen,
+            NonEmpty(vision),   // 빈 문자열 = 이미지 분석 사용 안 함
+            // 저장된 창 크기는 그 모델의 것이다 — --model 로 다른 모델을 쓰면 기본값으로.
+            string.Equals(chosen, saved?.Model, StringComparison.Ordinal) ? saved?.ContextWindow : null);
     }
 
     private static string? NonEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

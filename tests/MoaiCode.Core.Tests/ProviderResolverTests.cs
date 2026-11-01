@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using MoaiCode.Config;
 using MoaiCode.Core;
 using MoaiCode.Core.Tools;
@@ -171,12 +172,12 @@ public sealed class ProviderResolverTests : IDisposable
         File.WriteAllText(path, """{ "language": "ko", "providers": { "zai": { "model": "glm-5.3" } } }""");
         try
         {
-            SettingsWriter.SetProvider("vllm", new Dictionary<string, string?>
+            SettingsWriter.SetProvider("vllm", new Dictionary<string, JsonNode?>
             {
                 ["baseUrl"] = "http://h:8000/v1",
                 ["model"] = "qwen",
             }, activate: true, path: path);
-            SettingsWriter.SetProvider("vllm", new Dictionary<string, string?> { ["visionModel"] = "" }, path: path);
+            SettingsWriter.SetProvider("vllm", new Dictionary<string, JsonNode?> { ["visionModel"] = "" }, path: path);
 
             var s = SettingsLoader.ApplyJson(Settings.Default, File.ReadAllText(path));
             Assert.Equal("ko", s.Language);
@@ -205,16 +206,19 @@ public sealed class ProviderResolverTests : IDisposable
     }
 
     [Fact]
-    public async Task Zai_only_tools_refuse_other_providers()
+    public async Task Tools_refuse_providers_that_lack_the_feature()
     {
-        ActiveProvider.Current = new ProviderProfile(ProviderKind.OpenAI, "https://api.openai.com/v1", "sk-x", "gpt-x", null);
         var ctx = new ToolContext(Path.GetTempPath(), PermissionMode.Auto);
 
+        ActiveProvider.Current = new ProviderProfile(ProviderKind.Vllm, "http://h:8000/v1", null, "qwen", null);
         var search = await Run(new WebSearchTool(), """{"query":"x"}""", ctx);
-        Assert.Equal(L10n.Get("tools.webSearch.unsupportedProvider", "OpenAI"), search);
+        Assert.Equal(L10n.Get("tools.webSearch.unsupportedProvider", "vLLM"), search);
 
+        ActiveProvider.Current = new ProviderProfile(ProviderKind.OpenAI, "https://api.openai.com/v1", "sk-x", "gpt-x", null);
         var vision = await Run(new ImageAnalysisTool(), """{"image_source":"a.png","prompt":"x"}""", ctx);
         Assert.Equal(L10n.Get("tools.imageAnalysis.noModel"), vision);
+        var create = await Run(new ImageCreateTool(), """{"prompt":"x","path":"a.png"}""", ctx);
+        Assert.Equal(L10n.Get("tools.imageCreate.unsupportedProvider", "OpenAI"), create);
     }
 
     private static async Task<string> Run(ITool tool, string json, ToolContext ctx)

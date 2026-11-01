@@ -95,6 +95,8 @@ public sealed class ProviderCommandTests
             return "applied";
         }
 
+        public void SetModel(string model) => throw new NotSupportedException();
+
         public void SetVisionModel(string visionModel) => throw new NotSupportedException();
     }
 

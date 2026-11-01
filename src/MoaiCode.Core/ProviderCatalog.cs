@@ -70,6 +70,18 @@ public static class ProviderCatalog
         _ => null,
     };
 
+    /// <summary>
+    /// 모델 목록에서 창 크기를 알 수 없을 때 쓰는 보수적인 컨텍스트 창. z.ai 는 모델별 표(ZaiEndpoint)를 쓴다.
+    /// vLLM 은 서버마다 다르지만 32K 로 띄우는 경우가 흔하다 — 크게 잡으면 넘친 뒤에야 압축한다.
+    /// </summary>
+    public static int DefaultContextWindow(ProviderKind kind) => kind switch
+    {
+        ProviderKind.Zai => ZaiEndpoint.FallbackContextWindow,
+        ProviderKind.Anthropic => 200_000,
+        ProviderKind.Vllm => 32_768,
+        _ => 128_000,
+    };
+
     /// <summary>키 없이도 쓸 수 있는지. 사내 vLLM 은 인증 없이 열려 있는 경우가 많다.</summary>
     public static bool RequiresKey(ProviderKind kind) => kind != ProviderKind.Vllm;
 
@@ -93,13 +105,21 @@ public static class ProviderCatalog
 
 /// <summary>지금 대화에 쓰는 프로바이더 접속 정보. 해석은 Config 의 ProviderResolver 가 한다.</summary>
 /// <param name="VisionModel">이미지 분석 모델. null 이면 이미지 분석을 쓰지 않는다.</param>
+/// <param name="ContextWindow">모델의 컨텍스트 창(토큰). null 이면 프로바이더 기본값.</param>
 public sealed record ProviderProfile(
     ProviderKind Kind,
     string? BaseUrl,
     string? ApiKey,
     string? Model,
-    string? VisionModel)
+    string? VisionModel,
+    int? ContextWindow = null)
 {
+    /// <summary>컴팩션 기준이 될 컨텍스트 창. z.ai 는 모델별 표, 그 밖은 저장값 → 프로바이더 기본값.</summary>
+    public int EffectiveContextWindow =>
+        ContextWindow is > 0 ? ContextWindow.Value
+        : Kind == ProviderKind.Zai ? ZaiEndpoint.ContextWindow(Model)
+        : ProviderCatalog.DefaultContextWindow(Kind);
+
     /// <summary>요청을 보낼 수 있는 상태인지(주소·모델·필요한 키가 모두 있음).</summary>
     public bool IsUsable =>
         !string.IsNullOrEmpty(BaseUrl)

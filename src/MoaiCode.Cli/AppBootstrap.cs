@@ -214,10 +214,10 @@ public static class AppBootstrap
 
         var engine = new QueryEngine(
             model, toolList, gate, observer, settings.MaxTurns,
-            // 컨텍스트 창: 명시 설정(contextWindow) > 모델별 스펙 테이블 자동 조회. 기본 모델 glm-5.3 → 1M.
+            // 컨텍스트 창: 명시 설정(contextWindow) > 모델 목록이 알려 준 값(/provider·/model 이 저장) > 모델별 표·프로바이더 기본값.
             contextWindowTokens: settings.ContextWindowTokens > 0
                 ? settings.ContextWindowTokens
-                : ZaiEndpoint.ContextWindow(profile.Model),
+                : profile.EffectiveContextWindow,
             pendingTasks: () => taskStore.All().Any(t => t.Status != MoaiCode.Tools.Tasks.TaskStatus.Completed),
             maxToolResultChars: maxToolResultChars,
             harvestMemories: true,
@@ -241,15 +241,9 @@ public static class AppBootstrap
             skills.Select(s => s.Name).ToList(),
             mcpConfigs.Select(c => c.Name).ToList(),
             providerDesc,
-            // /model 로 라이브 전환 (지원 모델이면 non-null) + 선택 시 settings/env 영속화.
+            // /model 로 라이브 전환. 저장·컨텍스트 창은 아래 ProviderSetup 이 맡는다.
             model as IModelControl,
-            chosen =>
-            {
-                var current = ActiveProvider.Current;
-                SettingsWriter.SetProvider(
-                    ProviderCatalog.Id(current.Kind), new Dictionary<string, string?> { ["model"] = chosen });
-                ActiveProvider.Current = current with { Model = chosen };
-            },
+            null,
             // /usage: 모델별 로컬 토큰 누적.
             new UsageStore(),
             null,  // AccountInfo는 현재 사용하지 않음 (서버 연동 제거).
@@ -298,7 +292,8 @@ public static class AppBootstrap
                 .Select(x => (x.Skill.Name, x.Source, x.Skill.License))
                 .ToList(),
             PlanTree: () => MoaiCode.Tools.Tasks.PlanRender.PlainTree(taskStore.Phases()),
-            ProviderSetup: new CliProviderSetup(cwd, model, new FileCredentialStore()));
+            ProviderSetup: new CliProviderSetup(
+                cwd, model, new FileCredentialStore(), settings.ContextWindowTokens > 0 ? null : engine.SetContextWindow));
 
         return new AppRuntime(
             mcp, ctx, toolList, skills.Select(s => s.Name).ToList(), mcpConfigs, providerDesc, settings, streamGate);

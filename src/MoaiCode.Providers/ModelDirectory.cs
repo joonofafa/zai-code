@@ -5,7 +5,9 @@ using MoaiCode.Localization;
 namespace MoaiCode.Providers;
 
 /// <summary>모델 목록 조회 결과. 실패하면 Models 는 비고 Error 에 이유가 담긴다.</summary>
-public sealed record ModelListResult(IReadOnlyList<string> Models, string? Error);
+/// <param name="ContextWindows">목록이 알려 준 모델별 컨텍스트 창(OpenRouter·vLLM·Claude). 없으면 비어 있다.</param>
+public sealed record ModelListResult(
+    IReadOnlyList<string> Models, string? Error, IReadOnlyDictionary<string, int>? ContextWindows = null);
 
 /// <summary>
 /// 프로바이더의 모델 목록 조회. /provider 는 이것으로 키·주소가 맞는지 확인한 뒤 모델을 고르게 한다
@@ -52,12 +54,13 @@ public static class ModelDirectory
                 return new([], L10n.Get("providers.list.http", (int)resp.StatusCode, Shorten(text)));
             }
 
-            var ids = Parse(text)
+            var windows = new Dictionary<string, int>(StringComparer.Ordinal);
+            var ids = Parse(text, windows)
                 .Where(id => kind != ProviderKind.OpenAI || !NonChatMarkers.Any(m => id.Contains(m, StringComparison.OrdinalIgnoreCase)))
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
                 .ToList();
-            return ids.Count == 0 ? new([], L10n.Get("providers.list.empty")) : new(ids, null);
+            return ids.Count == 0 ? new([], L10n.Get("providers.list.empty")) : new(ids, null, windows);
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)   // 사용자 취소만 그대로 올린다(시간 초과·잘못된 주소 등은 이유로)
         {
@@ -65,8 +68,11 @@ public static class ModelDirectory
         }
     }
 
+    // 모델 객체에서 컨텍스트 창을 알려 주는 필드: OpenRouter context_length, vLLM max_model_len, Claude max_input_tokens.
+    private static readonly string[] WindowFields = ["context_length", "max_model_len", "max_input_tokens"];
+
     // OpenAI 형식 { "data": [ { "id": "..." } ] } · 최상위 배열(문자열/객체) 모두 받는다.
-    internal static IEnumerable<string> Parse(string json)
+    internal static IEnumerable<string> Parse(string json, Dictionary<string, int>? windows = null)
     {
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
@@ -89,6 +95,15 @@ public static class ModelDirectory
                      && m.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String)
             {
                 ids.Add(id.GetString()!);
+                foreach (var field in WindowFields)
+                {
+                    if (windows is not null && m.TryGetProperty(field, out var w)
+                        && w.ValueKind == JsonValueKind.Number && w.TryGetInt32(out var n) && n > 0)
+                    {
+                        windows[id.GetString()!] = n;
+                        break;
+                    }
+                }
             }
         }
 

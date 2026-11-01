@@ -22,8 +22,11 @@ namespace MoaiCode.Tools.Media;
 /// 예전엔 npx 기반 zai-vision MCP 서버를 썼는데 Windows(npx.cmd)에서 스폰이 안 되고 별도 키
 /// 주입도 필요해서, WebSearch 를 Gemini → z.ai 내장으로 전환했던 것과 같은 이유로 내장 툴로 대체했다.
 /// </summary>
-public sealed class ImageAnalysisTool : ITool
+public sealed class ImageAnalysisTool : ITool, IConditionalTool
 {
+    /// <summary>/model 에서 이미지 분석 모델을 골랐을 때만 보인다("사용 안 함"이면 숨긴다).</summary>
+    public bool IsAvailable => !string.IsNullOrEmpty(ActiveProvider.Current.VisionModel);
+
     private const int MaxBytes = 20_000_000;
     private const int MaxRedirects = 5;
     // 짧은 변이 이보다 작으면 글자가 뭉개져 OCR 정확도가 급감한다(2026-09-12 234px UI 스크린샷 관측).

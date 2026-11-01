@@ -238,7 +238,7 @@ public static class SettingsLoader
                 ? v.GetString()
                 : null;
             merged[ProviderCatalog.Id(kind)] = new ProviderSettings(
-                GetString(p.Value, "baseUrl"), GetString(p.Value, "model"), vision);
+                GetString(p.Value, "baseUrl"), GetString(p.Value, "model"), vision, GetInt(p.Value, "contextWindow"));
         }
 
         return merged;

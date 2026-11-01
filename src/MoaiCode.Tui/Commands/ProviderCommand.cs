@@ -24,6 +24,9 @@ public interface IProviderSetup
     /// <summary>저장하고 대화 모델을 바꾼다. <paramref name="newKey"/> 가 null 이면 키는 그대로 둔다. 반환은 프로바이더 설명.</summary>
     string Apply(ProviderProfile profile, string? newKey);
 
+    /// <summary>현재 프로바이더의 대화 모델을 바꾸고 저장한다(/model). 컨텍스트 창도 그 모델에 맞춘다.</summary>
+    void SetModel(string model);
+
     /// <summary>현재 프로바이더의 이미지 분석 모델을 저장·적용한다. 빈 문자열은 "사용 안 함".</summary>
     void SetVisionModel(string visionModel);
 }

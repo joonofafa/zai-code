@@ -24,12 +24,12 @@ public sealed class QueryEngine
     private readonly string _workingDirectory;
 
     // 컨텍스트 관리: 누적 토큰이 이 선을 넘으면 선제 컴팩션 (창의 약 70%).
-    private readonly int _compactTokens;
+    private int _compactTokens;
     private const int MaxContextRecoveries = 3;
 
     // 페이즈 경계 컴팩션 게이트: 경계 도달 시에도 토큰 사용이 이 선(창의 30%) 미만이면
     // 컨텍스트가 작아 압축 손실/비용이 이득보다 크다 — 하베스트·압축을 건너뛰고 턴 예산 리셋만.
-    private readonly int _phaseCompactFloorTokens;
+    private int _phaseCompactFloorTokens;
 
     // 스트림이 응답 도중에 끊겼을 때(transient), 부분 응답을 버리고 같은 요청을 재전송하는 최대 횟수.
     // (RetryingChatModel 은 아직 아무것도 출력 안 된 pre-yield 끊김만 재시도하므로, mid-stream 은 여기서.)
@@ -104,6 +104,13 @@ public sealed class QueryEngine
 
     /// <summary>설정된 컨텍스트 창(토큰). 상태줄 Context % 의 분모.</summary>
     public int ContextWindowTokens => _compactTokens * 100 / 70;   // _compactTokens = 70% 지점에서 역산
+
+    /// <summary>컨텍스트 창을 바꾼다(/provider·/model 로 모델이 바뀌었을 때). 다음 요청의 컴팩션 판단부터 반영.</summary>
+    public void SetContextWindow(int contextWindowTokens)
+    {
+        _compactTokens = Math.Max(1_000, contextWindowTokens * 70 / 100);
+        _phaseCompactFloorTokens = Math.Max(500, contextWindowTokens * 30 / 100);
+    }
 
     /// <summary>현재 대화의 추정 컨텍스트 토큰(chars/4). 컴팩션 판정과 같은 추정치.</summary>
     // 상태줄이 입력 감시 스레드에서 읽는다 — 엔진 스레드가 목록을 고치는 중이면(Clear/AddRange 등) 열거가 깨지니
@@ -289,7 +296,7 @@ public sealed class QueryEngine
                 (_model as IOutputBoost)?.BoostNextRequest();
             }
 
-            return _model.StreamAsync(_messages, _tools, ct).GetAsyncEnumerator(ct);
+            return _model.StreamAsync(_messages, VisibleTools(), ct).GetAsyncEnumerator(ct);
         }
         var toolCallRetries = 0;
         var announceNudges = 0;
@@ -359,7 +366,7 @@ public sealed class QueryEngine
             // 모델 스트림을 '시작'할 때 컨텍스트 초과(400)면 응급 컴팩션 후 재시도한다.
             // iterator 메서드는 try/catch 안에서 yield 할 수 없으므로, 예외가 나는 지점(첫 MoveNext)만
             // try로 감싸고 — 컨텍스트 초과 400은 토큰이 흘러나오기 전에 즉시 떨어진다 — 소비는 그 밖에서 한다.
-            _log($"model request: turn={turn} msgs={_messages.Count} tools={_tools.Count}");
+            _log($"model request: turn={turn} msgs={_messages.Count} tools={VisibleTools().Count}");
             var stream = OpenStream();
             var hasNext = false;
             for (var attempt = 0; ; attempt++)
@@ -1370,6 +1377,12 @@ public sealed class QueryEngine
 
         ids.Clear();
     }
+
+    // 지금 쓸 수 없는 툴(프로바이더에 따라 다름)은 모델에게 보이지 않는다 — 프로바이더를 바꾸면 다음 요청부터 반영.
+    private IReadOnlyList<ITool> VisibleTools()
+        => _tools.Any(t => t is IConditionalTool { IsAvailable: false })
+            ? _tools.Where(t => t is not IConditionalTool { IsAvailable: false }).ToList()
+            : _tools;
 
     // 추론 블록은 본문(텍스트·툴 호출)이 있을 때만, 그 앞에 붙인다 — 추론만 있는 어시스턴트 메시지는 보내지 않는다.
     private static List<ContentBlock> WithReasoning(List<ReasoningBlock> reasoning, List<ContentBlock> blocks)

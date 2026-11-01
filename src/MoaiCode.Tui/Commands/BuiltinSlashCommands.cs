@@ -51,7 +51,24 @@ internal sealed class ModelCommand : ISlashCommand
         }
 
         Spectre.Console.AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]{Spectre.Console.Markup.Escape(L10n.Get("slash.model.fetching"))}[/]");
-        var models = await mc.ListModelsAsync(ct).ConfigureAwait(false);
+        var setup = ctx.ProviderSetup;
+        IReadOnlyList<string> models;
+        if (setup is not null)
+        {
+            // 프로바이더 창구로 조회 — 실패 이유(401 등)를 보여 주고, 모델별 컨텍스트 창도 함께 받는다.
+            var (listed, error) = await setup.ListModelsAsync(setup.Current, ct).ConfigureAwait(false);
+            if (error is not null)
+            {
+                return new SlashResult(L10n.Get("slash.model.fetchFailedReason", error));
+            }
+
+            models = listed;
+        }
+        else
+        {
+            models = await mc.ListModelsAsync(ct).ConfigureAwait(false);
+        }
+
         if (models.Count == 0)
         {
             return new SlashResult(L10n.Get("slash.model.fetchFailed"));
@@ -64,11 +81,19 @@ internal sealed class ModelCommand : ISlashCommand
             return new SlashResult(L10n.Get("common.unchanged"));
         }
 
-        mc.CurrentModel = chosen;            // 라이브 반영
-        ctx.PersistModel?.Invoke(chosen);    // providers.<현재>.model 에 저장
+        if (setup is not null)
+        {
+            setup.SetModel(chosen);              // 라이브 반영 + providers.<현재>.model 저장 + 컨텍스트 창
+        }
+        else
+        {
+            mc.CurrentModel = chosen;
+            ctx.PersistModel?.Invoke(chosen);
+        }
+
         var summary = L10n.Get("slash.model.changed", chosen);
 
-        if (ctx.ProviderSetup is { } setup)
+        if (setup is not null)
         {
             var vision = ModelPicker.PickVision(io, models, setup.Current.VisionModel);
             if (vision is not null)

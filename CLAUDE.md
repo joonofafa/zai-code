@@ -2,13 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-# Zai Code 프로젝트 지침 (moai-code 의 z.ai 전용 브랜치)
+# Zai Code 프로젝트 지침 (moai-code 의 zai 브랜치)
 
-Claude Code(OpenClaude 계열 에이전트)를 C#/.NET 10 으로 포팅한 코딩·문서 에이전트. CLI(`zaiCode`) + TUI 가 동일한 코어(`QueryEngine`)를 공유한다. OpenAI 호환 SSE 스트리밍 모델을 사용한다. 솔루션은 제품 13개 + 테스트 3개(xUnit) 프로젝트.
+Claude Code(OpenClaude 계열 에이전트)를 C#/.NET 10 으로 포팅한 코딩·문서 에이전트. CLI(`zaiCode`) + TUI 가 동일한 코어(`QueryEngine`)를 공유한다. 프로바이더는 Z.ai·OpenAI·Claude·OpenRouter·vLLM 중 `/provider` 로 고른다(아래 "프로바이더"). 솔루션은 제품 13개 + 테스트 3개(xUnit) 프로젝트.
 
 **문서 주의**: 루트의 `README.md`·`PROGRESS.md` 는 upstream moai-code(조직 서버·Avalonia GUI·`moai` 바이너리·v1.8.5) 기준이라 **이 브랜치와 안 맞는다** (GUI 프로젝트 없음, `~/.moai` 아닌 `~/.zaicode`). `docs/SERVER_TASK_*.md`·`GUI_*.md`·`HANDOFF_*.md` 도 제거된 조직 서버/GUI 이야기다. 이 브랜치의 진실은 이 파일과 코드.
 
-**이 브랜치(`zai`)는 서버 의존이 없는 단일 코딩 에이전트다.** upstream moai-code 에 있던 조직 서버(open-moai) 연동 — 팀 공유 스킬 동기화, 조직 문서함/RecordDB 툴(`Org*`), 서버 로그인 플로우(`/login`), 서버 임베딩(`EmbeddingClient`) 과 그에 의존하던 RAG 툴, 서버 경유 `WebSearch`, Avalonia GUI — 는 모두 제거했다. **다시 추가하지 말 것.** 백엔드는 z.ai GLM Coding Plan(`https://api.z.ai/api/coding/paas/v4`)이며, 키·모델은 런처(`../zaiCode`)가 환경변수로 주입한다.
+**이 브랜치(`zai`)는 서버 의존이 없는 단일 코딩 에이전트다.** upstream moai-code 에 있던 조직 서버(open-moai) 연동 — 팀 공유 스킬 동기화, 조직 문서함/RecordDB 툴(`Org*`), 서버 로그인 플로우(`/login`), 서버 임베딩(`EmbeddingClient`) 과 그에 의존하던 RAG 툴, 서버 경유 `WebSearch`, Avalonia GUI — 는 모두 제거했다. **다시 추가하지 말 것.** 기본 프로바이더는 z.ai GLM Coding Plan(`https://api.z.ai/api/coding/paas/v4`)이고, 런처(`../zaiCode`)는 z.ai 키(`ZAI_API_KEY`)만 폴백으로 넣는다(2026-11-01 부터 모델·주소는 넣지 않음).
 
 ## 코딩 원칙: 재활용 우선 (DRY)
 
@@ -37,8 +37,8 @@ dotnet run --project src/MoaiCode.Cli -- run "이 저장소 요약"   # 헤드�
 ```
 
 - 빌드가 hang 하면 VBCSCompiler 데드락 — `-p:UseSharedCompilation=false -nodeReuse:false` 로 우회.
-- **z.ai 접속 정보(키·베이스 URL·모델)의 유일한 해석지점은 `src/MoaiCode.Core/ZaiEndpoint.cs`** — `Environment.GetEnvironmentVariable("ZAI_*")` 를 직접 부르지 말고 반드시 `ZaiEndpoint.ApiKey()/BaseUrl()/Model()` 로 읽는다(대화 모델·WebSearch·이미지 생성이 같은 계정·엔드포인트를 쓰므로 규칙이 갈리면 한쪽만 조용히 죽는다). 모델 우선순위 `MOAI_MODEL`(런타임 `/model` 전환)→`ZAI_MODEL`→기본 `glm-5.3`. 베이스 URL 은 공식 코딩 엔드포인트(`/api/coding/paas/v4`) 화이트리스트 밖이면 기본값으로 되돌린다. **2026-09-07 `OPENAI_*`→`ZAI_*` 마이그레이션 완료** — 런처(`../zaiCode`)는 `ZAI_API_KEY`/`ZAI_BASE_URL` 을 주입하고, 코드는 오직 `ZAI_*` 를 본다(`OPENAI_*` 를 새로 쓰지 말 것).
-- API 키가 없으면 `EchoChatModel` 로 폴백(오프라인 개발 가능). 실제 모델은 Z.ai 직접 API를 사용하며 `ZAI_API_KEY` + 선택적 `ZAI_BASE_URL` (+ `MOAI_MODEL`) 환경변수로 설정한다. 기본 endpoint는 `https://api.z.ai/api/coding/paas/v4`.
+- **프로바이더 접속 정보(종류·키·주소·모델)의 유일한 해석지점은 `src/MoaiCode.Config/ProviderResolver.cs`** — 결과(`ProviderProfile`)는 `ActiveProvider.Current`(Core)에 두고, 대화 모델·WebSearch·이미지 툴은 거기서만 읽는다(환경변수를 직접 읽지 말 것 — 규칙이 갈리면 한쪽만 조용히 죽는다). 프로바이더별 고정값(id·기본 주소·키 이름·기본 컨텍스트 창)은 `Core/ProviderCatalog.cs`, z.ai 전용 값(코딩 엔드포인트 화이트리스트·모델별 컨텍스트 창 표·비전 기본값)은 `Core/ZaiEndpoint.cs`.
+- 키·모델이 없으면 `EchoChatModel` 로 폴백(오프라인 개발 가능, 상태줄 "Offline (/provider)").
 
 ## 멀티타깃 & 플랫폼 (자주 걸리는 부분)
 
@@ -58,9 +58,17 @@ dotnet run --project src/MoaiCode.Cli -- run "이 저장소 요약"   # 헤드�
 - 툴 원장은 `MoaiCode.Tools/ToolRegistry.cs` 의 `BuiltIn`.
 - **CLI**(`MoaiCode.Cli/AppBootstrap.cs`): `BuiltIn` + **`BashTool`** (전체 권한).
 
-**모델 계층 — `MoaiCode.Providers`**: `ProviderFactory.CreateDefault()` 가 `IChatModel` 을 만들고, `RetryingChatModel` 데코레이터가 pre-yield(첫 이벤트 전) 끊김을 지수 백오프 재시도한다. `EchoChatModel` 은 키 없을 때 폴백.
+**프로바이더 (2026-11-01)** — `/provider` 로 Z.ai·OpenAI·Claude·OpenRouter·vLLM 중 고르고, API 키는 붙여넣기(화면엔 앞 8자만, `SecretPrompt`)로 받는다. 모델 목록 조회로 접속을 확인한 뒤에만 저장한다(실패·취소 시 아무것도 안 바꿈).
+- 저장: 키는 `credentials.json` 에 프로바이더별(`ZAI_API_KEY`·`OPENAI_API_KEY`·`ANTHROPIC_API_KEY`·`OPENROUTER_API_KEY`·`VLLM_API_KEY`), 선택값은 `settings.json` 의 `activeProvider` + `providers.<id>.{model, visionModel, baseUrl(vLLM), contextWindow}`. 이 두 키는 **사용자 레이어(~/.zaicode)에서만** 읽는다(프로젝트 설정이 키를 다른 주소로 보내지 못하게). 예전 최상위 `provider`/`baseUrl`(upstream 서버 잔재)은 읽지 않는다.
+- 우선순위: `--model` → 저장값 → 환경변수(키 폴백, z.ai 는 `MOAI_MODEL`/`ZAI_MODEL` 도) → 기본값. z.ai 외 프로바이더는 `MOAI_MODEL` 을 보지 않는다(옛 런처의 glm-5.3 이 새지 않게).
+- `/model`: 대화 모델 → 이미지 분석 모델("사용 안 함" = 이미지 분석 툴 숨김) 순으로 고른다. 목록이 30개를 넘으면 검색어로 먼저 거른다(`ModelPicker`).
+- 대화 중 교체는 `SwitchableChatModel` 의 안쪽만 바꾼다(엔진·하위 에이전트·위험 분류기가 같은 인스턴스를 쥠). 컨텍스트 창은 모델 목록이 알려 주면(OpenRouter `context_length`·vLLM `max_model_len`·Claude `max_input_tokens`) 함께 저장하고 `QueryEngine.SetContextWindow` 로 바로 반영, 아니면 z.ai 표 → 프로바이더 기본값(vLLM 32K 등).
 
-**WebSearch 는 z.ai 내장 `web_search`** (`MoaiCode.Tools/Web/WebSearchTool.cs`): 대화 모델과 같은 chat/completions 엔드포인트에 `tools=[{type:web_search}]` 를 실어 보내고, 응답 최상위 `web_search` 배열(제목·URL·본문·발행일)을 결과 목록으로 돌려준다. 별도 검색 키가 필요 없다 — 대화 모델과 같은 z.ai 접속 정보(`ZaiEndpoint.ApiKey()/BaseUrl()`)를 재사용한다. 키가 없으면 그 툴만 비활성. 엔진은 `MOAI_SEARCH_ENGINE` 으로 교체(기본 `search-prime`). (예전 Gemini grounding 은 폐기 — 결과 목록이 아니라 근거 표시만 나오고 검색 여부를 모델이 재량으로 정해 0건이 나오는 문제.) **`StreamJsonRunner`** (`MoaiCode.Cli`) 는 claude CLI 호환 `--output-format stream-json` / `--input-format stream-json` (NDJSON 영속 모드, `-p` 값을 없이) 프로토콜을 구현한다.
+**모델 계층 — `MoaiCode.Providers`**: `ProviderFactory.Create(profile)` 가 `IChatModel` 을 만들고, `RetryingChatModel` 데코레이터가 pre-yield(첫 이벤트 전) 끊김을 지수 백오프 재시도한다. 전송 공용부(헤더 대기 상한·연결 실패 분류)는 `Http/StreamingHttp`.
+- Z.ai·OpenAI·OpenRouter·vLLM = `OpenAiChatModel`(OpenAI 호환). 프로바이더별 차이: z.ai 만 `max_tokens` 고정·`tool_stream`, OpenAI 는 `max_completion_tokens`(MOAI_MAX_TOKENS 지정 시만), OpenRouter 는 `reasoning.effort`, 나머지는 `stream_options.include_usage`. 서버가 선택 필드를 400 으로 거부하면 빼고 재전송(모델별 기억).
+- Claude = `Anthropic/AnthropicChatModel`(Messages API, 원시 HTTP). thinking 블록은 서명째 `ReasoningBlock`(Core)으로 받아 엔진이 어시스턴트 메시지 앞에 저장하고 다음 요청에 되돌려 보낸다(다른 프로바이더는 무시). 컴팩션 등으로 기록이 바뀌므로 `thinking.block_binding.prefix_mismatch_behavior=drop_block`(베타 `thinking-binding-controls-2026-08-01`)을 보낸다.
+
+**WebSearch 는 대화 프로바이더의 내장 검색** (`MoaiCode.Tools/Web/WebSearchTool.cs` + `ProviderWebSearch.cs`): z.ai 는 chat/completions 에 `tools=[{type:web_search}]`(결과는 최상위 `web_search` 배열, 엔진 `MOAI_SEARCH_ENGINE`, 기본 `search-prime`), OpenAI 는 Responses API `web_search`, OpenRouter 는 `openrouter:web_search` 서버 툴, Claude 는 `web_search_20260209`(거부 시 `_20250305`) 서버 툴. 별도 검색 키 없음. vLLM 은 검색이 없어 툴을 숨긴다 — 프로바이더에 따라 쓸 수 없는 툴은 `IConditionalTool` 로 엔진이 요청마다 걸러 모델에게 보이지 않는다(이미지 생성은 Z.ai 전용, 이미지 분석은 비전 모델을 골랐을 때만). **`StreamJsonRunner`** (`MoaiCode.Cli`) 는 claude CLI 호환 `--output-format stream-json` / `--input-format stream-json` (NDJSON 영속 모드, `-p` 값을 없이) 프로토콜을 구현한다.
 
 **로컬 청킹 파이프라인(문서 검색)**: 로컬 청킹(`MoaiCode.Tools.OpenXml` 의 `ChunkBuild`/`TextChunker`) + 로컬 벡터(`.moai-chunks/*.vec` float32 + `vectors.json`, 포맷은 `docs/CHUNK_VEC_FORMAT.md`) + 오프라인 코사인 검색(`ChunkSearch`). **CLI 는 임베딩하지 않는다** — 질의 벡터는 외부 파이프라인이 만들어 넘긴다(z.ai Coding Plan 에 임베딩 모델이 없다).
 

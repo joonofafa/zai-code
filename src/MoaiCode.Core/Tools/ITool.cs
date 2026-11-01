@@ -60,3 +60,12 @@ public interface ITool
         ToolContext context,
         CancellationToken ct);
 }
+
+/// <summary>
+/// 지금 쓸 수 있을 때만 모델에게 보이는 툴(프로바이더·설정에 따라 달라짐 — 예: vLLM 의 웹 검색, 비전 모델 없는 이미지 분석).
+/// 엔진이 요청마다 걸러 보낸다. 모델이 그래도 부르면 툴이 스스로 이유를 돌려준다.
+/// </summary>
+public interface IConditionalTool
+{
+    bool IsAvailable { get; }
+}

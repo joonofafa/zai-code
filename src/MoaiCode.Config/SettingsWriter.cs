@@ -32,10 +32,11 @@ public static class SettingsWriter
 
     /// <summary>
     /// providers.&lt;id&gt; 의 필드 일부만 머지 저장(나머지 필드·다른 프로바이더 보존, 값 null 은 필드 삭제).
+    /// 값은 JSON 노드라 숫자(contextWindow)는 숫자로 남는다 — 문자열로 쓰면 로더가 정수로 읽지 못해 조용히 무시된다.
     /// <paramref name="activate"/> 면 activeProvider 도 그 id 로 바꾼다.
     /// </summary>
     public static void SetProvider(
-        string id, IReadOnlyDictionary<string, string?> fields, bool activate = false, string? path = null)
+        string id, IReadOnlyDictionary<string, JsonNode?> fields, bool activate = false, string? path = null)
     {
         path ??= DefaultPath;
 
@@ -51,7 +52,7 @@ public static class SettingsWriter
             }
             else
             {
-                entry[kv.Key] = kv.Value;
+                entry[kv.Key] = kv.Value.DeepClone();
             }
         }
 
