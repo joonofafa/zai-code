@@ -38,7 +38,17 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl, IOutputBoost
     public string CurrentModel
     {
         get => _model;
-        set { if (!string.IsNullOrWhiteSpace(value)) _model = value; }
+        set
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                _model = value;
+                lock (_rejectedFields)
+                {
+                    _rejectedFields.Clear();   // 다른 모델은 받을 수 있다
+                }
+            }
+        }
     }
 
     /// <summary>{baseUrl}/models 에서 사용 가능한 모델 id 목록 조회 (OpenAI 호환). 실패 시 빈 목록.</summary>
@@ -82,76 +92,33 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl, IOutputBoost
         bool boost,
         [EnumeratorCancellation] CancellationToken ct)
     {
-        var body = new JsonObject
-        {
-            ["model"] = _model,
-            ["stream"] = true,
-            // max_tokens 미전송 시 일부 게이트웨이(open-moai 등)가 1024 로 캡핑 → 응답이 중간에 잘려
-            // 모델이 작업을 끝내기 전에 멈춘다. 넉넉히 보낸다(env MOAI_MAX_TOKENS, 기본 8192).
-            // 직전 응답이 추론만 하다 한도에서 잘렸으면 엔진이 이번 한 번을 API 최대치로 올린다(IOutputBoost) —
-            // 같은 한도로 다시 물으면 처음부터 다시 추론하다 똑같이 잘린다(어려운 과제에서 응답 6번이 전부 추론만으로 끝난 실측).
-            ["max_tokens"] = boost ? ApiMaxOutputTokens : MaxOutputTokens(),
-            ["messages"] = BuildMessages(messages),
-        };
-
-        var effort = ResolveReasoningEffort();
-        if (effort is not null)
-        {
-            body["reasoning_effort"] = effort;
-        }
-
-        var toolsArr = BuildTools(tools);
-        if (toolsArr is not null)
-        {
-            body["tools"] = toolsArr;
-            // Z.ai 는 tool call 델타를 받으려면 별도 플래그가 필요하다.
-            if (SupportsToolStreaming(_model))
-            {
-                body["tool_stream"] = true;
-            }
-        }
-
-        using var req = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/chat/completions");
-        req.Headers.TryAddWithoutValidation("Authorization", $"Bearer {_apiKey}");
-        req.Headers.TryAddWithoutValidation("Accept-Language", "en-US,en");
-        req.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
+        var body = BuildBody(messages, tools, boost);
 
         HttpResponseMessage resp;
-        // 헤더 도착 대기 상한: SharedHttp.Timeout 은 무제한이라 방화벽/프록시가 연결을
-        // 소리 없이 버리면(RST 없이 상태만 삭제 — 내부망 idle 커넥션 정리) SendAsync 가
-        // 영원히 묶인다. idle-read 방어(SseReader)는 스트림 열린 뒤부터만 작동하므로
-        // 이 구간에 별도 상한을 건다. 발동하면 아래 catch 가 transient 로 변환해
-        // RetryingChatModel 의 기존 재시도(첫 토큰 전=백오프 재시도)에 자연스럽게 올라탄다.
-        using var headerCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        headerCts.CancelAfter(HeaderWaitTimeout());
-        try
+        while (true)
         {
-            resp = await _http
-                .SendAsync(req, HttpCompletionOption.ResponseHeadersRead, headerCts.Token)
-                .ConfigureAwait(false);
-            headerCts.CancelAfter(Timeout.InfiniteTimeSpan);   // 헤더 도착 — 타이머 해제(스트리밍 중 발동 금지)
-        }
-        catch (OperationCanceledException) when (headerCts.IsCancellationRequested && !ct.IsCancellationRequested)
-        {
-            // 원 호출자 취소가 아니면 헤더 대기 타임아웃 — 무한 대기를 유한한 실패로.
-            throw new ProviderException(
-                L10n.Get("providers.headerWaitTimeout", (int)HeaderWaitTimeout().TotalSeconds),
-                ErrorCategory.NetworkTransient);
-        }
-        catch (Exception ex) when (ProviderException.IsNetworkFailure(ex))
-        {
-            // 연결 자체 실패(끊김/타임아웃/소켓) → transient 로 변환해 재시도 계층이 처리.
-            throw new ProviderException(L10n.Get("providers.gatewayConnectionFailed", ex.Message), ErrorCategory.NetworkTransient, ex);
+            resp = await SendAsync(body, ct).ConfigureAwait(false);
+            if (resp.IsSuccessStatusCode)
+            {
+                break;
+            }
+
+            var errBody = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            if (DebugSse) DebugLog($"[ERROR {(int)resp.StatusCode}] model={_model}\n{errBody}");
+            var status = (int)resp.StatusCode;
+            resp.Dispose();
+
+            // 선택 필드를 모르는 서버(vLLM 등)는 400 으로 거부한다 — 지목된 필드를 빼고 다시 보낸다(모델별로 기억).
+            if (status == 400 && DropRejectedField(body, errBody) is { } dropped)
+            {
+                if (DebugSse) DebugLog($"[RETRY] dropped unsupported field '{dropped}'");
+                continue;
+            }
+
+            throw new ProviderException(status, Truncate(errBody, 500));
         }
 
         using var _resp = resp;
-
-        if (!resp.IsSuccessStatusCode)
-        {
-            var errBody = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-            if (DebugSse) DebugLog($"[ERROR {(int)resp.StatusCode}] model={_model}\n{errBody}");
-            throw new ProviderException((int)resp.StatusCode, Truncate(errBody, 500));
-        }
 
         if (DebugSse) DebugLog($"\n=== {DateTime.Now:HH:mm:ss} POST chat/completions model={_model} ===");
 
@@ -288,6 +255,140 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl, IOutputBoost
                 ? reasoning.ToString()
                 : null,
         };
+    }
+
+    // 요청 본문. 프로바이더마다 다른 것: 출력 한도 필드, 추론 강도 형식, z.ai 전용 tool_stream, 사용량 요청.
+    private JsonObject BuildBody(IReadOnlyList<Message> messages, IReadOnlyList<ITool> tools, bool boost)
+    {
+        var body = new JsonObject
+        {
+            ["model"] = _model,
+            ["stream"] = true,
+            ["messages"] = BuildMessages(messages),
+        };
+
+        if (_kind == ProviderKind.Zai)
+        {
+            // max_tokens 미전송 시 일부 게이트웨이(open-moai 등)가 1024 로 캡핑 → 응답이 중간에 잘려
+            // 모델이 작업을 끝내기 전에 멈춘다. 넉넉히 보낸다(env MOAI_MAX_TOKENS, 기본 65536).
+            // 직전 응답이 추론만 하다 한도에서 잘렸으면 엔진이 이번 한 번을 API 최대치로 올린다(IOutputBoost) —
+            // 같은 한도로 다시 물으면 처음부터 다시 추론하다 똑같이 잘린다(어려운 과제에서 응답 6번이 전부 추론만으로 끝난 실측).
+            body["max_tokens"] = boost ? ApiMaxOutputTokens : MaxOutputTokens();
+        }
+        else if (!boost && ExplicitMaxOutputTokens() is { } max)
+        {
+            // 나머지는 보내지 않으면 모델 최대치를 쓴다 — 고정값은 모델마다 한도가 달라 400 이 난다
+            // (vLLM 은 남은 컨텍스트보다 크면 거부). 사용자가 MOAI_MAX_TOKENS 로 정했을 때만 보낸다.
+            // OpenAI 최신 모델은 max_tokens 를 받지 않고 max_completion_tokens 만 받는다.
+            body[_kind == ProviderKind.OpenAI ? "max_completion_tokens" : "max_tokens"] = max;
+        }
+
+        var effort = ResolveReasoningEffort();
+        if (effort is not null)
+        {
+            if (_kind == ProviderKind.OpenRouter)
+            {
+                body["reasoning"] = new JsonObject { ["effort"] = effort };   // OpenRouter 의 통합 추론 설정
+            }
+            else
+            {
+                body["reasoning_effort"] = effort;
+            }
+        }
+
+        var toolsArr = BuildTools(tools);
+        if (toolsArr is not null)
+        {
+            body["tools"] = toolsArr;
+            // Z.ai 는 tool call 델타를 받으려면 별도 플래그가 필요하다(다른 서버는 모르는 필드를 400 으로 거부).
+            if (_kind == ProviderKind.Zai && SupportsToolStreaming(_model))
+            {
+                body["tool_stream"] = true;
+            }
+        }
+
+        if (_kind != ProviderKind.Zai)
+        {
+            // OpenAI 호환 서버는 이걸 요청해야 스트림 끝에 사용량(토큰 수)을 준다.
+            body["stream_options"] = new JsonObject { ["include_usage"] = true };
+        }
+
+        lock (_rejectedFields)
+        {
+            foreach (var field in _rejectedFields)
+            {
+                body.Remove(field);
+            }
+        }
+
+        return body;
+    }
+
+    private async Task<HttpResponseMessage> SendAsync(JsonObject body, CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/chat/completions");
+        if (_apiKey.Length > 0)
+        {
+            req.Headers.TryAddWithoutValidation("Authorization", $"Bearer {_apiKey}");   // 인증 없는 사내 vLLM 은 생략
+        }
+
+        req.Headers.TryAddWithoutValidation("Accept-Language", "en-US,en");
+        req.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
+
+        // 헤더 도착 대기 상한: SharedHttp.Timeout 은 무제한이라 방화벽/프록시가 연결을
+        // 소리 없이 버리면(RST 없이 상태만 삭제 — 내부망 idle 커넥션 정리) SendAsync 가
+        // 영원히 묶인다. idle-read 방어(SseReader)는 스트림 열린 뒤부터만 작동하므로
+        // 이 구간에 별도 상한을 건다. 발동하면 아래 catch 가 transient 로 변환해
+        // RetryingChatModel 의 기존 재시도(첫 토큰 전=백오프 재시도)에 자연스럽게 올라탄다.
+        using var headerCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        headerCts.CancelAfter(HeaderWaitTimeout());
+        try
+        {
+            var resp = await _http
+                .SendAsync(req, HttpCompletionOption.ResponseHeadersRead, headerCts.Token)
+                .ConfigureAwait(false);
+            headerCts.CancelAfter(Timeout.InfiniteTimeSpan);   // 헤더 도착 — 타이머 해제(스트리밍 중 발동 금지)
+            return resp;
+        }
+        catch (OperationCanceledException) when (headerCts.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            // 원 호출자 취소가 아니면 헤더 대기 타임아웃 — 무한 대기를 유한한 실패로.
+            throw new ProviderException(
+                L10n.Get("providers.headerWaitTimeout", (int)HeaderWaitTimeout().TotalSeconds),
+                ErrorCategory.NetworkTransient);
+        }
+        catch (Exception ex) when (ProviderException.IsNetworkFailure(ex))
+        {
+            // 연결 자체 실패(끊김/타임아웃/소켓) → transient 로 변환해 재시도 계층이 처리.
+            throw new ProviderException(L10n.Get("providers.gatewayConnectionFailed", ex.Message), ErrorCategory.NetworkTransient, ex);
+        }
+    }
+
+    // 서버가 모른다고 거부할 수 있는 선택 필드. 빼도 요청의 뜻은 유지된다.
+    private static readonly string[] OptionalFields =
+        ["reasoning_effort", "reasoning", "stream_options", "max_completion_tokens", "tool_stream"];
+
+    // 모델(같은 서버)이 거부한 선택 필드 — 다음 요청부터 처음부터 뺀다. /model 로 모델이 바뀌면 비운다.
+    private readonly HashSet<string> _rejectedFields = new(StringComparer.Ordinal);
+
+    // 400 본문이 지목한 선택 필드를 본문에서 빼고 그 이름을 돌려준다. 해당 없으면 null(그대로 오류).
+    private string? DropRejectedField(JsonObject body, string errorBody)
+    {
+        foreach (var field in OptionalFields)
+        {
+            if (body.ContainsKey(field) && errorBody.Contains(field, StringComparison.OrdinalIgnoreCase))
+            {
+                body.Remove(field);
+                lock (_rejectedFields)
+                {
+                    _rejectedFields.Add(field);
+                }
+
+                return field;
+            }
+        }
+
+        return null;
     }
 
     private static void AccumulateToolCalls(JsonElement tcs, SortedDictionary<int, ToolCallBuilder> acc)
@@ -518,16 +619,21 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl, IOutputBoost
 
     private static int MaxOutputTokens()
     {
-        var env = Environment.GetEnvironmentVariable("MOAI_MAX_TOKENS");
-        if (int.TryParse(env, out var n) && n > 0)
+        if (ExplicitMaxOutputTokens() is { } n)
         {
-            return Math.Clamp(n, 256, ApiMaxOutputTokens);
+            return n;
         }
 
         // GLM 계열은 추론과 본문이 이 한도를 함께 쓴다. 16384 였을 땐 어려운 과제에서 추론만으로 한도를 다 써
         // 본문·툴콜 없이 잘리는 일이 반복됐다(큰 단일 파일 Write 가 잘리던 문제도 함께 줄인다).
         return 65_536;
     }
+
+    // 사용자가 MOAI_MAX_TOKENS 로 정한 출력 한도(합리적 범위로 클램프). 없으면 null.
+    private static int? ExplicitMaxOutputTokens()
+        => int.TryParse(Environment.GetEnvironmentVariable("MOAI_MAX_TOKENS"), out var n) && n > 0
+            ? Math.Clamp(n, 256, ApiMaxOutputTokens)
+            : null;
 
     // 응답 헤더(첫 바이트) 도착 대기 상한. env MOAI_HEADER_TIMEOUT_SECONDS 로 조정(기본 300s, 0=비활성).
     // idle-read(SseReader)와 달리 스트림 열리기 전 구간이라 첫 토큰 지연과 무관하게 잡을 수 있어
