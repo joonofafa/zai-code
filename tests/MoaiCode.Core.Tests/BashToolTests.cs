@@ -200,4 +200,56 @@ public class BashToolExecutionTests
             Directory.Delete(sub, recursive: true);
         }
     }
+
+    // cmd 는 `& echo 마커%cd%` 의 %cd% 를 줄 파싱 시점에 펼쳐, 같은 줄의 cd 전 경로를 돌려줬다(Windows 에서 cwd 가 이어지지 않음).
+    // 이제 마커 뒤 다음 줄에 인자 없는 `cd` 가 경로를 찍는다 — POSIX 는 같은 줄, Windows 는 다음 줄을 한 규칙으로 읽는다.
+    [Theory]
+    [InlineData("out\n__MOAI_CWD__:/tmp/x\n", "/tmp/x")]
+    [InlineData("out\r\n__MOAI_CWD__:\r\nC:\\work\\x\r\n", "C:\\work\\x")]
+    public void Cwd_marker_is_read_from_same_or_next_line(string stdout, string expected)
+    {
+        var (output, cwd) = BashTool.ExtractCwd(stdout);
+        Assert.Equal("out", output);
+        Assert.Equal(expected, cwd);
+    }
+
+    [Fact]
+    public async Task Cmd_working_directory_persists_and_bang_text_is_left_alone()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var sub = Path.Combine(Path.GetTempPath(), "moai-cwd-" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(sub);
+        try
+        {
+            var tool = new BashTool();
+            var ctx = new ToolContext(Path.GetTempPath(), PermissionMode.Auto);
+            await Collect(tool, ctx, $"cd /d \"{sub}\"");
+            Assert.Contains(Path.GetFileName(sub), await Collect(tool, ctx, "cd"));
+            // 지연 확장(/v:on)으로 고치면 !VAR! 꼴이 조용히 치환된다 — 그대로 나와야 한다.
+            Assert.Contains("a!USERNAME!b", await Collect(tool, ctx, "echo a!USERNAME!b"));
+        }
+        finally
+        {
+            Directory.Delete(sub, recursive: true);
+        }
+    }
+
+    private static async Task<string> Collect(BashTool tool, ToolContext ctx, string command)
+    {
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new { command }));
+        var sb = new StringBuilder();
+        await foreach (var p in tool.ExecuteAsync(doc.RootElement, ctx, default))
+        {
+            if (p is ToolOutput o)
+            {
+                sb.Append(o.Text);
+            }
+        }
+
+        return sb.ToString();
+    }
 }

@@ -423,8 +423,10 @@ public sealed class BashTool : ITool
         {
             // 한국어 Windows에서 cmd 내장 메시지('x'은(는) ... 아닙니다 등)는 OEM 코드페이지(CP949)로
             // 나가서, UTF-8로 디코딩하면 깨진다. `chcp 65001`로 출력을 UTF-8로 정규화한 뒤 실행한다
-            // (>nul 로 "Active code page" 배너 숨김, &로 chcp 실패해도 명령은 진행). 마커의 %cd%(한글 경로 포함)도 UTF-8로 정상화.
-            return ("cmd.exe", new[] { "/c", "chcp 65001>nul & " + command + " & echo " + CwdMarker + "%cd%" });
+            // (>nul 로 "Active code page" 배너 숨김, &로 chcp 실패해도 명령은 진행). 마커 뒤 경로(한글 포함)도 UTF-8로 정상화.
+            // 경로는 %cd% 가 아니라 다음 줄의 인자 없는 `cd` 로 찍는다 — %cd% 는 줄을 파싱할 때 펼쳐져 같은 줄 cd 전 경로가
+            // 나오고, 지연 확장(/v:on + !cd!)은 명령 속 !VAR! 꼴을 조용히 치환한다.
+            return ("cmd.exe", new[] { "/c", "chcp 65001>nul & " + command + " & echo " + CwdMarker + "& cd" });
         }
 
         var bash = File.Exists("/bin/bash") ? "/bin/bash" : "/bin/sh";
@@ -432,7 +434,7 @@ public sealed class BashTool : ITool
     }
 
     // stdout 끝의 cwd 마커를 떼어내 (정리된 출력, 새 cwd)로 반환.
-    private static (string Output, string? Cwd) ExtractCwd(string stdout)
+    internal static (string Output, string? Cwd) ExtractCwd(string stdout)
     {
         var idx = stdout.LastIndexOf(CwdMarker, StringComparison.Ordinal);
         if (idx < 0)
@@ -440,9 +442,11 @@ public sealed class BashTool : ITool
             return (stdout, null);
         }
 
-        var after = stdout[(idx + CwdMarker.Length)..];
-        var nl = after.IndexOfAny(new[] { '\n', '\r' });
-        var path = (nl >= 0 ? after[..nl] : after).Trim();
+        // 마커 뒤 첫 번째 빈 줄 아닌 줄 — POSIX 는 같은 줄, Windows(cmd) 는 다음 줄에 경로가 온다.
+        var path = stdout[(idx + CwdMarker.Length)..]
+            .Split('\n')
+            .Select(l => l.Trim())
+            .FirstOrDefault(l => l.Length > 0);
         var before = stdout[..idx].TrimEnd('\n', '\r');
         return (before, string.IsNullOrEmpty(path) ? null : path);
     }
