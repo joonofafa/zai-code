@@ -245,7 +245,7 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl, IOutputBoost
             }
 
             yield return new ToolCallRequested(
-                new ToolUseBlock(b.Id, b.Name, ParseArgs(b.Args)));
+                new ToolUseBlock(b.Id, b.Name, ToolArguments.Parse(b.Args.ToString())));
         }
 
         // 잘린 응답이면 추론 원문을 엔진에 넘긴다(이어받기용, 기록에는 안 들어감).
@@ -326,7 +326,7 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl, IOutputBoost
 
     private async Task<HttpResponseMessage> SendAsync(JsonObject body, CancellationToken ct)
     {
-        using var req = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/chat/completions");
+        var req = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/chat/completions");
         if (_apiKey.Length > 0)
         {
             req.Headers.TryAddWithoutValidation("Authorization", $"Bearer {_apiKey}");   // 인증 없는 사내 vLLM 은 생략
@@ -335,33 +335,7 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl, IOutputBoost
         req.Headers.TryAddWithoutValidation("Accept-Language", "en-US,en");
         req.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
 
-        // 헤더 도착 대기 상한: SharedHttp.Timeout 은 무제한이라 방화벽/프록시가 연결을
-        // 소리 없이 버리면(RST 없이 상태만 삭제 — 내부망 idle 커넥션 정리) SendAsync 가
-        // 영원히 묶인다. idle-read 방어(SseReader)는 스트림 열린 뒤부터만 작동하므로
-        // 이 구간에 별도 상한을 건다. 발동하면 아래 catch 가 transient 로 변환해
-        // RetryingChatModel 의 기존 재시도(첫 토큰 전=백오프 재시도)에 자연스럽게 올라탄다.
-        using var headerCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        headerCts.CancelAfter(HeaderWaitTimeout());
-        try
-        {
-            var resp = await _http
-                .SendAsync(req, HttpCompletionOption.ResponseHeadersRead, headerCts.Token)
-                .ConfigureAwait(false);
-            headerCts.CancelAfter(Timeout.InfiniteTimeSpan);   // 헤더 도착 — 타이머 해제(스트리밍 중 발동 금지)
-            return resp;
-        }
-        catch (OperationCanceledException) when (headerCts.IsCancellationRequested && !ct.IsCancellationRequested)
-        {
-            // 원 호출자 취소가 아니면 헤더 대기 타임아웃 — 무한 대기를 유한한 실패로.
-            throw new ProviderException(
-                L10n.Get("providers.headerWaitTimeout", (int)HeaderWaitTimeout().TotalSeconds),
-                ErrorCategory.NetworkTransient);
-        }
-        catch (Exception ex) when (ProviderException.IsNetworkFailure(ex))
-        {
-            // 연결 자체 실패(끊김/타임아웃/소켓) → transient 로 변환해 재시도 계층이 처리.
-            throw new ProviderException(L10n.Get("providers.gatewayConnectionFailed", ex.Message), ErrorCategory.NetworkTransient, ex);
-        }
+        return await StreamingHttp.SendAsync(_http, req, ct).ConfigureAwait(false);
     }
 
     // 서버가 모른다고 거부할 수 있는 선택 필드. 빼도 요청의 뜻은 유지된다.
@@ -422,23 +396,6 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl, IOutputBoost
                     b.Args.Append(ae.GetString());
                 }
             }
-        }
-    }
-
-    private static JsonElement ParseArgs(StringBuilder args)
-    {
-        var json = args.Length > 0 ? args.ToString() : "{}";
-        try
-        {
-            using var d = JsonDocument.Parse(json);
-            return d.RootElement.Clone();
-        }
-        catch (JsonException)
-        {
-            var raw = json.Length > 2000 ? json[..2000] : json;
-            var marker = new JsonObject { [ToolArguments.InvalidKey] = raw };
-            using var d = JsonDocument.Parse(marker.ToJsonString());
-            return d.RootElement.Clone();
         }
     }
 
@@ -634,25 +591,6 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl, IOutputBoost
         => int.TryParse(Environment.GetEnvironmentVariable("MOAI_MAX_TOKENS"), out var n) && n > 0
             ? Math.Clamp(n, 256, ApiMaxOutputTokens)
             : null;
-
-    // 응답 헤더(첫 바이트) 도착 대기 상한. env MOAI_HEADER_TIMEOUT_SECONDS 로 조정(기본 300s, 0=비활성).
-    // idle-read(SseReader)와 달리 스트림 열리기 전 구간이라 첫 토큰 지연과 무관하게 잡을 수 있어
-    // SseReader 기본(120s)보다 여유를 둔다. 클램프 10s~1h.
-    private static TimeSpan HeaderWaitTimeout()
-    {
-        var env = Environment.GetEnvironmentVariable("MOAI_HEADER_TIMEOUT_SECONDS");
-        if (int.TryParse(env, out var n))
-        {
-            if (n <= 0)
-            {
-                return Timeout.InfiniteTimeSpan;
-            }
-
-            return TimeSpan.FromSeconds(Math.Clamp(n, 10, 3600));
-        }
-
-        return TimeSpan.FromSeconds(300);
-    }
 
     private string? ResolveReasoningEffort()
     {

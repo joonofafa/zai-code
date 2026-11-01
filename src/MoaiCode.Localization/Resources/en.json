@@ -527,7 +527,7 @@
   "providers.streamEndedEarly": "The response stream was cut off before completion: {0}",
   "providers.streamIdleTimeout": "No data received from the stream for {0}s (idle timeout — the server or gateway stalled). Retrying if possible.",
   "providers.echoOffline": "EchoChatModel (offline · {0}: {1} not set, run /provider)",
-  "providers.notImplemented": "{0} is not supported yet (offline echo)",
+  "providers.anthropic.refused": "Claude declined this request (safety classifier). Rephrase it or try another model.",
   "providers.list.noBaseUrl": "No server URL is set.",
   "providers.list.http": "The server refused the request (HTTP {0}): {1}",
   "providers.list.empty": "The server returned no models.",

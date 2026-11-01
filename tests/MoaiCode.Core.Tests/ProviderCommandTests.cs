@@ -237,7 +237,7 @@ public sealed class ProviderCommandTests
         var r = await ModelDirectory.ListAsync(new HttpClient(handler), ProviderKind.Anthropic, "https://api.anthropic.com/v1", "sk-ant-x", default);
         Assert.Equal(["claude-x"], r.Models);
         Assert.Equal("sk-ant-x", handler.Last!.Headers.GetValues("x-api-key").Single());
-        Assert.Equal("2023-06-01", handler.Last.Headers.GetValues("anthropic-version").Single());
+        Assert.Equal("2026-10-21", handler.Last.Headers.GetValues("anthropic-version").Single());
         Assert.Null(handler.Last.Headers.Authorization);
     }
 }

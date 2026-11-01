@@ -10,6 +10,9 @@ public sealed record TextDelta(string Text) : StreamEvent;
 
 public sealed record ToolCallRequested(ToolUseBlock Block) : StreamEvent;
 
+/// <summary>응답에 담긴 추론 블록(되돌려 보낼 원문). 엔진이 이번 어시스턴트 메시지 앞에 붙여 저장한다.</summary>
+public sealed record ReasoningCaptured(ReasoningBlock Block) : StreamEvent;
+
 public sealed record TurnCompleted(Usage Usage, string StopReason) : StreamEvent
 {
     /// <summary>

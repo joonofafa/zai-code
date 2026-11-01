@@ -38,7 +38,7 @@ public static class ModelDirectory
             if (kind == ProviderKind.Anthropic)
             {
                 req.Headers.TryAddWithoutValidation("x-api-key", apiKey ?? string.Empty);
-                req.Headers.TryAddWithoutValidation("anthropic-version", "2023-06-01");
+                req.Headers.TryAddWithoutValidation("anthropic-version", Anthropic.AnthropicChatModel.ApiVersion);
             }
             else if (!string.IsNullOrEmpty(apiKey))
             {

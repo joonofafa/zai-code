@@ -31,11 +31,18 @@ public sealed record ToolResultMessage(string ToolUseId, string Output, bool IsE
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "$type")]
 [JsonDerivedType(typeof(TextBlock), "text")]
 [JsonDerivedType(typeof(ToolUseBlock), "tool_use")]
+[JsonDerivedType(typeof(ReasoningBlock), "reasoning")]
 public abstract record ContentBlock;
 
 public sealed record TextBlock(string Text) : ContentBlock;
 
 public sealed record ToolUseBlock(string Id, string Name, JsonElement Input) : ContentBlock;
+
+/// <summary>
+/// 프로바이더가 돌려준 추론 블록 원문(Claude 의 thinking/redacted_thinking — 서명 포함). 같은 프로바이더로 보낼 때
+/// 그대로 되돌려 보내 추론을 이어 가게 한다. 다른 프로바이더는 무시하고, 화면·요약에도 쓰지 않는다.
+/// </summary>
+public sealed record ReasoningBlock(string Provider, JsonElement Raw) : ContentBlock;
 
 /// <summary>
 /// 프로바이더가 툴 인자를 JSON 으로 해석하지 못했을 때(잘림 등) Input 객체에 싣는 표식 키 — 값은 원문 앞부분.
@@ -48,6 +55,28 @@ public static class ToolArguments
 
     public static bool IsInvalid(JsonElement input) =>
         input.ValueKind == JsonValueKind.Object && input.TryGetProperty(InvalidKey, out _);
+
+    /// <summary>스트림으로 모은 툴 인자 원문을 해석한다. 깨진 JSON 은 표식 객체(원문 앞 2000자)로 돌려준다.</summary>
+    public static JsonElement Parse(string json)
+    {
+        if (json.Length == 0)
+        {
+            json = "{}";
+        }
+
+        try
+        {
+            using var d = JsonDocument.Parse(json);
+            return d.RootElement.Clone();
+        }
+        catch (JsonException)
+        {
+            var raw = json.Length > 2000 ? json[..2000] : json;
+            var marker = new System.Text.Json.Nodes.JsonObject { [InvalidKey] = raw };
+            using var d = JsonDocument.Parse(marker.ToJsonString());
+            return d.RootElement.Clone();
+        }
+    }
 }
 
 /// <summary>토큰 사용량 (비용 트래킹용).</summary>

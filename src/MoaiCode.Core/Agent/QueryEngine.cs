@@ -346,6 +346,7 @@ public sealed class QueryEngine
 
             var assistantText = new StringBuilder();
             var toolCalls = new List<ToolUseBlock>();
+            var reasoning = new List<ReasoningBlock>();   // 되돌려 보낼 추론 블록(Claude) — 메시지 앞에 붙인다
             var stopReason = "end_turn";
             Usage lastUsage = new(0, 0);
             string? cutReasoning = null;   // stop=length 응답의 추론 원문(프로바이더가 넘겨줌)
@@ -418,6 +419,9 @@ public sealed class QueryEngine
                             toolCalls.Add(t.Block);
                             yield return ev;
                             break;
+                        case ReasoningCaptured r:
+                            reasoning.Add(r.Block);
+                            break;
                         case TurnCompleted c:
                             stopReason = c.StopReason;
                             lastUsage = c.Usage;
@@ -455,6 +459,7 @@ public sealed class QueryEngine
                         // 이미 흘려보낸 부분 응답을 폐기(중복/불완전 tool_call 방지) 후 새 스트림으로 재요청.
                         assistantText.Clear();
                         toolCalls.Clear();
+                        reasoning.Clear();
                         stopReason = "end_turn";
                         cutReasoning = null;
                         stream = OpenStream();
@@ -492,7 +497,7 @@ public sealed class QueryEngine
                 consecutiveCuts++;
                 if (blocks.Count > 0)
                 {
-                    _messages.Add(new AssistantMessage(blocks));   // 텍스트만 보존(잘린 툴콜은 제외)
+                    _messages.Add(new AssistantMessage(WithReasoning(reasoning, blocks)));   // 텍스트만 보존(잘린 툴콜은 제외)
                 }
 
                 boostNext = cleanText.Length == 0 && toolCalls.Count == 0;
@@ -556,7 +561,7 @@ public sealed class QueryEngine
             blocks.AddRange(toolCalls);
             if (blocks.Count > 0)
             {
-                _messages.Add(new AssistantMessage(blocks));
+                _messages.Add(new AssistantMessage(WithReasoning(reasoning, blocks)));
             }
 
             if (toolCalls.Count == 0)
@@ -1364,6 +1369,20 @@ public sealed class QueryEngine
         }
 
         ids.Clear();
+    }
+
+    // 추론 블록은 본문(텍스트·툴 호출)이 있을 때만, 그 앞에 붙인다 — 추론만 있는 어시스턴트 메시지는 보내지 않는다.
+    private static List<ContentBlock> WithReasoning(List<ReasoningBlock> reasoning, List<ContentBlock> blocks)
+    {
+        if (reasoning.Count == 0)
+        {
+            return blocks;
+        }
+
+        var all = new List<ContentBlock>(reasoning.Count + blocks.Count);
+        all.AddRange(reasoning);
+        all.AddRange(blocks);
+        return all;
     }
 
     private static bool IsOutputTruncated(string stopReason) =>

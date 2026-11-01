@@ -527,7 +527,7 @@
   "providers.streamEndedEarly": "응답 스트림이 완료 전에 끊겼습니다: {0}",
   "providers.streamIdleTimeout": "{0}초간 스트림에서 데이터가 오지 않습니다(idle 타임아웃 — 서버/게이트웨이 정체). 가능하면 재시도합니다.",
   "providers.echoOffline": "EchoChatModel (오프라인 · {0}: {1} 미설정, /provider 로 설정)",
-  "providers.notImplemented": "{0} 는 아직 지원하지 않습니다(오프라인 에코)",
+  "providers.anthropic.refused": "Claude 가 이 요청을 거절했습니다(안전 분류기). 표현을 바꾸거나 다른 모델로 시도하세요.",
   "providers.list.noBaseUrl": "서버 주소가 설정되지 않았습니다.",
   "providers.list.http": "서버가 요청을 거부했습니다 (HTTP {0}): {1}",
   "providers.list.empty": "서버가 모델 목록을 돌려주지 않았습니다.",
