@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MoaiCode.Core;
 using MoaiCode.Core.Tools;
 using MoaiCode.Localization;
 
@@ -18,7 +19,7 @@ public static class SettingsLoader
 
     public static Settings Load(string workingDirectory)
     {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var home = AppPaths.UserHome;
 
         var settings = Settings.Default;
         // ~/.claude 는 Claude Code(별개 제품)의 설정 파일 — 공유 설정은 받되 model 은 상속하지 않는다
@@ -32,7 +33,7 @@ public static class SettingsLoader
             allowModel: false);
         settings = ApplyLayer(
             settings,
-            Path.Combine(home, ".zaicode", "settings.json"),
+            AppPaths.Combine("settings.json"),
             allowSensitive: true,
             allowAutomation: true,
             allowPermissionRules: true,

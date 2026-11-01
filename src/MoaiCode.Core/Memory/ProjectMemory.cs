@@ -23,16 +23,15 @@ public static class ProjectMemory
     /// <summary>~/.zaicode/projects/&lt;slug&gt; — memory/ 와 sessions/ 의 공통 부모.</summary>
     private static string ProjectDir(string cwd)
     {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var dir = Path.Combine(home, ".zaicode", "projects", PathSlug(cwd));
-        MigrateLegacyOnce(cwd, home, dir);
+        var dir = AppPaths.Combine("projects", PathSlug(cwd));
+        MigrateLegacyOnce(cwd, dir);
         return dir;
     }
 
     // 슬러그 규칙이 바뀌어 기존 메모리가 고아가 되는 것을 막는 1회성 이관.
     // cwd 가 '옛 규칙의 프로젝트 루트' 였을 때만 옮긴다 — 하위 디렉토리/홈 붕괴 케이스까지 옮기면
     // 남의 프로젝트 메모리를 가져오게 된다. 실패는 non-fatal(새로 시작하면 그만).
-    private static void MigrateLegacyOnce(string cwd, string home, string newDir)
+    private static void MigrateLegacyOnce(string cwd, string newDir)
     {
         try
         {
@@ -47,7 +46,7 @@ public static class ProjectMemory
                 return;
             }
 
-            var oldDir = Path.Combine(home, ".zaicode", "projects", LegacyPathSlug(full));
+            var oldDir = AppPaths.Combine("projects", LegacyPathSlug(full));
             if (!Directory.Exists(oldDir) || string.Equals(oldDir, newDir, StringComparison.Ordinal))
             {
                 return;

@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using MoaiCode.Core;
 
 namespace MoaiCode.Cli;
 
@@ -12,8 +13,7 @@ public static class BundledSkills
     private const string Version = "10";             // 번들 내용 갱신 시 올림 → 재추출 (v10: cross-layer-change-review 자체 저작 번들 등재, xunit-test-writer license 표기)
     private const string ResourceName = "bundled-skills.zip";
 
-    public static string Dir => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".zaicode", "bundled-skills");
+    public static string Dir => AppPaths.Combine("bundled-skills");
 
     public static void EnsureExtracted()
     {

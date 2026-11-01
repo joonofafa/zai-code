@@ -1,3 +1,5 @@
+using MoaiCode.Core;
+
 namespace MoaiCode.Mcp.Skills;
 
 /// <summary>
@@ -9,12 +11,12 @@ public static class PluginLoader
 {
     public static IReadOnlyList<Skill> Discover(string workingDirectory)
     {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var home = AppPaths.UserHome;
         var dirs = new[]
         {
             Path.Combine(workingDirectory, ".claude", "plugins"),
             Path.Combine(home, ".claude", "plugins"),
-            Path.Combine(home, ".zaicode", "plugins"),
+            AppPaths.Combine("plugins"),
         };
 
         var result = new List<Skill>();

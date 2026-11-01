@@ -3,6 +3,7 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using MoaiCode.Core;
 
 namespace MoaiCode.Config;
 
@@ -30,8 +31,7 @@ public static class MoaiLog
     /// <summary>이 레벨 미만은 기록하지 않는다. Configure 로 설정 전 기본값은 Info.</summary>
     public static LogLevel MinLevel { get; set; } = LogLevel.Info;
 
-    public static string FilePath { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".zaicode", "logs", "zaicode.log");
+    public static string FilePath => AppPaths.Combine("logs", "zaicode.log");
 
     public static LogLevel Parse(string? value) => value?.Trim().ToLowerInvariant() switch
     {

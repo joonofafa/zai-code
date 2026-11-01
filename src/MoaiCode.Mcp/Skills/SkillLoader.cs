@@ -1,3 +1,5 @@
+using MoaiCode.Core;
+
 namespace MoaiCode.Mcp.Skills;
 
 /// <summary>
@@ -10,12 +12,12 @@ public static class SkillLoader
 {
     public static IReadOnlyList<Skill> Discover(string workingDirectory)
     {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var home = AppPaths.UserHome;
         var dirs = new[]
         {
             Path.Combine(workingDirectory, ".claude", "skills"),
             Path.Combine(home, ".claude", "skills"),
-            Path.Combine(home, ".zaicode", "skills"),
+            AppPaths.Combine("skills"),
         };
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

@@ -25,9 +25,7 @@ public sealed class SessionStore
     /// 둘 다 저장 시 적용, 현재 세션은 항상 보존. 값은 Config 에서 주입(Persistence→Config 결합 회피).</param></param>
     public SessionStore(string? baseDir = null, int retainCount = 0, int retainDays = 0)
     {
-        _baseDir = baseDir ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".zaicode", "sessions");
+        _baseDir = baseDir ?? AppPaths.Combine("sessions");
         _retainCount = retainCount;
         _retainDays = retainDays;
     }

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MoaiCode.Core;
 
 namespace MoaiCode.Config;
 
@@ -20,9 +21,7 @@ public sealed class FileCredentialStore : ICredentialStore
 
     public FileCredentialStore(string? path = null)
     {
-        _path = path ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".zaicode", "credentials.json");
+        _path = path ?? AppPaths.Combine("credentials.json");
     }
 
     public string? Get(string key)

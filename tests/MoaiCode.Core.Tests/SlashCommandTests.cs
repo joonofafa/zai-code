@@ -214,7 +214,7 @@ public class SlashCommandTests : IDisposable
         var prevB = Environment.GetEnvironmentVariable("ZAI_REASONING_EFFORT");
         var prevC = Environment.GetEnvironmentVariable("MOAI_EFFORT");
         var tempHome = Path.Combine(Path.GetTempPath(), "occs-home-" + Guid.NewGuid().ToString("n"));
-        var prevHome = Environment.GetEnvironmentVariable("HOME");
+        var prevHome = Environment.GetEnvironmentVariable("MOAI_HOME");
 
         Directory.CreateDirectory(tempHome);
         try
@@ -222,7 +222,7 @@ public class SlashCommandTests : IDisposable
             Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", null);
             Environment.SetEnvironmentVariable("ZAI_REASONING_EFFORT", null);
             Environment.SetEnvironmentVariable("MOAI_EFFORT", null);
-            Environment.SetEnvironmentVariable("HOME", tempHome);
+            Environment.SetEnvironmentVariable("MOAI_HOME", tempHome);   // HOME 은 Windows 에서 격리되지 않는다
 
             var ctx = _ctx with
             {
@@ -239,7 +239,7 @@ public class SlashCommandTests : IDisposable
             Assert.Equal(L10n.Get("slash.effort.changed", "high"), r.Output);
             Assert.Equal("high", Environment.GetEnvironmentVariable("MOAI_REASONING_EFFORT"));
 
-            var saved = File.ReadAllText(Path.Combine(tempHome, ".zaicode", "settings.json"));
+            var saved = File.ReadAllText(Path.Combine(tempHome, "settings.json"));
             Assert.Contains("\"reasoningEffort\"", saved);
             Assert.Contains("\"high\"", saved);
         }
@@ -248,7 +248,7 @@ public class SlashCommandTests : IDisposable
             Environment.SetEnvironmentVariable("MOAI_REASONING_EFFORT", prevA);
             Environment.SetEnvironmentVariable("ZAI_REASONING_EFFORT", prevB);
             Environment.SetEnvironmentVariable("MOAI_EFFORT", prevC);
-            Environment.SetEnvironmentVariable("HOME", prevHome);
+            Environment.SetEnvironmentVariable("MOAI_HOME", prevHome);
             try
             {
                 Directory.Delete(tempHome, recursive: true);

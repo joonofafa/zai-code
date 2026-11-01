@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
+using MoaiCode.Core;
 using MoaiCode.Localization;
 
 namespace MoaiCode.Persistence;
@@ -101,9 +102,7 @@ public sealed class CheckpointStore
         _enabled = IsCheckpointable(_workingDirectory);
         _gitTimeout = gitTimeout ?? ResolveTimeout();
         _gitPath = gitPath ?? "git";
-        var root = baseDir ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".zaicode", "checkpoints");
+        var root = baseDir ?? AppPaths.Combine("checkpoints");
         _gitDir = Path.Combine(root, Hash(_workingDirectory));
     }
 

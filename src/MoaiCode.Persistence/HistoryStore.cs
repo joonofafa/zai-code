@@ -13,9 +13,7 @@ public sealed class HistoryStore
 
     public HistoryStore(string? path = null)
     {
-        _path = path ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".zaicode", "history.jsonl");
+        _path = path ?? AppPaths.Combine("history.jsonl");
     }
 
     public async Task AppendAsync(string entry, CancellationToken ct = default)

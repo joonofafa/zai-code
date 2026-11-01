@@ -330,13 +330,13 @@ public static class AppBootstrap
     // CLAUDE.md / AGENTS.md 수집 (cwd 우선, 그다음 사용자 홈). 총 길이 제한.
     private static string? LoadProjectInstructions(string cwd)
     {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var home = AppPaths.UserHome;
         var candidates = new[]
         {
             Path.Combine(cwd, "CLAUDE.md"),
             Path.Combine(cwd, "AGENTS.md"),
             Path.Combine(cwd, ".claude", "CLAUDE.md"),
-            Path.Combine(home, ".zaicode", "CLAUDE.md"),
+            AppPaths.Combine("CLAUDE.md"),
             Path.Combine(home, ".claude", "CLAUDE.md"),
         };
 

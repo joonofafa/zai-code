@@ -1,13 +1,13 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using MoaiCode.Core;
 
 namespace MoaiCode.Config;
 
 /// <summary>~/.moai/settings.json 에 키 일부만 머지 저장 (기존 값 보존). 로그인/모델 전환에서 사용.</summary>
 public static class SettingsWriter
 {
-    public static string DefaultPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".zaicode", "settings.json");
+    public static string DefaultPath => AppPaths.Combine("settings.json");
 
     public static void Set(IReadOnlyDictionary<string, string?> values, string? path = null)
     {

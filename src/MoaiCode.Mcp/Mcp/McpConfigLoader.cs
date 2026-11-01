@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MoaiCode.Core;
 
 namespace MoaiCode.Mcp;
 
@@ -18,12 +19,12 @@ public static class McpConfigLoader
     /// </summary>
     public static IReadOnlyList<McpServerConfig> Discover(string workingDirectory, bool includeProjectScope = true)
     {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var home = AppPaths.UserHome;
 
         // 사용자(신뢰) 설정을 먼저 → 이름 충돌 시 사용자 MCP 가 프로젝트 MCP 를 이긴다(shadowing 방지).
         var candidates = new List<string>
         {
-            Path.Combine(home, ".zaicode", "mcp.json"),
+            AppPaths.Combine("mcp.json"),
             Path.Combine(home, ".claude", "mcp.json"),
         };
         if (includeProjectScope)

@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using MoaiCode.Core.Agent;
 using MoaiCode.Core.Messages;
+using MoaiCode.Core;
 using MoaiCode.Core.Tools;
 using MoaiCode.Localization;
 using MoaiCode.Providers.Http;
@@ -88,8 +89,7 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl, IOutputBoost
     private static readonly bool DebugSse =
         !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MOAI_DEBUG_SSE"));
 
-    private static readonly string DebugPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".zaicode", "sse-debug.log");
+    private static string DebugPath => AppPaths.Combine("sse-debug.log");
 
     private static void DebugLog(string line)
     {
