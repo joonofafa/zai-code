@@ -21,11 +21,14 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl, IOutputBoost
     private readonly HttpClient _http;
     private readonly string _baseUrl;
     private readonly string _apiKey;
+    private readonly ProviderKind _kind;
     private string _model;
 
-    public OpenAiChatModel(HttpClient http, string baseUrl, string apiKey, string model)
+    /// <param name="kind">요청 형식의 프로바이더별 차이(전용 필드·토큰 한도 이름 등)를 가르는 데 쓴다.</param>
+    public OpenAiChatModel(HttpClient http, string baseUrl, string apiKey, string model, ProviderKind kind = ProviderKind.Zai)
     {
         _http = http;
+        _kind = kind;
         _baseUrl = baseUrl.TrimEnd('/');
         _apiKey = apiKey;
         _model = model;
@@ -40,50 +43,7 @@ public sealed class OpenAiChatModel : IChatModel, IModelControl, IOutputBoost
 
     /// <summary>{baseUrl}/models 에서 사용 가능한 모델 id 목록 조회 (OpenAI 호환). 실패 시 빈 목록.</summary>
     public async Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken ct)
-    {
-        try
-        {
-            using var req = new HttpRequestMessage(HttpMethod.Get, $"{_baseUrl}/models");
-            req.Headers.TryAddWithoutValidation("Authorization", $"Bearer {_apiKey}");
-            using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
-            if (!resp.IsSuccessStatusCode)
-            {
-                return Array.Empty<string>();
-            }
-
-            var text = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-            using var doc = JsonDocument.Parse(text);
-            var root = doc.RootElement;
-            // OpenAI 형식: { "data": [ { "id": "..." }, ... ] } / 또는 최상위 배열.
-            var arr = root.ValueKind == JsonValueKind.Array ? root
-                : root.TryGetProperty("data", out var d) && d.ValueKind == JsonValueKind.Array ? d
-                : default;
-            if (arr.ValueKind != JsonValueKind.Array)
-            {
-                return Array.Empty<string>();
-            }
-
-            var ids = new List<string>();
-            foreach (var m in arr.EnumerateArray())
-            {
-                if (m.ValueKind == JsonValueKind.String)
-                {
-                    ids.Add(m.GetString()!);
-                }
-                else if (m.ValueKind == JsonValueKind.Object
-                         && m.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String)
-                {
-                    ids.Add(id.GetString()!);
-                }
-            }
-
-            return ids;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return Array.Empty<string>();
-        }
-    }
+        => (await ModelDirectory.ListAsync(_http, _kind, _baseUrl, _apiKey, ct).ConfigureAwait(false)).Models;
 
     // 디버그: MOAI_DEBUG_SSE 설정 시 원시 SSE/오류를 ~/.moai/sse-debug.log 에 남긴다(응답 포맷 진단용).
     private static readonly bool DebugSse =

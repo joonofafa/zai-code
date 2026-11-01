@@ -68,7 +68,9 @@ public sealed record SlashContext(
     // /theme: TUI 색 테마 즉시 적용 + 사용자 설정에 저장. PersistTheme는 선택한 테마 id를
     // settings/env 에 저장하는 콜백(Cli 가 주입 — /language 와 동일 패턴).
     string? Theme = null,
-    Action<string>? PersistTheme = null);
+    Action<string>? PersistTheme = null,
+    // /provider: 프로바이더·키·모델 저장과 라이브 교체(Cli 가 구현). /model 의 이미지 분석 모델 저장도 여기로 간다.
+    IProviderSetup? ProviderSetup = null);
 
 /// <summary>
 /// 슬래시 명령 실행 결과. Output은 호출측이 렌더, Quit이면 REPL 종료.

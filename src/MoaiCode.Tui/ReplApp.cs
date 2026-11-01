@@ -1402,11 +1402,13 @@ public sealed class ReplApp
 
     // /usage 집계·상태줄에 쓰는 현재 모델 라벨. 라이브 모델(/model) 우선, 없으면 프로바이더 설명에서.
     // 표기는 Capital 형(Glm-5.3) — 소문자 시작보다 상태줄에서 읽기 좋다.
+    // 모델 전환을 지원하는데 현재 모델이 없으면 오프라인 에코(키·모델 미설정) — 설명문을 잘라 보여 주지 않는다.
     private string CurrentModelLabel()
-        => CapitalizeModel(
-            !string.IsNullOrEmpty(_ctx.Models?.CurrentModel)
-                ? _ctx.Models!.CurrentModel
-                : ShortModel(_ctx.ProviderDesc));
+        => !string.IsNullOrEmpty(_ctx.Models?.CurrentModel)
+            ? CapitalizeModel(_ctx.Models!.CurrentModel)
+            : _ctx.Models is not null
+                ? L10n.Get("repl.modelOffline")
+                : CapitalizeModel(ShortModel(_ctx.ProviderDesc));
 
     // glm-5.3 → Glm-5.3, glm-4.5-air → Glm-4.5-Air: 하이픈 구분 세그먼트별 첫 글자 대문자.
     private static string CapitalizeModel(string? id)

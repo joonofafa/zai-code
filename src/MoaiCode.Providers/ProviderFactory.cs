@@ -37,7 +37,7 @@ public static class ProviderFactory
 
         description = $"{name} · {profile.Model} @ {profile.BaseUrl}";
         return new RetryingChatModel(
-            new OpenAiChatModel(SharedHttp, profile.BaseUrl!, profile.ApiKey ?? string.Empty, profile.Model!));
+            new OpenAiChatModel(SharedHttp, profile.BaseUrl!, profile.ApiKey ?? string.Empty, profile.Model!, profile.Kind));
     }
 
     // 무엇이 빠졌는지 — 상태줄·/model 안내에 그대로 보여 준다.

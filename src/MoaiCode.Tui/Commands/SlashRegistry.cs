@@ -31,6 +31,7 @@ public sealed class SlashRegistry
         var commands = new List<ISlashCommand>
         {
             new ToolsCommand(),
+            new ProviderCommand(),
             new ModelCommand(),
             new EffortCommand(),
             new LanguageCommand(),

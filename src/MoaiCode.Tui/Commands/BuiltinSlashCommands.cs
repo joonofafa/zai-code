@@ -36,13 +36,18 @@ internal sealed class ModelCommand : ISlashCommand
     public string Name => "model";
     public string Description => L10n.Get("slash.model.description");
 
-    // 라이브 세션의 모델을 선택한다. 공용 ModelPicker(로그인 화면과 공유): 단일 모델 선택.
+    // 라이브 세션의 대화 모델 → 이미지 분석 모델을 고른다. 공용 ModelPicker(/provider 와 공유).
     public async Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
     {
         var mc = ctx.Models;
         if (mc is null)
         {
             return new SlashResult(L10n.Get("slash.model.unsupported", ctx.ProviderDesc));
+        }
+
+        if (Console.IsInputRedirected)
+        {
+            return new SlashResult(L10n.Get("slash.model.noSelectNonInteractive"));
         }
 
         Spectre.Console.AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]{Spectre.Console.Markup.Escape(L10n.Get("slash.model.fetching"))}[/]");
@@ -52,10 +57,29 @@ internal sealed class ModelCommand : ISlashCommand
             return new SlashResult(L10n.Get("slash.model.fetchFailed"));
         }
 
-        var summary = ModelPicker.Run(
-            models,
-            mc.CurrentModel,
-            chosen => { mc.CurrentModel = chosen; ctx.PersistModel?.Invoke(chosen); }); // 라이브 반영 + settings/env 영속
+        var io = PromptIo.Terminal;
+        var chosen = ModelPicker.Pick(io, models, mc.CurrentModel);
+        if (chosen is null)
+        {
+            return new SlashResult(L10n.Get("common.unchanged"));
+        }
+
+        mc.CurrentModel = chosen;            // 라이브 반영
+        ctx.PersistModel?.Invoke(chosen);    // providers.<현재>.model 에 저장
+        var summary = L10n.Get("slash.model.changed", chosen);
+
+        if (ctx.ProviderSetup is { } setup)
+        {
+            var vision = ModelPicker.PickVision(io, models, setup.Current.VisionModel);
+            if (vision is not null)
+            {
+                setup.SetVisionModel(vision);
+                summary += "\n" + (vision.Length == 0
+                    ? L10n.Get("slash.model.visionOff")
+                    : L10n.Get("slash.model.visionChanged", vision));
+            }
+        }
+
         return new SlashResult(summary);
     }
 }

@@ -64,7 +64,8 @@ public static class AppBootstrap
         var profile = ProviderResolver.Resolve(settings, new FileCredentialStore(), modelOverride);
         ActiveProvider.Current = profile;
 
-        var model = ProviderFactory.Create(profile, out var providerDesc);
+        // /provider 가 대화 중 프로바이더를 바꿀 수 있게 감싼다(엔진·하위 에이전트·분류기가 같은 인스턴스를 쥔다).
+        var model = new SwitchableChatModel(ProviderFactory.Create(profile, out var providerDesc));
 
         // Bash + 백그라운드 셸(run_in_background) 조회/종료 — CLI 전용(GUI 는 Bash 자체를 제외).
         var toolList = new List<ITool>(ToolRegistry.BuiltIn) { new BashTool(), new BashOutputTool(), new KillShellTool() };
@@ -296,7 +297,8 @@ public static class AppBootstrap
             GetSkillLicenses: () => SkillCatalog.DiscoverAll(cwd)
                 .Select(x => (x.Skill.Name, x.Source, x.Skill.License))
                 .ToList(),
-            PlanTree: () => MoaiCode.Tools.Tasks.PlanRender.PlainTree(taskStore.Phases()));
+            PlanTree: () => MoaiCode.Tools.Tasks.PlanRender.PlainTree(taskStore.Phases()),
+            ProviderSetup: new CliProviderSetup(cwd, model, new FileCredentialStore()));
 
         return new AppRuntime(
             mcp, ctx, toolList, skills.Select(s => s.Name).ToList(), mcpConfigs, providerDesc, settings, streamGate);
