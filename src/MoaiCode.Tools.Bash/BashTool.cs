@@ -36,6 +36,9 @@ public sealed class BashTool : ITool
     // 세션 동안 작업 디렉터리를 유지한다 (description의 "persists between commands" 보장).
     // 직전 명령이 cd로 옮긴 위치를 다음 명령에서도 이어 쓴다. 엔진이 툴을 순차 실행하므로 경합 없음.
     private string? _currentDir;
+
+    /// <summary>이 셸이 이어 쓰는 작업 폴더(이전 명령의 cd 결과). 아직 실행 전이면 null. 권한 게이트가 상대 경로 스크립트를 찾을 때 쓴다.</summary>
+    public string? CurrentDirectory => _currentDir;
     private readonly BackgroundShellRegistry _background;
 
     public BashTool(BackgroundShellRegistry? background = null)

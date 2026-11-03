@@ -514,7 +514,7 @@ public class BashSecurityHardeningTests
     [InlineData("ssh moai-ec2 'ls -la'")]
     [InlineData("scp file.txt host:/tmp/")]
     [InlineData("rsync -a ./ user@host:/srv/")]
-    [InlineData("kubectl get pods")]
+    [InlineData("kubectl exec -it web -- sh")]   // 클러스터 조회(get·describe·logs)는 확인하지 않는다(2026-11-03), exec 는 확인
     [InlineData("docker -H tcp://1.2.3.4:2375 ps")]
     public void NeedsConfirmation_for_remote(string cmd)
         => Assert.True(MoaiCode.Tools.Bash.BashSecurity.NeedsConfirmation(cmd), cmd);
@@ -523,6 +523,8 @@ public class BashSecurityHardeningTests
     [InlineData("ls -la")]
     [InlineData("docker ps")]
     [InlineData("rsync -a ./a ./b")]     // 로컬 rsync(원격 host: 없음)는 확인 불필요
+    [InlineData("kubectl get pods")]
+    [InlineData("kubectl -n prod logs web-1 --tail=50")]
     public void No_confirmation_for_local(string cmd)
         => Assert.False(MoaiCode.Tools.Bash.BashSecurity.NeedsConfirmation(cmd), cmd);
 }

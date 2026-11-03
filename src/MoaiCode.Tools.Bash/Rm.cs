@@ -1,37 +1,85 @@
+using MoaiCode.Core.Tools;
+
 namespace MoaiCode.Tools.Bash;
 
 /// <summary>
 /// rm 명령의 플래그/대상을 실제로 파싱한다. 정규식으로는 표기 변형을 계속 흘렸다:
 /// `rm --recursive --force /`, `rm -fr /`, `rm -rf ~/proj` 가 모두 패턴을 빠져나갔다.
+/// 2026-11-03: <see cref="ShellCommand"/> 해석 결과(명령 위치·따옴표·치환 안쪽)를 쓰고, 대상 경로를 정규화한다
+/// (`/tmp/../etc`, `//etc`), 같은 줄의 `cd /` 뒤 상대 경로를 풀고(`cd / &amp;&amp; rm -rf etc`), 루트 바로 아래의 글롭
+/// (`/e?c`, `/[u]sr`)을 시스템 디렉터리로 본다.
 /// </summary>
 public static class Rm
 {
     /// <summary>되돌릴 수 없는 대상 — 재귀 삭제 시 무조건 차단.</summary>
     private static readonly HashSet<string> CriticalTargets = new(StringComparer.Ordinal)
     {
-        "/", "/*", "~", "~/", "~/*", "$HOME", "$HOME/", "$HOME/*", "/.",
+        "/", "/*", "~", "~/", "~/*", "$HOME", "$HOME/", "$HOME/*",
         "/boot", "/bin", "/sbin", "/lib", "/lib64", "/usr", "/etc", "/sys", "/proc",
-        "/dev", "/var", "/opt", "/root", "/run", "/home", "/System", "/Library",
+        "/dev", "/var", "/opt", "/root", "/run", "/home", "/System", "/Library", "/srv",
+    };
+
+    // 이 아래는 재귀 삭제 자체를 막는다(예전 정규식 rmSystemDir 과 같은 범위 — /home 은 사용자 작업이 있어 확인만).
+    private static readonly string[] CriticalTrees =
+    {
+        "/boot/", "/bin/", "/sbin/", "/lib/", "/lib64/", "/usr/", "/etc/", "/sys/", "/proc/", "/dev/", "/var/", "/opt/",
+        "/root/", "/run/", "/System/", "/Library/",
+    };
+
+    // 하나만 지워도 시스템·감사 기록이 망가지는 위치 — 재귀가 아니어도 확인 대상.
+    private static readonly string[] SystemPrefixes =
+    {
+        "/etc/", "/boot/", "/usr/", "/bin/", "/sbin/", "/lib/", "/lib64/", "/var/", "/opt/", "/root/", "/srv/",
+    };
+
+    // 작업 폴더의 빌드 산출물 — 상대 경로로 이것만 지우면 확인하지 않는다(코딩 중 매번 묻지 않게).
+    private static readonly HashSet<string> BuildOutputs = new(StringComparer.Ordinal)
+    {
+        "node_modules", "bin", "obj", "build", "dist", "target", "out", ".next", ".nuxt", ".cache", "__pycache__",
+        ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", "coverage", ".gradle", ".turbo", ".parcel-cache",
     };
 
     /// <summary>재귀 삭제가 루트·홈·시스템 디렉토리를 향하면 true (차단 대상).</summary>
     public static bool IsCriticalDelete(string command)
     {
-        var (found, recursive, _, targets) = Parse(command);
-        if (!found || !recursive)
+        foreach (var (recursive, targets) in Parse(command))
         {
-            return false;
-        }
-
-        foreach (var t in targets)
-        {
-            var norm = t.TrimEnd('/');
-            if (norm.Length == 0)
+            if (!recursive)
             {
-                norm = "/";
+                continue;
             }
 
-            if (CriticalTargets.Contains(t) || CriticalTargets.Contains(norm))
+            foreach (var t in targets)
+            {
+                if (IsCriticalTarget(t))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsCriticalTarget(string t)
+    {
+        var norm = t.StartsWith('/') ? ShellCommand.NormalizePath(t) : t.TrimEnd('/');
+        if (norm.Length == 0)
+        {
+            norm = "/";
+        }
+
+        if (CriticalTargets.Contains(t) || CriticalTargets.Contains(norm)
+            || CriticalTrees.Any(d => (norm + "/").StartsWith(d, StringComparison.Ordinal)))
+        {
+            return true;
+        }
+
+        // 루트 바로 아래 이름이 글롭이면(/e?c, /[u]sr, /u*) 시스템 디렉터리를 가리킬 수 있다.
+        if (norm.StartsWith('/'))
+        {
+            var first = norm[1..].Split('/')[0];
+            if (first.IndexOfAny(new[] { '*', '?', '[' }) >= 0)
             {
                 return true;
             }
@@ -41,125 +89,100 @@ public static class Rm
     }
 
     /// <summary>재귀 삭제이면 true (차단은 아니고 확인 대상). 대상이 무엇이든.</summary>
-    public static bool IsRecursiveDelete(string command)
+    public static bool IsRecursiveDelete(string command) =>
+        Parse(command).Any(r => r.Recursive && r.Targets.Count > 0);
+
+    /// <summary>
+    /// 확인을 받아야 하는 삭제: 재귀, 와일드카드(rm *.sql), 변수·입력에서 온 대상, 시스템·로그 경로(rm /var/log/secure).
+    /// 작업 폴더의 파일 하나(`rm out.txt`)나 빌드 산출물(`rm -rf node_modules bin obj`)은 해당하지 않는다.
+    /// </summary>
+    public static bool NeedsConfirmation(string command) =>
+        Parse(command).Any(r => r.Targets.Count > 0 && !(r.Recursive && r.Targets.All(IsBuildOutput)) && (r.Recursive || r.Targets.Any(IsRisky)));
+
+    private static bool IsBuildOutput(string target)
     {
-        var (found, recursive, _, targets) = Parse(command);
-        return found && recursive && targets.Count > 0;
+        if (target.StartsWith('/') || target.StartsWith('~') || target.StartsWith('$') || target.Contains("..", StringComparison.Ordinal)
+            || target.IndexOfAny(new[] { '*', '?', '[', '{' }) >= 0)
+        {
+            return false;
+        }
+
+        var last = target.TrimEnd('/');
+        var slash = last.LastIndexOf('/');
+        return BuildOutputs.Contains(slash < 0 ? last : last[(slash + 1)..]);
     }
+
+    private static bool IsRisky(string target) =>
+        target.IndexOfAny(new[] { '*', '?', '[' }) >= 0
+        || target.StartsWith('$')
+        || target.Contains("{}", StringComparison.Ordinal)
+        || target.StartsWith('~')
+        || SystemPrefixes.Any(p => (ShellCommand.NormalizePath(target) + "/").StartsWith(p, StringComparison.Ordinal));
 
     /// <summary>--no-preserve-root 는 명시적 안전장치 해제 → 차단.</summary>
     public static bool DisablesPreserveRoot(string command) =>
-        command.Contains("--no-preserve-root", StringComparison.OrdinalIgnoreCase);
+        ShellCommand.Commands(command).Any(w => ShellCommand.Program(w[0]) == "rm" && w.Contains("--no-preserve-root"))
+        || command.Contains("--no-preserve-root", StringComparison.OrdinalIgnoreCase);
 
-    private static (bool Found, bool Recursive, bool Force, List<string> Targets) Parse(string command)
+    // 명령 위치에 rm 이 있는 단순 명령마다 (재귀 여부, 대상들). 같은 줄의 cd 로 상대 경로를 푼다.
+    private static IEnumerable<(bool Recursive, List<string> Targets)> Parse(string command)
     {
-        var targets = new List<string>();
-        var recursive = false;
-        var force = false;
-        var found = false;
-        var afterRm = false;
-
-        foreach (var raw in Tokenize(command))
+        string? cwd = null;
+        foreach (var p in ShellCommand.Parse(command))
         {
-            var token = raw;
-
-            if (!afterRm)
+            var words = p.Words;
+            if (words.Count == 0)
             {
-                // `sudo rm`, `/bin/rm`, `xargs rm` 등 앞에 붙는 토큰을 건너뛴다.
-                if (string.Equals(Basename(token), "rm", StringComparison.Ordinal))
-                {
-                    afterRm = true;
-                    found = true;
-                }
-
                 continue;
             }
 
-            if (token.StartsWith("--", StringComparison.Ordinal))
+            var prog = ShellCommand.Program(words[0]);
+            if (prog is "cd" or "pushd" && p.Depth == 0)
             {
-                if (token.Equals("--recursive", StringComparison.Ordinal) ||
-                    token.Equals("--dir", StringComparison.Ordinal))
-                {
-                    recursive = true;
-                }
-                else if (token.Equals("--force", StringComparison.Ordinal))
-                {
-                    force = true;
-                }
-
+                var dir = words.Skip(1).FirstOrDefault(a => !a.StartsWith('-')) ?? "~";
+                cwd = dir.StartsWith('/') ? ShellCommand.NormalizePath(dir)
+                    : dir.StartsWith('~') || dir.StartsWith('$') ? dir
+                    : cwd is null ? null
+                    : ShellCommand.NormalizePath(cwd.TrimEnd('/') + "/" + dir);
                 continue;
             }
 
-            if (token.StartsWith('-') && token.Length > 1)
+            if (prog != "rm")
             {
-                foreach (var c in token[1..])
-                {
-                    if (c is 'r' or 'R' or 'd')
-                    {
-                        recursive = true;
-                    }
-                    else if (c == 'f')
-                    {
-                        force = true;
-                    }
-                }
-
                 continue;
             }
 
-            // 셸 확장 정규화 — `rm -rf $'/'`(ANSI-C quoting), `rm -rf ${HOME}`(파라미터 확장)은
-            // bash 가 `/`, 홈으로 확장하지만 토큰 비교는 미스한다. ${X} → $X 로, $'x' → x 로 정규화.
-            // (따옴표 Trim 보다 먼저 — Trim 이 끝따옴표를 먼저 깎으면 $'...' 폼이 무너진다.)
-            if (token.StartsWith("$'", StringComparison.Ordinal) && token.EndsWith("'", StringComparison.Ordinal))
+            var recursive = false;
+            var endOfOptions = false;
+            var targets = new List<string>();
+            foreach (var token in words.Skip(1))
             {
-                token = token[2..^1];
-            }
-            else if (token.StartsWith("${", StringComparison.Ordinal) && token.EndsWith("}", StringComparison.Ordinal))
-            {
-                token = "$" + token[2..^1];
+                if (!endOfOptions && token == "--")
+                {
+                    endOfOptions = true;
+                    continue;
+                }
+
+                if (!endOfOptions && token.StartsWith("--", StringComparison.Ordinal))
+                {
+                    recursive |= token is "--recursive" or "--dir";
+                    continue;
+                }
+
+                if (!endOfOptions && token.StartsWith('-') && token.Length > 1)
+                {
+                    recursive |= token[1..].Any(c => c is 'r' or 'R' or 'd');
+                    continue;
+                }
+
+                // 같은 줄에서 cd 로 옮긴 곳이 확실하면 상대 경로를 그 아래로 푼다(cd / && rm -rf etc → /etc).
+                var t = cwd is not null && cwd.StartsWith('/') && !token.StartsWith('/') && !token.StartsWith('~') && !token.StartsWith('$')
+                    ? ShellCommand.NormalizePath(cwd.TrimEnd('/') + "/" + token)
+                    : token;
+                targets.Add(t);
             }
 
-            // 따옴표 제거 — `rm -rf "/"` 같은 회피 시도.
-            token = token.Trim('"', '\'');
-
-            if (token.Length > 0)
-            {
-                targets.Add(token);
-            }
+            yield return (recursive, targets);
         }
-
-        return (found, recursive, force, targets);
-    }
-
-    // 셸 연산자를 구분자로도 취급해 `foo && rm -rf /` 를 놓치지 않는다.
-    private static IEnumerable<string> Tokenize(string command)
-    {
-        var buf = new System.Text.StringBuilder();
-        foreach (var c in command)
-        {
-            if (char.IsWhiteSpace(c) || c is ';' or '|' or '&')
-            {
-                if (buf.Length > 0)
-                {
-                    yield return buf.ToString();
-                    buf.Clear();
-                }
-
-                continue;
-            }
-
-            buf.Append(c);
-        }
-
-        if (buf.Length > 0)
-        {
-            yield return buf.ToString();
-        }
-    }
-
-    private static string Basename(string token)
-    {
-        var slash = token.LastIndexOfAny(new[] { '/', '\\' });
-        return slash < 0 ? token : token[(slash + 1)..];
     }
 }

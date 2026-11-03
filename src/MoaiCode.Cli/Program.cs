@@ -27,9 +27,10 @@ ProxyConfig.Apply(Directory.GetCurrentDirectory());
 var root = new RootCommand(L10n.Get("app.description"));
 
 // 헤드리스 1회 실행 공용 로직 (run 서브커맨드 / 루트의 -p 플래그가 공유).
-static async Task<int> RunHeadlessAsync(string prompt, string? model, string outputFormat, CancellationToken ct)
+static async Task<int> RunHeadlessAsync(string prompt, string? model, string outputFormat, bool ignoreConfirm, CancellationToken ct)
 {
-    var rt = await AppBootstrap.BuildAsync(interactive: false, verbose: false, streamJsonPermissions: false, ct, modelOverride: model);
+    var rt = await AppBootstrap.BuildAsync(interactive: false, verbose: false, streamJsonPermissions: false, ct, modelOverride: model,
+        ignoreConfirm: ignoreConfirm);
     await using var _ = rt.Mcp;
     rt.Ctx.State.LastUserRequest = prompt;   // 위험 판정 분류기용 원문 요청
     return string.Equals(outputFormat, "stream-json", StringComparison.OrdinalIgnoreCase)
@@ -38,9 +39,10 @@ static async Task<int> RunHeadlessAsync(string prompt, string? model, string out
 }
 
 // stdin 의 NDJSON 턴을 EOF 까지 처리하는 영속 모드 (--input-format stream-json).
-static async Task<int> RunStreamLoopAsync(string? model, CancellationToken ct)
+static async Task<int> RunStreamLoopAsync(string? model, bool ignoreConfirm, CancellationToken ct)
 {
-    var rt = await AppBootstrap.BuildAsync(interactive: false, verbose: false, streamJsonPermissions: true, ct, modelOverride: model);
+    var rt = await AppBootstrap.BuildAsync(interactive: false, verbose: false, streamJsonPermissions: true, ct, modelOverride: model,
+        ignoreConfirm: ignoreConfirm);
     await using var _ = rt.Mcp;
     return await StreamJsonRunner.RunLoopAsync(rt.Ctx.Engine, rt.PermissionGate, ct);
 }
@@ -54,12 +56,18 @@ var outputFormatOpt = new Option<string>("--output-format")
     DefaultValueFactory = _ => "text",
 };
 outputFormatOpt.AcceptOnlyFromAmong("text", "json", "stream-json");
+// 배치 자동화: 사람의 확인 없이 실행(파괴적 명령 포함). 하드 차단·deny 규칙은 그대로, 확인 없이 지나간 동작은 모두 감사 로그에 남는다.
+// 대화형 REPL 에서는 쓰지 않는다(사람이 있으니 확인한다).
+static Option<bool> IgnoreConfirmOption() => new("--ignore-confirm") { Description = L10n.Get("cli.ignoreConfirm.description") };
+var ignoreConfirmOpt = IgnoreConfirmOption();
 var runCmd = new Command("run", L10n.Get("cli.run.description"));
 runCmd.Arguments.Add(promptArg);
 runCmd.Options.Add(modelOpt);
 runCmd.Options.Add(outputFormatOpt);
+runCmd.Options.Add(ignoreConfirmOpt);
 runCmd.SetAction(async (ParseResult pr, CancellationToken ct) =>
-    await RunHeadlessAsync(pr.GetValue(promptArg) ?? "", pr.GetValue(modelOpt), pr.GetValue(outputFormatOpt) ?? "text", ct));
+    await RunHeadlessAsync(pr.GetValue(promptArg) ?? "", pr.GetValue(modelOpt), pr.GetValue(outputFormatOpt) ?? "text",
+        pr.GetValue(ignoreConfirmOpt), ct));
 root.Subcommands.Add(runCmd);
 
 // 루트 레벨 -p/--print: `moai -p "프롬프트"` = 헤드리스 1회 실행(claude -p 패리티).
@@ -102,6 +110,8 @@ root.Options.Add(rootInputFormatOpt);
 root.Options.Add(rootVerboseOpt);
 root.Options.Add(rootAllowedToolsOpt);
 root.Options.Add(rootResumeOpt);
+var rootIgnoreConfirmOpt = IgnoreConfirmOption();
+root.Options.Add(rootIgnoreConfirmOpt);
 
 // tools: 사용 가능한 툴 목록
 var toolsCmd = new Command("tools", L10n.Get("cli.tools.description"));
@@ -258,7 +268,7 @@ root.SetAction(async (ParseResult pr, CancellationToken ct) =>
     // (브리지는 `-p --input-format stream-json --output-format stream-json` 처럼 -p 를 값 없이 준다.)
     if (string.Equals(pr.GetValue(rootInputFormatOpt), "stream-json", StringComparison.OrdinalIgnoreCase))
     {
-        return await RunStreamLoopAsync(pr.GetValue(rootModelOpt), ct);
+        return await RunStreamLoopAsync(pr.GetValue(rootModelOpt), pr.GetValue(rootIgnoreConfirmOpt), ct);
     }
 
     var printPrompt = pr.GetValue(printOpt);
@@ -276,13 +286,15 @@ root.SetAction(async (ParseResult pr, CancellationToken ct) =>
 
     if (!string.IsNullOrEmpty(printPrompt))
     {
-        return await RunHeadlessAsync(printPrompt, pr.GetValue(rootModelOpt), pr.GetValue(rootOutputFormatOpt) ?? "text", ct);
+        return await RunHeadlessAsync(printPrompt, pr.GetValue(rootModelOpt), pr.GetValue(rootOutputFormatOpt) ?? "text",
+            pr.GetValue(rootIgnoreConfirmOpt), ct);
     }
 
     var interactive = !Console.IsInputRedirected;
 
     var rt = await AppBootstrap.BuildAsync(
-        interactive: interactive, verbose: true, streamJsonPermissions: false, ct, modelOverride: pr.GetValue(rootModelOpt));
+        interactive: interactive, verbose: true, streamJsonPermissions: false, ct, modelOverride: pr.GetValue(rootModelOpt),
+        ignoreConfirm: pr.GetValue(rootIgnoreConfirmOpt));
     await using var _ = rt.Mcp;
 
     var app = new ReplApp(rt.Ctx, SlashRegistry.CreateDefault());

@@ -165,6 +165,23 @@ public static class Reminders
         "tell the user that they personally rejected it. If you still believe this action is needed, " +
         "ask the user directly; otherwise try a different approach or report the limitation.";
 
+    // 파괴적 명령 거부 — 허용 규칙으로는 바꿀 수 없다는 것을 분명히 한다(모델이 "규칙을 고치라"고 안내하지 않게).
+    public const string DestructiveDeclined =
+        "This command was classified as destructive, so it always needs a person's confirmation, and the user declined it. " +
+        "Nothing was executed. Allow rules and permission modes cannot change this, so do not suggest editing rules. " +
+        "Do not retry the same command or a rephrased equivalent. Ask the user how they want to proceed, or offer a safer, " +
+        "narrower alternative and wait for their answer.";
+
+    public const string DestructiveNoHuman =
+        "This command was classified as destructive, so it needs a person's confirmation, but this run is non-interactive " +
+        "and nobody can confirm. Nothing was executed. Allow rules and auto-approval cannot change this. Do not retry it or a " +
+        "rephrased equivalent. Report that the step needs a person (or a batch run started with --ignore-confirm, which is " +
+        "recorded in the audit log), and continue with the parts of the task that do not need it.";
+
+    public const string DestructiveScriptBlocked =
+        "The script this command would run contains a command that is always blocked (for example deleting the root or a system " +
+        "directory, formatting a disk, or powering off). Nothing was executed. Do not try to run it another way.";
+
     // max_turns 도달 후 컨텍스트 압축하고 연장할 때 주입 (작업을 마무리/집중하도록 유도)
     public const string MaxTurnsExtended =
         "<system-reminder>\n" +

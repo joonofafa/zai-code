@@ -13,7 +13,7 @@ namespace MoaiCode.Cli;
 /// 이벤트로 내보내고, stdin 의 permission_response 를 기다린다(타임아웃 초과/응답 불가는 거부 — fail-closed).
 /// AppBootstrap.ModeAwarePermissionGate 의 confirmer 슬롯에 연결된다.
 /// </summary>
-public sealed class StreamJsonPermissionGate : IPermissionGate
+public sealed class StreamJsonPermissionGate : IPermissionGate, ICriticalConfirmGate
 {
     /// <summary>승인 대기 상한(초). env MOAI_PERMISSION_TIMEOUT 으로 조정. 만료·stdin EOF 는 거부.</summary>
     public static int TimeoutSeconds()
@@ -37,17 +37,23 @@ public sealed class StreamJsonPermissionGate : IPermissionGate
         _persistAllow = persistAllow;
     }
 
-    public async ValueTask<bool> AllowAsync(ITool tool, ToolUseBlock call, CancellationToken ct)
+    public ValueTask<bool> AllowAsync(ITool tool, ToolUseBlock call, CancellationToken ct) =>
+        RequestAsync(tool, call, null, ct);
+
+    /// <summary>
+    /// 파괴적 명령 확인 — permission_request 에 destructive:true·reason 을 싣고 scope 는 싣지 않는다.
+    /// 원격 클라이언트(텔레그램 브리지 등)가 위험한 요청을 일반 요청과 구분해 보여 줄 수 있게, 그리고 allow_always 로 넓히지 못하게.
+    /// </summary>
+    public ValueTask<bool> ConfirmCriticalAsync(ITool tool, ToolUseBlock call, string reason, CancellationToken ct) =>
+        RequestAsync(tool, call, reason, ct);
+
+    private async ValueTask<bool> RequestAsync(ITool tool, ToolUseBlock call, string? criticalReason, CancellationToken ct)
     {
         var requestId = Guid.NewGuid().ToString("N")[..12];
-        var display = ToolDisplay.Describe(tool.Name, call.Input);
-        if (display.Length > 2000)
-        {
-            display = display[..2000] + L10n.Get("permission.truncated");
-        }
+        var display = ToolDisplay.ForPrompt(tool.Name, call.Input);
 
-        // "항상 허용" 스코프. 못 구하면 버튼에서 제외(스코프 없는 exact 저장은 위험하니 once/deny 만).
-        var scope = PermissionRule.TryScope(tool, call);
+        // "항상 허용" 스코프. 못 구하면 버튼에서 제외(스코프 없는 exact 저장은 위험하니 once/deny 만). 파괴적 명령엔 없음.
+        var scope = criticalReason is null ? PermissionRule.TryScope(tool, call) : null;
 
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_lock)
@@ -66,6 +72,12 @@ public sealed class StreamJsonPermissionGate : IPermissionGate
         if (scope is not null)
         {
             req["scope"] = scope;
+        }
+
+        if (criticalReason is not null)
+        {
+            req["destructive"] = true;
+            req["reason"] = criticalReason;
         }
         _emit(req);
 

@@ -55,7 +55,7 @@ public sealed class BashSecurityTierTests
     [Theory]
     // 파괴적이지만 정당할 수 있다 → 차단하지 않고 사람에게 확인.
     [InlineData("rm -rf ~/gitHub/moai-code")]
-    [InlineData("rm -rf node_modules")]
+    [InlineData("rm -rf src")]
     [InlineData("rm -rf $HOME/build")]
     [InlineData("git push --force origin feature-branch")]
     [InlineData("git reset --hard HEAD~3")]
@@ -86,7 +86,7 @@ public sealed class BashSecurityTierTests
     [InlineData("del /s /q build")]
     [InlineData("rd /s /q dist")]
     [InlineData("Remove-Item -Recurse -Force .\\node_modules")]
-    [InlineData("rm -Recurse -Force build")]
+    [InlineData("rm -Recurse -Force data")]
     public void NeedsConfirmation_but_not_blocked(string command)
     {
         Assert.True(BashSecurity.Check(command).Allowed, $"차단하면 안 됨: {command}");

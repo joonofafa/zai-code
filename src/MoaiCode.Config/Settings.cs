@@ -72,6 +72,9 @@ public sealed record Settings
     /// <summary>오프라인 모드 — 인터넷이 필요한 툴을 숨기고 거절한다(<c>NetworkPolicy</c>). 망분리 사내 배포용.</summary>
     public bool Offline { get; init; }
 
+    /// <summary>감사 로그(~/.mate/logs/audit.jsonl) 보관일. 시작할 때 이보다 오래된 줄을 지운다. 0 = 지우지 않음. 기본 90(오피스챗과 같음).</summary>
+    public int AuditRetentionDays { get; init; } = 90;
+
     /// <summary>
     /// 워크스페이스(작업 디렉토리) 밖의 절대경로 Write/Edit 는 권한 모드(auto/auto-act)와 무관하게
     /// 항상 확인받는다. 비대화형이면 거부. 실수로 시스템/홈 파일을 건드리는 사고 방지.

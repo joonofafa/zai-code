@@ -24,12 +24,14 @@ public static class SettingsLoader
         var settings = Settings.Default;
         // ~/.claude 는 Claude Code(별개 제품)의 설정 파일 — 공유 설정은 받되 model 은 상속하지 않는다
         // (Claude Code 모델명 "opus[1m]" 등이 moai 게이트웨이로 새어 404 나던 문제 방지). 모델은 ~/.moai + env 만.
+        // 권한 allow 규칙도 받지 않는다(deny 만) — Claude Code 에 걸어 둔 `Bash(pkill:*)`·`Bash(sudo chown:*)` 가
+        // mate 에서 조용히 자동 승인되던 문제(2026-11-03 검토). 막는 규칙은 어디서 왔든 지킨다.
         settings = ApplyLayer(
             settings,
             Path.Combine(home, ".claude", "settings.json"),
             allowSensitive: true,
             allowAutomation: true,
-            allowPermissionRules: true,
+            allowPermissionRules: false,
             allowModel: false);
         settings = ApplyLayer(
             settings,
@@ -154,7 +156,11 @@ public static class SettingsLoader
                                       ?? baseline.ContextWindowTokens,
                 // 규칙은 사용자 레이어에서만 수용한다. 프로젝트 레이어는 권한 승격 방지.
                 AllowRules = allowPermissionRules ? MergeRules(baseline.AllowRules, GetRuleList(root, "allow")) : baseline.AllowRules,
-                DenyRules = allowPermissionRules ? MergeRules(baseline.DenyRules, GetRuleList(root, "deny")) : baseline.DenyRules,
+                // deny 는 막는 쪽이라 어느 레이어든 받는다 — ~/.claude, 프로젝트 .claude 의 금지 목록도 지킨다.
+                DenyRules = MergeRules(baseline.DenyRules, GetRuleList(root, "deny")),
+                AuditRetentionDays = allowSensitive
+                    ? GetInt(root, "auditRetentionDays", "audit_retention_days") ?? baseline.AuditRetentionDays
+                    : baseline.AuditRetentionDays,
             };
         }
     }
@@ -166,6 +172,7 @@ public static class SettingsLoader
         bool allowAutomation,
         bool allowPermissionRules,
         bool allowModel = true)
+        // deny 규칙은 모든 레이어에서 받는다(저장소가 금지 목록을 함께 배포할 수 있게). allow 는 allowPermissionRules 일 때만.
     {
         if (!File.Exists(path))
         {

@@ -33,3 +33,22 @@ public sealed class DenyAllGate : IPermissionGate
     public ValueTask<bool> AllowAsync(ITool tool, ToolUseBlock call, CancellationToken ct)
         => ValueTask.FromResult(false);
 }
+
+/// <summary>
+/// 파괴적 명령 확인(선택적). 일반 확인과 달리 "항상 허용"을 제공하지 않고, 왜 위험한지(reason)를 함께 보여 준다.
+/// 권한 모드·allow 규칙과 무관하게 사람이 매번 확인한다(2026-11-03 Bill 결정). 구현하지 않은 확인기는 AllowAsync 로 대신한다.
+/// </summary>
+public interface ICriticalConfirmGate
+{
+    ValueTask<bool> ConfirmCriticalAsync(ITool tool, ToolUseBlock call, string reason, CancellationToken ct);
+}
+
+/// <summary>
+/// 거부 사유를 모델에게 구체적으로 알려 주는 게이트(선택적). 파괴적 명령을 사람이 거절했거나 확인할 사람이 없었을 때
+/// 기본 문구("규칙·검사·사용자 중 하나")를 받은 모델이 "허용 규칙을 바꾸면 된다"고 안내하던 것을 막는다.
+/// </summary>
+public interface IDeniedMessageSource
+{
+    /// <summary>이 호출의 거부 문구(한 번 꺼내면 지워진다). 없으면 null → 기본 문구.</summary>
+    string? TakeDeniedMessage(string toolUseId);
+}

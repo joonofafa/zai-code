@@ -46,8 +46,11 @@ public static class AppBootstrap
     /// 확인 필요 판정이 permission_request 이벤트로 나가고 permission_response 로 돌아온다.
     /// </param>
     /// <param name="modelOverride">실행 인자 --model. 저장된 모델보다 우선하되 이번 실행에만 쓴다.</param>
+    /// <param name="ignoreConfirm">--ignore-confirm(배치 자동화). 비대화형에서만 쓴다 — 확인이 필요한 모든 지점을 자동 승인하고
+    /// 감사 로그(~/.mate/logs/audit.jsonl)에 남긴다. 대화형에서는 무시한다(사람이 있으니 확인한다).</param>
     public static async Task<AppRuntime> BuildAsync(
-        bool interactive, bool verbose, bool streamJsonPermissions, CancellationToken ct, string? modelOverride = null)
+        bool interactive, bool verbose, bool streamJsonPermissions, CancellationToken ct, string? modelOverride = null,
+        bool ignoreConfirm = false)
     {
         var cwd = Directory.GetCurrentDirectory();
 
@@ -60,6 +63,26 @@ public static class AppBootstrap
         ApplySettingsToEnv(settings);
         NetworkPolicy.Offline = settings.Offline;   // 인터넷이 필요한 툴을 숨긴다(망분리 사내 배포)
 
+        // 감사 로그: 보관일을 넘긴 줄 정리 + 툴 실행 결과(ok/error)를 승인 기록에 잇는다(하위 에이전트 엔진 포함).
+        AuditLog.Trim(settings.AuditRetentionDays);
+        ToolEvents.Completed = AuditLog.Complete;
+        if (ignoreConfirm && settings.Permission == PermissionMode.Deny)
+        {
+            // permission=deny 는 --ignore-confirm 보다 우선한다 — 확인 지점마다 자동 승인하면 deny 가 무의미해진다.
+            Console.Error.WriteLine(L10n.Get("permission.ignoreConfirmDenyMode"));
+            ignoreConfirm = false;
+        }
+        else if (ignoreConfirm && interactive)
+        {
+            Console.Error.WriteLine(L10n.Get("permission.ignoreConfirmInteractive"));
+            ignoreConfirm = false;
+        }
+        else if (ignoreConfirm)
+        {
+            Console.Error.WriteLine(L10n.Get("permission.ignoreConfirmActive", AuditLog.FilePath));
+            MoaiLog.Info("permission: --ignore-confirm active (batch automation)");
+        }
+
         // 2) 프로바이더: /provider·/model 저장값 → 환경변수 → 기본값. 키는 credentials.json 우선.
         ResolveCredentials();
         var profile = ProviderResolver.Resolve(settings, new FileCredentialStore(), modelOverride);
@@ -69,7 +92,8 @@ public static class AppBootstrap
         var model = new SwitchableChatModel(ProviderFactory.Create(profile, out var providerDesc));
 
         // Bash + 백그라운드 셸(run_in_background) 조회/종료 — CLI 전용(GUI 는 Bash 자체를 제외).
-        var toolList = new List<ITool>(ToolRegistry.BuiltIn) { new BashTool(), new BashOutputTool(), new KillShellTool() };
+        var bashTool = new BashTool();
+        var toolList = new List<ITool>(ToolRegistry.BuiltIn) { bashTool, new BashOutputTool(), new KillShellTool() };
 
         // 닫힌 Office 문서 생성/검증(Open XML) — 전 플랫폼.
         toolList.Add(new MoaiCode.Tools.OpenXml.DocxCreateTool());
@@ -186,24 +210,27 @@ public static class AppBootstrap
         var headlessApprove = HeadlessAutoApprove();
         IPermissionGate baseGate = settings.Permission switch
         {
+            PermissionMode.Deny => new DenyAllGate(),   // permission=deny 는 --ignore-confirm 보다 우선한다
+            _ when ignoreConfirm => new AutoApproveGate(),
             PermissionMode.Auto => new AutoApproveGate(),
-            PermissionMode.Deny => new DenyAllGate(),
             _ => interactive
                 ? new SpectrePermissionGate(persistAllow: PersistAllow)
                 : (headlessApprove
                     ? new AutoApproveGate()
                     : streamGate is not null ? streamGate : new DenyAllGate()),
         };
-        if (!interactive && settings.Permission == PermissionMode.Ask && !headlessApprove)
+        if (!interactive && settings.Permission == PermissionMode.Ask && !headlessApprove && !ignoreConfirm)
         {
             Console.Error.WriteLine(L10n.Get("permission.headlessDenied"));
         }
         // 규칙이 모르는 위험을 맥락으로 판정. 자동 승인이 일어나는 경로에서만 호출된다.
         // MOAI_RISK_CLASSIFIER=0 으로 끌 수 있다(오프라인/지연 민감 환경).
-        var classifier = RiskClassifierEnabled() ? new LlmRiskClassifier(model) : null;
+        // --ignore-confirm 에서는 분류기를 쓰지 않는다 — 판정 결과가 어차피 '확인 → 자동 승인' 으로 이어진다.
+        var classifier = RiskClassifierEnabled() && !ignoreConfirm ? new LlmRiskClassifier(model) : null;
 
         IPermissionGate gate = new ModeAwarePermissionGate(
-            state, baseGate, cwd, settings.ConfineToWorkspace, confirmer, classifier, rules);
+            state, baseGate, cwd, settings.ConfineToWorkspace, confirmer, classifier, rules, ignoreConfirm,
+            shellCwd: () => bashTool.CurrentDirectory);
 
         // 하위 에이전트가 부모와 동일한 게이트를 쓰도록 여기서 생성해 툴 목록에 추가(SEC-004).
         toolList.Add(new AgentTool(model, subTools, gate: gate));

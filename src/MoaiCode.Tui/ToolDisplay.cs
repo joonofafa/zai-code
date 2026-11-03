@@ -9,6 +9,23 @@ namespace MoaiCode.Tui;
 /// </summary>
 public static class ToolDisplay
 {
+    /// <summary>
+    /// 권한 확인에 보일 문구. 길면 앞과 끝을 함께 남긴다 — 예전엔 앞 2000자만 보여서, 긴 공백 뒤에 숨긴
+    /// 파괴적 꼬리(`… ; rm -rf /data`)를 사람이 못 보고 승인할 수 있었다(2026-11-03 검토).
+    /// </summary>
+    public static string ForPrompt(string tool, JsonElement input)
+    {
+        var display = Describe(tool, input);
+        if (display.Length <= 2000)
+        {
+            return display;
+        }
+
+        return display[..1200]
+            + "\n" + MoaiCode.Localization.L10n.Get("permission.omitted", display.Length - 1800) + "\n"
+            + display[^600..];
+    }
+
     public static string Describe(string tool, JsonElement input)
     {
         switch (tool)

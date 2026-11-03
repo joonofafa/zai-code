@@ -53,7 +53,8 @@ public sealed class PermissionScopeTests
     [InlineData("ls -la", "Bash(ls)")]
     [InlineData("npm run build", "Bash(npm run)")]
     [InlineData("/usr/bin/dotnet test", "Bash(dotnet test)")]
-    [InlineData("dotnet --version", "Bash(dotnet)")]
+    // 옵션이 먼저 오면 하위 명령 위치를 확신할 수 없다 → 이 명령 그대로만(예전엔 Bash(dotnet) 전체를 허용했다).
+    [InlineData("dotnet --version", "Bash(=dotnet --version)")]
     public void Bash_scopes_to_a_command_prefix(string command, string expected)
     {
         Assert.Equal(expected, Scope("Bash", command));

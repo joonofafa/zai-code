@@ -10,7 +10,7 @@ namespace MoaiCode.Tui;
 /// "항상 허용"은 명령 prefix 스코프(예: Bash(ssh moai-ec2))로 좁혀 규칙 저장소에 영속시킨다
 /// (다음 실행에도 유지). 스코프를 안전하게 좁힐 수 없는 호출엔 항상 허용을 제공하지 않는다.
 /// </summary>
-public sealed class SpectrePermissionGate : IPermissionGate
+public sealed class SpectrePermissionGate : IPermissionGate, ICriticalConfirmGate
 {
     private readonly bool _offerAlways;
     private readonly Action<string>? _persistAllow;
@@ -38,6 +38,18 @@ public sealed class SpectrePermissionGate : IPermissionGate
         return ValueTask.FromResult(Prompt(tool, call));
     }
 
+    /// <summary>파괴적 명령 확인 — 사유를 보여 주고 "항상 허용"은 내지 않는다. 시간 제한이 있으면 만료 = 거부.</summary>
+    public ValueTask<bool> ConfirmCriticalAsync(ITool tool, ToolUseBlock call, string reason, CancellationToken ct)
+    {
+        var timeoutSec = PermissionTimeoutSeconds();
+        if (timeoutSec > 0)
+        {
+            return ValueTask.FromResult(PromptWithTimeout(tool, call, timeoutSec, ct, reason));
+        }
+
+        return ValueTask.FromResult(Prompt(tool, call, default, reason));
+    }
+
     /// <summary>MOAI_PERMISSION_TIMEOUT 값(초). 0/무효면 비활성(무한 대기 — 기존 동작).</summary>
     internal static int PermissionTimeoutSeconds()
     {
@@ -45,14 +57,14 @@ public sealed class SpectrePermissionGate : IPermissionGate
         return int.TryParse(v, out var n) && n > 0 ? n : 0;
     }
 
-    private bool PromptWithTimeout(ITool tool, ToolUseBlock call, int timeoutSec, CancellationToken ct)
+    private bool PromptWithTimeout(ITool tool, ToolUseBlock call, int timeoutSec, CancellationToken ct, string? criticalReason = null)
     {
         // 같은 스레드에서 그리고 기다리되 선택 위젯에 만료 토큰을 넘긴다. 예전엔 위젯을 백그라운드 태스크로
         // 돌려 타임아웃과 경주시켰는데, 만료 뒤에도 그 위젯이 살아남아 이후 키를 가로챘고(입력창·ESC 먹통)
         // 거기서 '항상 허용'이 눌리면 이미 거부된 호출의 허용 규칙이 저장됐다.
         using var expiry = CancellationTokenSource.CreateLinkedTokenSource(ct);
         expiry.CancelAfter(TimeSpan.FromSeconds(timeoutSec));
-        var allowed = Prompt(tool, call, expiry.Token);
+        var allowed = Prompt(tool, call, expiry.Token, criticalReason);
         if (allowed || !expiry.IsCancellationRequested || ct.IsCancellationRequested)
         {
             return allowed;
@@ -64,21 +76,24 @@ public sealed class SpectrePermissionGate : IPermissionGate
         return false;   // fail-closed — stream-json 게이트와 동일 정책
     }
 
-    private bool Prompt(ITool tool, ToolUseBlock call, CancellationToken expiry = default)
+    private bool Prompt(ITool tool, ToolUseBlock call, CancellationToken expiry = default, string? criticalReason = null)
     {
         AnsiConsole.WriteLine();
-        var display = ToolDisplay.Describe(tool.Name, call.Input);
-        if (display.Length > 2000)
-        {
-            display = display[..2000] + L10n.Get("permission.truncated");
-        }
+        var display = ToolDisplay.ForPrompt(tool.Name, call.Input);
+        var critical = criticalReason is not null;
+        var role = critical ? TuiTheme.Role.Error : TuiTheme.Role.Warning;
+        var header = critical ? L10n.Get("permission.criticalHeader") : L10n.Get("permission.header");
+        var body = critical
+            ? Markup.Escape(L10n.Get("permission.criticalReason", criticalReason!)) + "\n\n" + Markup.Escape(display)
+            : Markup.Escape(display);
 
-        var panel = new Panel(new Markup(Markup.Escape(display)))
-            .Header($"[{TuiTheme.Mark(TuiTheme.Role.Warning)}]{Markup.Escape(L10n.Get("permission.header"))}[/] · [bold]{Markup.Escape(tool.Name)}[/]")
-            .BorderColor(TuiTheme.ColorOf(TuiTheme.Role.Warning));
+        var panel = new Panel(new Markup(body))
+            .Header($"[{TuiTheme.Mark(role)}]{Markup.Escape(header)}[/] · [bold]{Markup.Escape(tool.Name)}[/]")
+            .BorderColor(TuiTheme.ColorOf(role));
         AnsiConsole.Write(panel);
 
-        var scope = _offerAlways ? PermissionRule.TryScope(tool, call) : null;
+        // 파괴적 명령엔 "항상 허용"을 내지 않는다 — 매번 사람이 본다.
+        var scope = _offerAlways && !critical ? PermissionRule.TryScope(tool, call) : null;
         var canAlways = scope is not null;
         // 정확 일치(Bash(=cmd))는 '이 명령 그대로'라고 표기, prefix 스코프는 그 패턴을 보여준다.
         var alwaysLabel = scope is not null && scope.StartsWith("Bash(=", StringComparison.Ordinal)

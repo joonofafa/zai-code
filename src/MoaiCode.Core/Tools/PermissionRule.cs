@@ -17,7 +17,16 @@ public static class PermissionRule
     {
         "git", "docker", "podman", "npm", "pnpm", "yarn", "dotnet", "kubectl", "cargo", "go",
         "uv", "pip", "pip3", "apt", "apt-get", "brew", "systemctl", "aws", "gcloud", "az",
-        "terraform", "make", "zellij", "tmux",
+        "terraform", "make", "zellij", "tmux", "oc", "helm", "virsh", "podman", "nerdctl",
+    };
+
+    // 하위 명령 개념이 없거나 인자(접속 대상·SQL·호스트 패턴)가 위험을 정하는 도구 — "항상 허용"은 이 명령 그대로만.
+    // 예전엔 `psql -c 'select 1'` 한 번 승인이 Bash(psql) 로 저장돼 이후 DROP 까지 허용했다(2026-11-03 검토).
+    private static readonly HashSet<string> ExactOnlyTools = new(StringComparer.Ordinal)
+    {
+        "psql", "mysql", "mariadb", "sqlplus", "sqlcmd", "redis-cli", "mongo", "mongosh", "clickhouse-client",
+        "cqlsh", "ansible", "ansible-playbook", "pdsh", "pssh", "clush", "salt", "iptables", "ip6tables", "nft",
+        "firewall-cmd", "ip", "crontab", "systemd-run", "python", "python3", "node", "perl", "ruby", "bash", "sh",
     };
 
     // 원격 접속 — 스코프에 대상 호스트를 포함한다(ssh moai-ec2). 호스트가 없으면 스코프 없음.
@@ -86,9 +95,17 @@ public static class PermissionRule
             return host is null ? null : $"Bash({first} {host})";
         }
 
-        if (SubcommandTools.Contains(first) && tokens.Count > 1 && !tokens[1].StartsWith('-'))
+        if (SubcommandTools.Contains(first))
         {
-            return $"Bash({first} {Basename(tokens[1])})";
+            // `kubectl -n prod get pods` 처럼 옵션이 먼저 오면 하위 명령 위치를 확신할 수 없다 → 이 명령 그대로만.
+            return tokens.Count > 1 && !tokens[1].StartsWith('-')
+                ? $"Bash({first} {Basename(tokens[1])})"
+                : "Bash(=" + command.Trim() + ")";
+        }
+
+        if (ExactOnlyTools.Contains(first))
+        {
+            return "Bash(=" + command.Trim() + ")";
         }
 
         return $"Bash({first})";
@@ -139,8 +156,10 @@ public static class PermissionRule
             return !HasShellOperators(command) && SegmentMatches(command, patTokens);
         }
 
-        // 거부 매치: 어떤 세그먼트든 걸리면 막는다(foo && curl evil).
-        return SplitSegments(command).Any(seg => SegmentMatches(seg, patTokens));
+        // 거부 매치: 어떤 세그먼트든 걸리면 막는다(foo && curl evil). 래퍼·옵션 우회도 막는다 —
+        // Bash(rm) 은 `sudo rm`, `env X=1 rm`, `bash -c 'rm …'` 에도, Bash(kubectl delete) 는 `kubectl -n prod delete` 에도 걸린다.
+        return SplitSegments(command).Any(seg => SegmentMatches(seg, patTokens))
+            || ShellCommand.Commands(command).Any(words => DenyMatches(words, patTokens));
     }
 
     /// <summary>
@@ -210,6 +229,27 @@ public static class PermissionRule
         }
 
         return true;
+    }
+
+    // 실제 실행 명령(래퍼를 벗긴 것)의 프로그램이 같고, 나머지 패턴 단어가 옵션을 건너뛰며 순서대로 나타나면 매치.
+    // 거부 쪽이라 넓게 잡는 편이 안전하다(과하게 막으면 사용자가 보고 규칙을 고친다).
+    private static bool DenyMatches(List<string> words, IReadOnlyList<string> patTokens)
+    {
+        if (words.Count == 0 || !string.Equals(ShellCommand.Program(words[0]), patTokens[0], StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var j = 1;
+        for (var i = 1; i < words.Count && j < patTokens.Count; i++)
+        {
+            if (string.Equals(words[i], patTokens[j], StringComparison.Ordinal))
+            {
+                j++;
+            }
+        }
+
+        return j == patTokens.Count;
     }
 
     /// <summary>"Bash(ssh moai-ec2)" → ("Bash","ssh moai-ec2"), "Write" → ("Write", null).</summary>

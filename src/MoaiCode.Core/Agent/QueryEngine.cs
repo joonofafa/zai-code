@@ -671,8 +671,9 @@ public sealed class QueryEngine
                 if (!allowed)
                 {
                     _log($"permission denied: {call.Name}");
-                    _messages.Add(new ToolResultMessage(call.Id, Reminders.PermissionDenied, true));
-                    yield return new ToolExecuted(call.Name, call.Id, Reminders.PermissionDenied, true);
+                    var deniedText = (_gate as IDeniedMessageSource)?.TakeDeniedMessage(call.Id) ?? Reminders.PermissionDenied;
+                    _messages.Add(new ToolResultMessage(call.Id, deniedText, true));
+                    yield return new ToolExecuted(call.Name, call.Id, deniedText, true);
                     continue;
                 }
 
@@ -1440,13 +1441,16 @@ public sealed class QueryEngine
         }
         catch (OperationCanceledException)
         {
+            ToolEvents.Completed?.Invoke(call.Id, true);
             throw;
         }
         catch (Exception ex)
         {
+            ToolEvents.Completed?.Invoke(call.Id, true);
             return ($"Tool '{call.Name}' failed: {ex.Message}", true);
         }
 
+        ToolEvents.Completed?.Invoke(call.Id, isError);
         return (sb.ToString(), isError);
     }
 }
