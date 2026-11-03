@@ -284,6 +284,15 @@ public static class BashSecurity
                 }
             }
 
+            // 네트워크 너머를 바꾸는 도구의 인자가 변수에서 오면 내용을 알 수 없다 — 격리는 이 머신만 지키므로 묻는다.
+            // (Q='DROP DATABASE prod'; psql -h prod -c "$Q", M=DELETE; curl -X "$M" …)
+            if (p.ArgsExpanded && kind == Content.Command && !p.CodeFromString
+                && (DbClients.Contains(Prog(p.Words[0]))
+                    || (Prog(p.Words[0]) is "curl" or "wget" && p.Words.Any(w => w is "-X" or "--request" or "--method" || w.StartsWith("--request=", StringComparison.Ordinal) || w.StartsWith("--method=", StringComparison.Ordinal) || (w.StartsWith('-') && !w.StartsWith("--", StringComparison.Ordinal) && w.Contains('X'))))))
+            {
+                return L10n.Get("tools.bashSecurity.shellIndirection");
+            }
+
             if (DbClients.Contains(Prog(p.Words[0])))
             {
                 sql.AddRange(SqlParts(p));

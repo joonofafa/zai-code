@@ -679,8 +679,9 @@ public sealed class QueryEngine
 
                 // ASCII 메타데이터만 로깅(원문/인자 미기록 — 비-ASCII 경로·텍스트가 로그를 깨뜨리지 않게).
                 _log($"tool call: {call.Name} inputBytes={call.Input.GetRawText().Length}");
-                await _observer.BeforeToolAsync(tool, call, toolContext, ct).ConfigureAwait(false);
-                var (output, isError) = await ExecuteToolAsync(tool, call, toolContext, ct).ConfigureAwait(false);
+                var callContext = toolContext with { ToolUseId = call.Id };
+                await _observer.BeforeToolAsync(tool, call, callContext, ct).ConfigureAwait(false);
+                var (output, isError) = await ExecuteToolAsync(tool, call, callContext, ct).ConfigureAwait(false);
                 _log($"tool done: {call.Name} error={isError} outputChars={output.Length}");
                 // 실패 시 에러 본문(ASCII 정규화 + 상한)을 남긴다 — outputChars 만으론 사후 디버깅 불가.
                 if (isError)
@@ -698,7 +699,7 @@ public sealed class QueryEngine
                 yield return new ToolExecuted(call.Name, call.Id, output, isError);
 
                 var observation = await _observer
-                    .AfterToolAsync(tool, call, toolContext, output, isError, ct)
+                    .AfterToolAsync(tool, call, callContext, output, isError, ct)
                     .ConfigureAwait(false);
                 if (!string.IsNullOrWhiteSpace(observation))
                 {

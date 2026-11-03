@@ -48,6 +48,8 @@ public class BashSecurityTests
     }
 }
 
+// 셸을 실제로 실행한다 — 격리 실행 설정(SandboxPolicy, 전역)을 바꾸는 SandboxTests 와 동시에 돌지 않게.
+[Collection("EnvMutating")]
 public class BashToolExecutionTests
 {
     private static async Task<(string Output, bool IsError)> Run(

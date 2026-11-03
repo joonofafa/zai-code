@@ -199,11 +199,15 @@ public sealed class BackgroundShellRegistry
         }
     }
 
-    public BackgroundShell Start(string command, string workingDirectory)
+    public BackgroundShell Start(string command, string workingDirectory, bool sandboxed = false)
     {
         var id = $"bash_{Interlocked.Increment(ref _seq)}";
         var shell = new BackgroundShell(id, command, _maxChars);
         var (exe, args) = ResolveShell(command);
+        if (sandboxed)
+        {
+            (exe, args) = Sandbox.Wrap(exe, args, workingDirectory);   // 동기 Bash 와 같은 격리
+        }
 
         var stdout = PipeTarget.Create(async (stream, token) =>
         {

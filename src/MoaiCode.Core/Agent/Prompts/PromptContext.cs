@@ -21,4 +21,7 @@ public sealed record PromptContext
 
     /// <summary>오프라인 모드(<see cref="NetworkPolicy"/>) — 환경 절에 인터넷이 없다고 적는다.</summary>
     public bool Offline { get; init; }
+
+    /// <summary>셸 명령 격리 실행(<see cref="Tools.SandboxPolicy"/>) — 환경 절에 알린다.</summary>
+    public bool Sandboxed { get; init; }
 }

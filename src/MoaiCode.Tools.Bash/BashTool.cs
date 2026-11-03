@@ -66,6 +66,8 @@ public sealed class BashTool : ITool
         Very high-risk commands (rm -rf on root/home, dd to block devices, mkfs, fork bombs, remote-script piping) are blocked.
 
         Long-running commands (servers, watchers, `tail -f`, log monitors, long builds): set `run_in_background: true`. The tool returns a shell id immediately instead of blocking; read new output later with BashOutput and stop it with KillShell. Background shells do not carry `cd` over to the next command and are terminated when the session exits.
+
+        Sandbox: when the environment says Bash is sandboxed, commands the user did not approve one by one run isolated — only the workspace and a private /tmp are writable, devices, host processes and service sockets (docker, systemd) are not reachable, and the network works. If a command fails with "Read-only file system" or cannot reach a service because of this, and it really must run on the host, call it again with `dangerously_disable_sandbox: true`; the user will be asked to approve that exact command. Do not use it to get around a refusal.
         """;
 
     public bool IsReadOnly => false;
@@ -78,7 +80,8 @@ public sealed class BashTool : ITool
           "properties": {
             "command": { "type": "string", "description": "Shell command to execute" },
             "timeout_ms": { "type": "integer", "description": "Timeout in milliseconds (default 120000). Ignored when run_in_background is true" },
-            "run_in_background": { "type": "boolean", "description": "Start the command detached and return a shell id immediately; poll with BashOutput, stop with KillShell" }
+            "run_in_background": { "type": "boolean", "description": "Start the command detached and return a shell id immediately; poll with BashOutput, stop with KillShell" },
+            "dangerously_disable_sandbox": { "type": "boolean", "description": "Run outside the sandbox on the host. Needs the user's approval for this exact command" }
           },
           "required": ["command"]
         }
@@ -87,7 +90,8 @@ public sealed class BashTool : ITool
     private sealed record Input(
         [property: JsonPropertyName("command")] string? Command,
         [property: JsonPropertyName("timeout_ms")] int? TimeoutMs,
-        [property: JsonPropertyName("run_in_background")] bool? RunInBackground);
+        [property: JsonPropertyName("run_in_background")] bool? RunInBackground,
+        [property: JsonPropertyName("dangerously_disable_sandbox")] bool? DisableSandbox);
 
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
@@ -121,15 +125,23 @@ public sealed class BashTool : ITool
         _currentDir ??= context.WorkingDirectory;
         var workDir = ResolveWorkDir(_currentDir);
 
+        // 격리 실행: 사람이 이 호출을 승인하지 않았으면(게이트가 표시하지 않았으면) bubblewrap 안에서 돌린다.
+        var sandboxed = SandboxPolicy.Active && !SandboxPolicy.TakeUnsandboxed(context.ToolUseId);
+
         // 3) 백그라운드: 보안·권한 게이트는 위에서 동일하게 통과한 뒤, 프로세스를 띄우고 즉시 id 만 돌려준다.
         if (inp.RunInBackground == true)
         {
-            var bg = _background.Start(command, workDir);
+            var bg = _background.Start(command, workDir, sandboxed);
             yield return new ToolOutput(L10n.Get("tools.bash.startedBackground", bg.Id));
             yield break;
         }
 
         var (shell, args) = ResolveShell(command);
+        if (sandboxed)
+        {
+            (shell, args) = Sandbox.Wrap(shell, args, workDir);
+        }
+
         // 모델이 제어하는 값이라 상한을 건다(무한/과대 타임아웃으로 턴이 멈추는 것 방지).
         var timeout = Math.Clamp(inp.TimeoutMs ?? DefaultTimeoutMs, 1_000, MaxTimeoutMs);
 
@@ -255,6 +267,11 @@ public sealed class BashTool : ITool
         if (text.Length == 0)
         {
             text = $"(no output, exit code {exitCode})";
+        }
+
+        if (sandboxed && exitCode != 0 && Sandbox.LooksBlockedBySandbox(text))
+        {
+            text += "\n" + L10n.Get("tools.bash.sandboxHint");
         }
 
         yield return new ToolOutput(text, IsError: exitCode != 0);
@@ -450,7 +467,8 @@ public sealed class BashTool : ITool
         }
 
         var bash = File.Exists("/bin/bash") ? "/bin/bash" : "/bin/sh";
-        return (bash, new[] { "-c", command + "\nprintf '" + CwdMarker + "%s\\n' \"$(pwd)\"" });
+        // 명령의 종료 코드를 보존한다 — 예전엔 뒤에 붙인 printf 의 종료 코드(0)가 나가 실패한 명령도 성공으로 보고됐다.
+        return (bash, new[] { "-c", command + "\n__mate_status=$?\nprintf '" + CwdMarker + "%s\\n' \"$(pwd)\"\nexit $__mate_status" });
     }
 
     // stdout 끝의 cwd 마커를 떼어내 (정리된 출력, 새 cwd)로 반환.

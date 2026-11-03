@@ -675,5 +675,9 @@
   "tools.bashSecurity.containerHostAccess": "Container with host access (privileged, host root or system mounts)",
   "permission.ignoreConfirmDenyMode": "mate: --ignore-confirm is ignored because permission is set to deny.",
   "permission.scriptUnreadable": "script {0} could not be read (missing, too large, or not text), so its contents cannot be checked",
-  "permission.toolInputContains": "tool input contains: {0}"
+  "permission.toolInputContains": "tool input contains: {0}",
+  "permission.sandboxUnavailable": "mate: the sandbox is required but not available — this command needs your approval.",
+  "permission.sandboxRequiredMissing": "mate: sandbox is set to \"required\" but bubblewrap is not available here (bwrap missing or user namespaces disabled). Every shell command will need your approval.",
+  "permission.unsandboxedRequest": "runs outside the sandbox (directly on the host)",
+  "tools.bash.sandboxHint": "(This ran in the sandbox: only the workspace and a private /tmp are writable, and docker/systemd sockets are not reachable. If it must run on the host, retry with dangerously_disable_sandbox: true — the user will be asked.)"
 }

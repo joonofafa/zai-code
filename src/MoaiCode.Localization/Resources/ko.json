@@ -675,5 +675,9 @@
   "tools.bashSecurity.containerHostAccess": "호스트에 접근하는 컨테이너(특권·호스트 루트·시스템 경로 마운트)",
   "permission.ignoreConfirmDenyMode": "mate: permission 이 deny 로 설정되어 있어 --ignore-confirm 을 무시합니다.",
   "permission.scriptUnreadable": "스크립트 {0} 을(를) 읽지 못해(없음·너무 큼·텍스트 아님) 내용을 확인할 수 없음",
-  "permission.toolInputContains": "툴 입력 안에 있음: {0}"
+  "permission.toolInputContains": "툴 입력 안에 있음: {0}",
+  "permission.sandboxUnavailable": "mate: 격리 실행이 필수인데 쓸 수 없습니다 — 이 명령은 승인이 필요합니다.",
+  "permission.sandboxRequiredMissing": "mate: sandbox 가 \"required\" 인데 이 머신에서 bubblewrap 을 쓸 수 없습니다(bwrap 없음 또는 사용자 네임스페이스 꺼짐). 모든 셸 명령에 승인이 필요합니다.",
+  "permission.unsandboxedRequest": "격리 밖(호스트)에서 직접 실행",
+  "tools.bash.sandboxHint": "(격리 안에서 실행됐습니다: 작업 폴더와 전용 /tmp 만 쓸 수 있고 docker/systemd 소켓은 보이지 않습니다. 호스트에서 꼭 실행해야 하면 dangerously_disable_sandbox: true 로 다시 요청하세요 — 사용자에게 묻습니다.)"
 }

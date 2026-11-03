@@ -289,6 +289,15 @@ public static class SystemPromptBuilder
             lines.Add($" - Available tools: {string.Join(", ", ctx.ToolNames)}");
         }
 
+        if (ctx.Sandboxed)
+        {
+            lines.Add(" - Sandbox: ON. Bash commands that the user did not approve one by one run in an isolated sandbox: the " +
+                      "workspace and a private /tmp are writable, everything else is read-only; disks, host processes and service " +
+                      "sockets (docker, systemd) are not reachable; the network works. Use the workspace for files. If a command " +
+                      "genuinely must change the host, retry it with dangerously_disable_sandbox: true and say why — the user will " +
+                      "be asked to approve that exact command.");
+        }
+
         if (ctx.Offline)
         {
             lines.Add(" - Network: OFFLINE. This environment has no internet access (internal network only). " +

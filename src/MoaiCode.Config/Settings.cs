@@ -76,6 +76,15 @@ public sealed record Settings
     public int AuditRetentionDays { get; init; } = 90;
 
     /// <summary>
+    /// 격리 실행(bubblewrap): "auto"(기본, 쓸 수 있으면 켬) / "required"(반드시 — 못 쓰면 사람이 모든 명령을 승인) / "off".
+    /// 사람이 직접 승인하지 않은 셸 명령을 작업 폴더 밖은 읽기 전용인 격리 환경에서 돌린다(<c>SandboxPolicy</c>).
+    /// </summary>
+    public string Sandbox { get; init; } = "auto";
+
+    /// <summary>격리 안에서 추가로 쓸 수 있게 할 폴더(절대 경로, ~ 허용). 작업 폴더·전용 /tmp·기본 캐시 폴더는 따로 들어간다.</summary>
+    public IReadOnlyList<string> SandboxWritable { get; init; } = Array.Empty<string>();
+
+    /// <summary>
     /// 워크스페이스(작업 디렉토리) 밖의 절대경로 Write/Edit 는 권한 모드(auto/auto-act)와 무관하게
     /// 항상 확인받는다. 비대화형이면 거부. 실수로 시스템/홈 파일을 건드리는 사고 방지.
     /// </summary>

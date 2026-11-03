@@ -93,6 +93,28 @@ public sealed class ModeAwarePermissionGate : IPermissionGate, IReadOnlyToolGate
     {
         var d = await DecideAsync(tool, call, ct).ConfigureAwait(false);
 
+        // 격리 실행: 사람이 이 호출을 직접 승인했거나 --ignore-confirm 배치면 호스트에서, 아니면 격리 안에서 돈다(BashTool 이 꺼내 본다).
+        if (d.Allowed && IsBash(tool))
+        {
+            if (d.Approval == AuditLog.Approvals.User || _ignoreConfirm)
+            {
+                SandboxPolicy.AllowUnsandboxed(call.Id);
+            }
+            else if (SandboxPolicy.RequiredButUnavailable && d.Approval != AuditLog.Approvals.None)
+            {
+                // 격리가 필수인데 쓸 수 없다 — 사람이 승인하지 않은 명령은 돌리지 않는다(사람이 없으면 거부).
+                Console.Error.WriteLine(L10n.Get("permission.sandboxUnavailable"));
+                d = await ConfirmAsync(tool, call, ct).ConfigureAwait(false);
+                if (!d.Allowed)
+                {
+                    _deniedMessages[call.Id] = Reminders.SandboxUnavailable;
+                    return false;
+                }
+
+                SandboxPolicy.AllowUnsandboxed(call.Id);
+            }
+        }
+
         // 배치 자동화(--ignore-confirm)에서는 확인 없이 지나간 쓰기·실행 툴을 모두 감사 로그에 남긴다.
         // 기록할 수 없으면 실행하지 않는다 — 사람이 보지 않는 실행의 유일한 흔적이기 때문이다.
         if (d.Allowed && !d.Audited && _ignoreConfirm && !tool.IsReadOnly)
@@ -153,7 +175,11 @@ public sealed class ModeAwarePermissionGate : IPermissionGate, IReadOnlyToolGate
                 return new Decision(false, true, AuditLog.Approvals.None);
             }
 
-            var critical = BashSecurity.DestructiveReason(command) ?? scriptReason;
+            // 격리 밖 실행 요청(dangerously_disable_sandbox)은 그 명령을 사람이 직접 승인해야 한다 — 파괴적 명령과 같은 확인.
+            var unsandbox = SandboxPolicy.Active && ReadBool(call, "dangerously_disable_sandbox")
+                ? L10n.Get("permission.unsandboxedRequest")
+                : null;
+            var critical = BashSecurity.DestructiveReason(command) ?? scriptReason ?? unsandbox;
             if (critical is not null)
             {
                 return await CriticalAsync(tool, call, critical, ct).ConfigureAwait(false);
@@ -196,7 +222,8 @@ public sealed class ModeAwarePermissionGate : IPermissionGate, IReadOnlyToolGate
         }
 
         var allowed = await _inner.AllowAsync(tool, call, ct).ConfigureAwait(false);
-        return new Decision(allowed, false, AuditLog.Approvals.Override);
+        // 대화형 확인창(터미널·stream-json)은 사람이 이 호출을 본 것이다 — 파괴적 확인을 구현한 게이트가 곧 사람이 답하는 게이트다.
+        return new Decision(allowed, false, _inner is ICriticalConfirmGate ? AuditLog.Approvals.User : AuditLog.Approvals.Override);
     }
 
     // 파괴적 명령: 사람의 확인(항상 허용 없음) → 감사 로그. 사람이 없으면 거부. --ignore-confirm 은 감사 로그를 조건으로 통과.
@@ -606,6 +633,11 @@ public sealed class ModeAwarePermissionGate : IPermissionGate, IReadOnlyToolGate
         var path = ReadString(call, "path");
         return !string.IsNullOrWhiteSpace(path) && PathSafety.IsOutsideWorkspace(_workspace, path);
     }
+
+    private static bool ReadBool(ToolUseBlock call, string property) =>
+        call.Input.ValueKind == JsonValueKind.Object
+        && call.Input.TryGetProperty(property, out var e)
+        && e.ValueKind == JsonValueKind.True;
 
     private static string? ReadString(ToolUseBlock call, string property)
     {

@@ -34,7 +34,8 @@ public sealed record ToolContext(
     PermissionMode Permission,
     ReadTracker? Reads = null,
     Action<MoaiCode.Core.Messages.Usage>? ReportUsage = null,   // 툴이 따로 쓴 모델 토큰(서브에이전트) 보고
-    MoaiCode.Core.Diff.FileChangeJournal? Changes = null);      // /diff 턴별 변경 기록(Edit·Write 가 쓴다)
+    MoaiCode.Core.Diff.FileChangeJournal? Changes = null,       // /diff 턴별 변경 기록(Edit·Write 가 쓴다)
+    string? ToolUseId = null);                                   // 이번 호출 id — BashTool 이 격리 여부(SandboxPolicy)를 찾을 때 쓴다
 
 /// <summary>툴 실행 중 스트리밍되는 진행 이벤트.</summary>
 public abstract record ToolProgress;

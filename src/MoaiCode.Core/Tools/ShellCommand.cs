@@ -33,7 +33,8 @@ public static class ShellCommand
         string? PipedFrom,
         string? Indirect,
         int Depth,
-        bool CodeFromString);
+        bool CodeFromString,
+        bool ArgsExpanded = false);   // 프로그램 뒤 인자 중 변수·치환이 있다(값을 미리 알 수 없다)
 
     private const int MaxDepth = 6;
     private const int MaxCommands = 4000;
@@ -782,7 +783,8 @@ public static class ShellCommand
             }
         }
 
-        result.Add(new Parsed(commandWords, wrappers, redirects, stdin, fromPipe, pipedFrom, indirect, depth, codeFromString));
+        var argsExpanded = toks.Skip(i + 1).Any(t => t.Expanded);
+        result.Add(new Parsed(commandWords, wrappers, redirects, stdin, fromPipe, pipedFrom, indirect, depth, codeFromString, argsExpanded));
         return commandWords.Count > 0 ? Program(commandWords[0]) : null;
     }
 

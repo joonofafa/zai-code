@@ -182,6 +182,10 @@ public static class Reminders
         "The script this command would run contains a command that is always blocked (for example deleting the root or a system " +
         "directory, formatting a disk, or powering off). Nothing was executed. Do not try to run it another way.";
 
+    public const string SandboxUnavailable =
+        "Commands must run in the sandbox here, but the sandbox is not available on this machine, so every command needs a " +
+        "person's approval and none was given. Nothing was executed. Report this and stop retrying.";
+
     // max_turns 도달 후 컨텍스트 압축하고 연장할 때 주입 (작업을 마무리/집중하도록 유도)
     public const string MaxTurnsExtended =
         "<system-reminder>\n" +

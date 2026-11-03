@@ -158,6 +158,13 @@ public static class SettingsLoader
                 AllowRules = allowPermissionRules ? MergeRules(baseline.AllowRules, GetRuleList(root, "allow")) : baseline.AllowRules,
                 // deny 는 막는 쪽이라 어느 레이어든 받는다 — ~/.claude, 프로젝트 .claude 의 금지 목록도 지킨다.
                 DenyRules = MergeRules(baseline.DenyRules, GetRuleList(root, "deny")),
+                // 격리 설정도 운영 정책 — 사용자 레이어에서만(저장소가 끄거나 쓰기 경로를 넓히지 못하게).
+                Sandbox = allowSensitive
+                    ? NormalizeSandbox(GetString(root, "sandbox") ?? (GetBool(root, "sandbox") is { } sb ? (sb ? "auto" : "off") : null)) ?? baseline.Sandbox
+                    : baseline.Sandbox,
+                SandboxWritable = allowSensitive && root.TryGetProperty("sandboxWritable", out var sw) && sw.ValueKind == JsonValueKind.Array
+                    ? ReadStringArray(sw)
+                    : baseline.SandboxWritable,
                 AuditRetentionDays = allowSensitive
                     ? GetInt(root, "auditRetentionDays", "audit_retention_days") ?? baseline.AuditRetentionDays
                     : baseline.AuditRetentionDays,
@@ -209,6 +216,7 @@ public static class SettingsLoader
         var checkpoints = ParseBool(Environment.GetEnvironmentVariable("MOAI_CHECKPOINTS"));
         var confine = ParseBool(Environment.GetEnvironmentVariable("MOAI_CONFINE_WORKSPACE"));
         var offline = ParseBool(Environment.GetEnvironmentVariable("MOAI_OFFLINE"));
+        var sandbox = NormalizeSandbox(Environment.GetEnvironmentVariable("MOAI_SANDBOX"));
         var maxTurns = ParseInt(Environment.GetEnvironmentVariable("MOAI_MAX_TURNS"));
 
         return baseline with
@@ -225,6 +233,7 @@ public static class SettingsLoader
             Checkpoints = checkpoints ?? baseline.Checkpoints,
             ConfineToWorkspace = confine ?? baseline.ConfineToWorkspace,
             Offline = offline ?? baseline.Offline,
+            Sandbox = sandbox ?? baseline.Sandbox,
             MaxTurns = maxTurns ?? baseline.MaxTurns,
         };
     }
@@ -275,6 +284,15 @@ public static class SettingsLoader
     }
 
     // permissions.{allow|deny} 배열(Claude Code 형식) 우선, 없으면 top-level {allow|deny}.
+    // "auto"/"required"/"off" (true → auto, false → off). 모르는 값은 null(앞 레이어 유지).
+    private static string? NormalizeSandbox(string? v) => v?.Trim().ToLowerInvariant() switch
+    {
+        "auto" or "on" or "true" or "1" or "yes" => "auto",
+        "required" or "require" or "strict" => "required",
+        "off" or "false" or "0" or "no" => "off",
+        _ => null,
+    };
+
     private static IReadOnlyList<string> GetRuleList(JsonElement root, string key)
     {
         if (root.TryGetProperty("permissions", out var perms) &&

@@ -250,6 +250,8 @@ public sealed class SafetyGateTests : IDisposable
     [InlineData("oc rsh web-1 rm -rf /data")]
     [InlineData("kubectl exec web-1 rm -rf /data")]
     [InlineData("echo \"DROP TABLE t\" | psql")]
+    [InlineData("Q='DROP DATABASE prod'; psql -h prod -c \"$Q\"")]
+    [InlineData("M=DELETE; curl -X \"$M\" http://internal/api/x")]
     [InlineData("sqlplus u/p <<EOF\\ndrop table t;\\nEOF")]
     public void Second_review_destructive_commands(string cmd) =>
         Assert.NotNull(BashSecurity.DestructiveReason(cmd.Replace("\\n", "\n")));

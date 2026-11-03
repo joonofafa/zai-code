@@ -63,6 +63,8 @@ public static class AppBootstrap
         ApplySettingsToEnv(settings);
         NetworkPolicy.Offline = settings.Offline;   // 인터넷이 필요한 툴을 숨긴다(망분리 사내 배포)
 
+        ConfigureSandbox(settings, cwd);
+
         // 감사 로그: 보관일을 넘긴 줄 정리 + 툴 실행 결과(ok/error)를 승인 기록에 잇는다(하위 에이전트 엔진 포함).
         AuditLog.Trim(settings.AuditRetentionDays);
         ToolEvents.Completed = AuditLog.Complete;
@@ -327,6 +329,68 @@ public static class AppBootstrap
             mcp, ctx, toolList, skills.Select(s => s.Name).ToList(), mcpConfigs, providerDesc, settings, streamGate);
     }
 
+    // 격리 실행 설정: 방식·사용 가능 여부(시험 실행)·쓰기 경로·이 세션 전용 /tmp. 시작할 때 한 번.
+    private static void ConfigureSandbox(Settings settings, string cwd)
+    {
+        SandboxPolicy.Mode = settings.Sandbox switch
+        {
+            "required" => SandboxMode.Required,
+            "off" => SandboxMode.Off,
+            _ => SandboxMode.Auto,
+        };
+        SandboxPolicy.Available = SandboxPolicy.Mode != SandboxMode.Off && MoaiCode.Tools.Bash.Sandbox.Probe();
+
+        var home = AppPaths.UserHome;
+        string Expand(string p) => p == "~" ? home : p.StartsWith("~/", StringComparison.Ordinal) ? Path.Combine(home, p[2..]) : p;
+        var writable = new List<string> { Path.GetFullPath(cwd) };
+        writable.AddRange(settings.SandboxWritable.Select(Expand).Where(Path.IsPathRooted));
+        // 빌드 도구의 내려받기 캐시 — 읽기 전용이면 npm·nuget·gradle 빌드가 실패한다. 실행 파일이 놓이는 곳(~/.dotnet 등)은 넣지 않는다.
+        writable.AddRange(new[] { ".cache", ".npm", ".nuget/packages", ".gradle/caches", ".m2/repository", ".cargo/registry", ".local/share/pnpm" }
+            .Select(d => Path.Combine(home, d)).Where(Directory.Exists));
+        SandboxPolicy.Writable = writable.Distinct(StringComparer.Ordinal).ToList();
+
+        if (SandboxPolicy.Active)
+        {
+            // 호스트 /tmp 의 소켓(tmux·ssh-agent·X11)이 보이지 않게 이 세션 전용 /tmp 를 쓴다. 하루 지난 것은 지운다.
+            var root = AppPaths.Combine("sandbox");
+            try
+            {
+                Directory.CreateDirectory(root);
+                foreach (var old in Directory.GetDirectories(root, "tmp-*"))
+                {
+                    if (Directory.GetLastWriteTimeUtc(old) < DateTime.UtcNow.AddDays(-1))
+                    {
+                        Directory.Delete(old, recursive: true);
+                    }
+                }
+
+                var tmp = Path.Combine(root, "tmp-" + AuditLog.SessionId);
+                Directory.CreateDirectory(tmp);
+                if (!OperatingSystem.IsWindows())
+                {
+                    File.SetUnixFileMode(tmp, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+                }
+
+                SandboxPolicy.TmpDir = tmp;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                MoaiLog.Warn($"sandbox: private tmp not created ({ex.GetType().Name})");
+            }
+
+            MoaiLog.Info("sandbox: active (bubblewrap)");
+        }
+        else if (SandboxPolicy.RequiredButUnavailable)
+        {
+            Console.Error.WriteLine(L10n.Get("permission.sandboxRequiredMissing"));
+            MoaiLog.Warn("sandbox: required but unavailable");
+        }
+        else if (SandboxPolicy.Mode == SandboxMode.Auto && OperatingSystem.IsLinux())
+        {
+            MoaiLog.Info("sandbox: unavailable (bwrap missing or user namespaces disabled)");
+        }
+    }
+
     private static PromptContext BuildPromptContext(string cwd, Settings settings, IReadOnlyList<ITool> tools)
     {
         var platform = OperatingSystem.IsWindows() ? "windows"
@@ -354,6 +418,7 @@ public static class AppBootstrap
             // 프로바이더·오프라인 때문에 숨긴 툴은 목록에도 넣지 않는다(엔진도 요청마다 같은 기준으로 거른다).
             ToolNames = tools.Where(t => t is not IConditionalTool { IsAvailable: false }).Select(t => t.Name).ToList(),
             Offline = NetworkPolicy.Offline,
+            Sandboxed = SandboxPolicy.Active,
         };
     }
 
