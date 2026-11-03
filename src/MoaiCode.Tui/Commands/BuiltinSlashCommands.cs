@@ -685,6 +685,24 @@ internal sealed class CheckpointDiffCommand : ISlashCommand
     }
 }
 
+/// <summary>/diff — 커밋하지 않은 변경과 턴별 변경을 본다(Claude Code /diff 이식). 터미널이 아니면 평문 요약.</summary>
+internal sealed class DiffCommand : ISlashCommand
+{
+    public string Name => "diff";
+    public string Description => L10n.Get("slash.diff.description");
+    public Task<SlashResult> ExecuteAsync(SlashContext ctx, string[] args, CancellationToken ct)
+    {
+        var cwd = Directory.GetCurrentDirectory();
+        if (Console.IsInputRedirected || Console.IsOutputRedirected)
+        {
+            return Task.FromResult(new SlashResult(Diff.DiffDialog.Summary(ctx.Engine.FileChanges, cwd)));
+        }
+
+        Diff.DiffDialog.Run(ctx.Engine.FileChanges, cwd);
+        return Task.FromResult(new SlashResult(""));
+    }
+}
+
 internal sealed class RestoreCommand : ISlashCommand
 {
     public string Name => "restore";

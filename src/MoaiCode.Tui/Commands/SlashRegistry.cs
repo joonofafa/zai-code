@@ -51,6 +51,7 @@ public sealed class SlashRegistry
             new CheckpointCreateCommand(),
             new CheckpointsCommand(),
             new CheckpointDiffCommand(),
+            new DiffCommand(),
             new RestoreCommand(),
             new HistoryCommand(),
             new SessionsCommand(),

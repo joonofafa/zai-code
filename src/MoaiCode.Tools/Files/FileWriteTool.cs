@@ -75,11 +75,40 @@ public sealed class FileWriteTool : ITool
 
         // 기존 파일의 BOM 인코딩(UTF-8 BOM·UTF-16)은 유지한다 — 덮어쓰기로 인코딩이 바뀌면 Windows 도구가 깨진다.
         var encoding = TextFileCodec.Detect(File.Exists(path) ? ReadHead(path) : []).Encoding;
+        var before = context.Changes is null ? null : await ReadBeforeAsync(path, ct).ConfigureAwait(false);
         await File.WriteAllBytesAsync(path, TextFileCodec.Encode(inp.Content ?? "", encoding), ct).ConfigureAwait(false);
+        if (before is not { Text: null, Existed: true })   // 텍스트로 못 읽는 기존 파일은 /diff 에 넣지 않는다
+        {
+            context.Changes?.Record(path, before?.Text, inp.Content ?? "");
+        }
         // 방금 쓴 내용은 모델이 안다 — 읽은 것으로 표시해 바로 Edit/재Write 할 수 있게 한다
         // (아니면 매번 Read 한 번을 더 해야 했다).
         context.Reads?.MarkRead(path);
         yield return new ToolOutput($"Wrote {(inp.Content ?? "").Length} bytes to {path}");
+    }
+
+    // /diff 용 덮어쓰기 전 내용. 없던 파일이면 Text=null·Existed=false, 텍스트가 아니거나 너무 크면 Text=null·Existed=true.
+    private static async Task<(string? Text, bool Existed)?> ReadBeforeAsync(string path, CancellationToken ct)
+    {
+        if (!File.Exists(path))
+        {
+            return (null, false);
+        }
+
+        try
+        {
+            if (new FileInfo(path).Length > MoaiCode.Core.Diff.FileChangeJournal.MaxContentChars * 4L)
+            {
+                return (null, true);
+            }
+
+            var bytes = await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false);
+            return TextFileCodec.TryDecodeStrict(bytes, out var text, out _) ? (text, true) : (null, true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return (null, true);
+        }
     }
 
     private static byte[] ReadHead(string path)

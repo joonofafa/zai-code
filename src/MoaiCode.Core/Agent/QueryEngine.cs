@@ -82,8 +82,10 @@ public sealed class QueryEngine
         int maxToolResultChars = 16_000,
         bool harvestMemories = false,
         Action<string>? log = null,
-        Func<int?>? currentPhase = null)
+        Func<int?>? currentPhase = null,
+        MoaiCode.Core.Diff.FileChangeJournal? fileChanges = null)
     {
+        FileChanges = fileChanges ?? new MoaiCode.Core.Diff.FileChangeJournal();
         _model = model;
         _tools = tools;
         _gate = gate ?? new AutoApproveGate();
@@ -143,10 +145,14 @@ public sealed class QueryEngine
         Reset();
     }
 
+    /// <summary>/diff 턴별 변경 기록. 서브에이전트 엔진은 부모의 것을 받아 같은 턴에 쌓는다.</summary>
+    public MoaiCode.Core.Diff.FileChangeJournal FileChanges { get; }
+
     public void Reset()
     {
         _messages.Clear();
         _messages.AddRange(_seed);
+        FileChanges.Clear();
     }
 
     /// <summary>저장된 세션 메시지로 대화 상태를 교체 (/resume).</summary>
@@ -275,7 +281,7 @@ public sealed class QueryEngine
 
         // 서브에이전트(Agent 툴)가 쓴 토큰을 이 엔진의 누적치에 더한다(/cost·헤드리스 usage).
         var toolContext = new ToolContext(_workingDirectory, PermissionMode.Auto, _reads,
-            ReportUsage: u => CumulativeUsage = AddUsage(CumulativeUsage, u));
+            ReportUsage: u => CumulativeUsage = AddUsage(CumulativeUsage, u), Changes: FileChanges);
         var failureCounts = new Dictionary<string, int>(StringComparer.Ordinal);
         var successCounts = new Dictionary<string, int>(StringComparer.Ordinal);
         var dupNudged = new HashSet<string>(StringComparer.Ordinal);

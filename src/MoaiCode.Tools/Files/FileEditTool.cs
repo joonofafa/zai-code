@@ -126,6 +126,7 @@ public sealed class FileEditTool : ITool
             : ReplaceFirst(content, inp.OldString, inp.NewString);
 
         await File.WriteAllBytesAsync(path, TextFileCodec.Encode(updated, encoding), ct).ConfigureAwait(false);
+        context.Changes?.Record(path, content, updated);
         yield return new ToolOutput($"Edited {path} ({(inp.ReplaceAll ? count : 1)} replacement(s))");
     }
 

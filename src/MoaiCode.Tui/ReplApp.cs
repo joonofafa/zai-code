@@ -629,6 +629,8 @@ public sealed class ReplApp
 
     private async Task ConsumeTurnAsync(string userInput, CancellationToken ct)
     {
+        _ctx.Engine.FileChanges.BeginTurn(userInput);   // /diff 턴별 변경: 이 요청에서 바뀐 파일을 이 턴에 모은다
+
         // 브레인스토밍: 이 턴을 카운트하고, 한도에 도달하면 이번 턴에 플랜을 강제 마무리한다.
         if (_ctx.State.Brainstorming)
         {

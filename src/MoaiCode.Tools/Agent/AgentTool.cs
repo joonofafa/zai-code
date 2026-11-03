@@ -87,7 +87,8 @@ public sealed class AgentTool : ITool
             _gate ?? new DenyAllGate(),
             maxTurns: _maxTurns,
             workingDirectory: context.WorkingDirectory,
-            extendTurns: false);
+            extendTurns: false,
+            fileChanges: context.Changes);   // 서브에이전트가 고친 파일도 부모 턴의 /diff 에 보이게
         subEngine.Seed(new[]
         {
             new SystemMessage(SubAgentPrompts.ForType(inp.SubagentType)),
