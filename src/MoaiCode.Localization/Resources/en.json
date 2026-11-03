@@ -310,6 +310,8 @@
   "tools.webFetch.hostResolveFailed": "Failed to resolve host: {0}",
   "tools.webFetch.linkLocalMetadataBlocked": "Blocked link-local/metadata IP access ({0})",
   "tools.webSearch.noKey": "WebSearch: no API connection ({0} is not set — run /provider).",
+  "tools.offline.disabled": "{0}: turned off in offline mode (no external network). Work from local files instead.",
+  "tools.offline.imageUrl": "image URLs cannot be downloaded in offline mode; save the image locally and pass its path.",
   "tools.webSearch.unsupportedProvider": "WebSearch: the {0} provider has no web search.",
   "tools.webSearch.timeout": "WebSearch: timed out after {0:0}s",
   "tools.webSearch.requestFailed": "WebSearch: request failed — {0}",

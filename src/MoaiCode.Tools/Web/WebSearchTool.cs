@@ -23,8 +23,8 @@ namespace MoaiCode.Tools.Web;
 /// </summary>
 public sealed class WebSearchTool : ITool, IConditionalTool
 {
-    /// <summary>vLLM 은 검색 기능이 없다 — 나머지는 프로바이더 내장 검색을 쓴다.</summary>
-    public bool IsAvailable => ActiveProvider.Current.Kind != ProviderKind.Vllm;
+    /// <summary>vLLM 은 검색 기능이 없다 — 나머지는 프로바이더 내장 검색을 쓴다. 오프라인이면 숨긴다.</summary>
+    public bool IsAvailable => !NetworkPolicy.Offline && ActiveProvider.Current.Kind != ProviderKind.Vllm;
 
     private const string DefaultSearchEngine = "search-prime";
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(90);
@@ -63,6 +63,12 @@ public sealed class WebSearchTool : ITool, IConditionalTool
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
     {
+        if (NetworkPolicy.Offline)
+        {
+            yield return new ToolOutput(L10n.Get("tools.offline.disabled", Name), IsError: true);
+            yield break;
+        }
+
         var inp = input.Deserialize<Input>();
         if (inp is null || string.IsNullOrWhiteSpace(inp.Query))
         {

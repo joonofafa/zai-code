@@ -289,6 +289,15 @@ public static class SystemPromptBuilder
             lines.Add($" - Available tools: {string.Join(", ", ctx.ToolNames)}");
         }
 
+        if (ctx.Offline)
+        {
+            lines.Add(" - Network: OFFLINE. This environment has no internet access (internal network only). " +
+                      "Do not try to download packages, images or documents, or fetch URLs on the internet " +
+                      "(no curl/wget/pip/npm installs from public registries). Work from local files, installed tools, " +
+                      "internal hosts the user names, and the bundled skills. If a task truly needs something from " +
+                      "the internet, say so and stop instead of retrying.");
+        }
+
         return string.Join("\n", lines);
     }
 

@@ -310,6 +310,8 @@
   "tools.webFetch.hostResolveFailed": "호스트 해석 실패: {0}",
   "tools.webFetch.linkLocalMetadataBlocked": "링크로컬/메타데이터 IP 접근 차단({0})",
   "tools.webSearch.noKey": "WebSearch: API 연결 정보가 없습니다 ({0} 미설정 — /provider 로 설정).",
+  "tools.offline.disabled": "{0}: 오프라인 모드에서는 꺼져 있습니다(외부 네트워크 없음). 로컬 파일로 작업하세요.",
+  "tools.offline.imageUrl": "오프라인 모드에서는 이미지 URL 을 내려받을 수 없습니다. 이미지를 로컬에 저장한 뒤 그 경로를 넘기세요.",
   "tools.webSearch.unsupportedProvider": "WebSearch: {0} 프로바이더에는 웹 검색 기능이 없습니다.",
   "tools.webSearch.timeout": "WebSearch: {0:0}초 타임아웃",
   "tools.webSearch.requestFailed": "WebSearch: 요청 실패 — {0}",

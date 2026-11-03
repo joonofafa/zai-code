@@ -10,6 +10,8 @@ namespace MoaiCode.Core.Tests;
 /// <summary>
 /// 로컬 HTTP 서버를 띄워 WebFetch 툴 경로 전체(charset 판별 → 디코딩 → HTML→텍스트, 바이너리 가드)를 검증.
 /// </summary>
+// 오프라인 모드(NetworkPolicy)·ActiveProvider 전역 상태를 읽는다 — 그 값을 바꾸는 테스트와 동시에 돌지 않게.
+[Collection("EnvMutating")]
 public sealed class WebFetchToolIntegrationTests : IDisposable
 {
     private readonly HttpListener _listener = new();

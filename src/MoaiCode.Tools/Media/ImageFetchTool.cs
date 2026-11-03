@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using MoaiCode.Core;
 using MoaiCode.Core.Tools;
 using MoaiCode.Core.Web;
 using MoaiCode.Localization;
@@ -23,7 +24,7 @@ namespace MoaiCode.Tools.Media;
 /// 안전장치: http/https 만, 30초 타임아웃, 20MB 상한, 리다이렉트 5회 + 매 홉 SSRF 재검증,
 /// content-type 이 image/* 인지 확인.
 /// </summary>
-public sealed class ImageFetchTool : ITool
+public sealed class ImageFetchTool : ITool, IConditionalTool
 {
     private const int MaxBytes = 20_000_000;
     private const int MaxRedirects = 5;
@@ -40,6 +41,7 @@ public sealed class ImageFetchTool : ITool
         """;
 
     public bool IsReadOnly => false;
+    public bool IsAvailable => !NetworkPolicy.Offline;
     public bool IsConcurrencySafe => true;
 
     public JsonElement InputSchema { get; } = ToolSchema.Parse(
@@ -61,6 +63,12 @@ public sealed class ImageFetchTool : ITool
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
     {
+        if (!IsAvailable)
+        {
+            yield return new ToolOutput(L10n.Get("tools.offline.disabled", Name), IsError: true);
+            yield break;
+        }
+
         var inp = input.Deserialize<Input>();
         if (inp is null || string.IsNullOrWhiteSpace(inp.Url))
         {

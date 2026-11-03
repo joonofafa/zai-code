@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using MoaiCode.Core;
 using MoaiCode.Core.Agent.Prompts;
 using MoaiCode.Core.Tools;
 using MoaiCode.Core.Web;
@@ -17,7 +18,7 @@ namespace MoaiCode.Tools.Web;
 /// 안전장치: http/https만, 30초 타임아웃, 5MB 응답 상한, 리다이렉트 5회 제한 + 매 홉 재검증,
 /// 클라우드 메타데이터/링크로컬 IP(169.254.x, IPv6 link-local) 차단(SSRF 방지). 프록시는 자동 적용.
 /// </summary>
-public sealed class WebFetchTool : ITool
+public sealed class WebFetchTool : ITool, IConditionalTool
 {
     private const int MaxBytes = 5_000_000;
     private const int DefaultMaxLength = 50_000;
@@ -43,6 +44,7 @@ public sealed class WebFetchTool : ITool
         """;
 
     public bool IsReadOnly => true;
+    public bool IsAvailable => !NetworkPolicy.Offline;
     public bool IsConcurrencySafe => true;
 
     public JsonElement InputSchema { get; } = ToolSchema.Parse(
@@ -64,6 +66,12 @@ public sealed class WebFetchTool : ITool
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
     {
+        if (!IsAvailable)
+        {
+            yield return new ToolOutput(L10n.Get("tools.offline.disabled", Name), IsError: true);
+            yield break;
+        }
+
         var inp = input.Deserialize<Input>();
         if (inp is null || string.IsNullOrWhiteSpace(inp.Url))
         {

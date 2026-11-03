@@ -69,6 +69,9 @@ public sealed record Settings
     /// <summary>비-읽기전용 툴 실행 전 workspace 체크포인트 자동 생성 (끄면 git 오버헤드 제거).</summary>
     public bool Checkpoints { get; init; } = true;
 
+    /// <summary>오프라인 모드 — 인터넷이 필요한 툴을 숨기고 거절한다(<c>NetworkPolicy</c>). 망분리 사내 배포용.</summary>
+    public bool Offline { get; init; }
+
     /// <summary>
     /// 워크스페이스(작업 디렉토리) 밖의 절대경로 Write/Edit 는 권한 모드(auto/auto-act)와 무관하게
     /// 항상 확인받는다. 비대화형이면 거부. 실수로 시스템/홈 파일을 건드리는 사고 방지.

@@ -24,8 +24,8 @@ namespace MoaiCode.Tools.Media;
 /// </summary>
 public sealed class ImageCreateTool : ITool, IConditionalTool
 {
-    /// <summary>z.ai 일반 API 기능이라 Z.ai 프로바이더에서만 보인다.</summary>
-    public bool IsAvailable => ActiveProvider.Current.Kind == ProviderKind.Zai;
+    /// <summary>z.ai 일반 API 기능이라 Z.ai 프로바이더에서만 보인다. 오프라인이면 숨긴다.</summary>
+    public bool IsAvailable => !NetworkPolicy.Offline && ActiveProvider.Current.Kind == ProviderKind.Zai;
 
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(120);
 
@@ -72,6 +72,12 @@ public sealed class ImageCreateTool : ITool, IConditionalTool
     public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
         JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
     {
+        if (NetworkPolicy.Offline)
+        {
+            yield return new ToolOutput(L10n.Get("tools.offline.disabled", Name), IsError: true);
+            yield break;
+        }
+
         var inp = input.Deserialize<Input>();
         if (inp is null || string.IsNullOrWhiteSpace(inp.Prompt))
         {

@@ -146,6 +146,10 @@ public static class SettingsLoader
                 ConfineToWorkspace = allowSensitive
                     ? GetBool(root, "confineToWorkspace", "confine_to_workspace", "confine") ?? baseline.ConfineToWorkspace
                     : baseline.ConfineToWorkspace,
+                // 오프라인도 운영 정책이다 — 저장소가 몰래 끄지 못하게 사용자 레이어에서만 읽는다.
+                Offline = allowSensitive
+                    ? GetBool(root, "offline") ?? baseline.Offline
+                    : baseline.Offline,
                 ContextWindowTokens = GetInt(root, "contextWindow", "context_window", "contextWindowTokens")
                                       ?? baseline.ContextWindowTokens,
                 // 규칙은 사용자 레이어에서만 수용한다. 프로젝트 레이어는 권한 승격 방지.
@@ -197,6 +201,7 @@ public static class SettingsLoader
         var autoTest = ParseBool(Environment.GetEnvironmentVariable("MOAI_AUTO_TEST"));
         var checkpoints = ParseBool(Environment.GetEnvironmentVariable("MOAI_CHECKPOINTS"));
         var confine = ParseBool(Environment.GetEnvironmentVariable("MOAI_CONFINE_WORKSPACE"));
+        var offline = ParseBool(Environment.GetEnvironmentVariable("MOAI_OFFLINE"));
         var maxTurns = ParseInt(Environment.GetEnvironmentVariable("MOAI_MAX_TURNS"));
 
         return baseline with
@@ -212,6 +217,7 @@ public static class SettingsLoader
             AutoTest = autoTest ?? baseline.AutoTest,
             Checkpoints = checkpoints ?? baseline.Checkpoints,
             ConfineToWorkspace = confine ?? baseline.ConfineToWorkspace,
+            Offline = offline ?? baseline.Offline,
             MaxTurns = maxTurns ?? baseline.MaxTurns,
         };
     }

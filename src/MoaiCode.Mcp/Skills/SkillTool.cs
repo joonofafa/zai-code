@@ -68,7 +68,25 @@ public sealed class SkillTool : ITool
             yield break;
         }
 
-        yield return new ToolOutput(skill.Body);
+        yield return new ToolOutput(BodyWithBaseDirectory(skill));
+    }
+
+    /// <summary>
+    /// 폴더형 스킬({name}/SKILL.md)은 본문이 references/·scripts/ 같은 옆 파일을 상대 경로로 가리킨다 —
+    /// 모델이 그 파일을 찾을 수 있게 스킬 폴더의 절대 경로를 앞에 붙인다(Claude Code 와 같은 방식).
+    /// 단일 파일 스킬({name}.md)은 옆 파일이 없으므로 본문 그대로.
+    /// </summary>
+    internal static string BodyWithBaseDirectory(Skill skill)
+    {
+        if (!string.Equals(Path.GetFileName(skill.Path), "SKILL.md", StringComparison.OrdinalIgnoreCase))
+        {
+            return skill.Body;
+        }
+
+        var dir = Path.GetDirectoryName(Path.GetFullPath(skill.Path));
+        return $"Base directory for this skill: {dir}\n" +
+               "(Relative paths in this skill, such as references/ or scripts/, are inside that directory.)\n\n" +
+               skill.Body;
     }
 
     private static JsonElement Parse(string json)

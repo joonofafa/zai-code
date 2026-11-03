@@ -7,6 +7,8 @@ namespace MoaiCode.Core.Tests;
 
 // WebSearch(z.ai 내장 web_search): 응답 최상위 web_search 배열을 결과 목록으로 렌더한다.
 // 스키마가 바뀌거나 필드가 비어도 죽지 않아야 한다(검색이 세션을 막으면 안 된다).
+// 오프라인 모드(NetworkPolicy)·ActiveProvider 전역 상태를 읽는다 — 그 값을 바꾸는 테스트와 동시에 돌지 않게.
+[Collection("EnvMutating")]
 public sealed class WebSearchRenderTests
 {
     private static async Task<(string Text, bool Error)> RunAsync(object input)

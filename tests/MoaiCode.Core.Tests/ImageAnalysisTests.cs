@@ -6,6 +6,8 @@ using Xunit;
 
 // ImageAnalysis(z.ai 비전 모델): 입력 검증·응답 파싱·data URL 조립.
 // 실제 API 호출은 포함하지 않는다(오프라인 테스트).
+// 오프라인 모드(NetworkPolicy)·ActiveProvider 전역 상태를 읽는다 — 그 값을 바꾸는 테스트와 동시에 돌지 않게.
+[Collection("EnvMutating")]
 public sealed class ImageAnalysisTests
 {
     private static async Task<(string Text, bool Error)> RunAsync(object input)

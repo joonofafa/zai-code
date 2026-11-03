@@ -105,7 +105,7 @@
           CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
   </ItemGroup>
   <ItemGroup>
-    <!-- 기본 번들 스킬(자체 저작 7종 + Apache-2.0 공개 스킬 2종). 첫 실행 시 ~/.mate/bundled-skills 로 추출. -->
+    <!-- 기본 번들 스킬(자체 저작 16종 + Apache-2.0 공개 스킬 2종). 첫 실행 시 ~/.mate/bundled-skills 로 추출. -->
     <EmbeddedResource Include="Resources/bundled-skills.zip" LogicalName="bundled-skills.zip" />
   </ItemGroup>
   <ItemGroup>

@@ -13,6 +13,22 @@
 - `skill-creator` — 스킬 작성·개선·평가 루프, MATE Builder 스킬 메커니즘 기준 (v9)
 - `cross-layer-change-review` — 커밋/PR/범위의 계층 간 배선 누락 중심 교차 검토 (v10, 사용자 로컬 스킬을 자체 저작 재집필 후 등재)
 
+### 사내 인프라·오프라인 스킬 (v12, 2026-11-03)
+망분리 사내망(외부 연결 없음)에서 인프라·코딩 에이전트로 쓰기 위한 9종. 모두 자체 저작(외부 원문 없음)이고,
+본문에 인터넷 주소·다운로드 지시가 없다(`BundledSkillsTests` 가 검사). 참고표는 각 스킬의 `references/`, 보조 스크립트는
+`scripts/` 에 있고, Skill 툴이 본문 앞에 스킬 폴더 경로를 붙여 모델이 찾아 읽는다.
+- `man-page-lookup` — man·--help·info·/usr/share/doc 등 설치된 문서로 명령·설정 확인
+- `oracle-to-postgresql` — Oracle SQL·DDL·PL/SQL → PostgreSQL(eXperDB 등) 변환과 결과 동일성 검증
+- `postgresql-diagnostics` — 세션·잠금·연결·복제·vacuum·용량 진단(읽기 전용 쿼리 모음)
+- `openshift-diagnostics` — oc/kubectl 로 파드 상태별 원인 좁히기, SCC·Route·GPU 함정
+- `k8s-manifest-review` — 배포 YAML 검토(자원·probe·자동 확장·장애 격리·보안·내부 레지스트리)
+- `vllm-serving` — vLLM 서빙 크기 계산·플래그·오프라인 적재·OpenShift AI·에이전트용 tool 호출 설정
+- `financial-secure-code-review` — 카드번호·CVV·주민번호·자격증명·로그 노출·MyBatis `${}`·TLS·외부 전송 점검(`scripts/find_pan.py` Luhn 검사, MIT)
+- `external-code-intake` — 외부망에서 들여오는 코드·패키지·스킬 반입 검토(라이선스는 MIT/Apache 만 기본 수용)
+- `change-and-incident-runbook` — 변경 계획(사전 점검·단계·중단 조건·롤백)과 장애 대응·보고서 양식
+
+> 오프라인 모드(`settings.json` 의 `"offline": true` 또는 `MOAI_OFFLINE=1`)에서는 `mcp-builder` 가 지시하는 웹 문서 가져오기가 동작하지 않는다.
+
 > `cross-layer-change-review`는 `~/.claude/skills/`에 동일 이름의 사용자 로컬 원본(한글)이 있어
 > 로컬 쪽이 우선 적용된다(user > bundled). 번들본은 영문 자체 저작 스냅숏이며, 로컬 원본을
 > 유지하는 동안 번들본 수정은 이 머신에서는 즉시 반영되지 않는다.
@@ -41,7 +57,7 @@
 
 ## 스킬 추가/수정 후 zip 재생성
 1. 이 폴더 아래 `<skill-name>/SKILL.md` 를 추가·수정한다.
-2. zip 에 반영한다(기존 항목은 유지, 신규만 추가):
+2. zip 에 반영한다(기존 항목은 유지, 신규만 추가 — `references/`·`scripts/` 같은 하위 파일이 있으면 아래 스크립트 대신 폴더째 넣을 것):
    ```bash
    cd src/MoaiCode.Cli/Resources
    python3 - <<'PY'

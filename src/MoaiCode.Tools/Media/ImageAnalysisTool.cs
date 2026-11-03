@@ -183,6 +183,11 @@ public sealed class ImageAnalysisTool : ITool, IConditionalTool
         if (Uri.TryCreate(source, UriKind.Absolute, out var uri)
             && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
         {
+            if (NetworkPolicy.Offline)
+            {
+                throw new IOException(L10n.Get("tools.offline.imageUrl"));
+            }
+
             return await DownloadAsync(uri, ct).ConfigureAwait(false);
         }
 

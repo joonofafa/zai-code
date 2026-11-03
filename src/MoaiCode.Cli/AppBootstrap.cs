@@ -58,6 +58,7 @@ public static class AppBootstrap
         L10n.SetLanguage(settings.Language);
         TuiTheme.Apply(settings.Theme);   // 시맨틱 테마 적용(6종, invalid→carbon-dark 폴백)
         ApplySettingsToEnv(settings);
+        NetworkPolicy.Offline = settings.Offline;   // 인터넷이 필요한 툴을 숨긴다(망분리 사내 배포)
 
         // 2) 프로바이더: /provider·/model 저장값 → 환경변수 → 기본값. 키는 credentials.json 우선.
         ResolveCredentials();
@@ -323,7 +324,9 @@ public static class AppBootstrap
             MemoryIndex = ProjectMemory.LoadIndex(cwd),
             RepoMap = RepoMapBuilder.Build(cwd, settings.RepoMapTokens),
             OutputStyle = settings.OutputStyle,
-            ToolNames = tools.Select(t => t.Name).ToList(),
+            // 프로바이더·오프라인 때문에 숨긴 툴은 목록에도 넣지 않는다(엔진도 요청마다 같은 기준으로 거른다).
+            ToolNames = tools.Where(t => t is not IConditionalTool { IsAvailable: false }).Select(t => t.Name).ToList(),
+            Offline = NetworkPolicy.Offline,
         };
     }
 

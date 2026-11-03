@@ -18,4 +18,7 @@ public sealed record PromptContext
     public string? OutputStyle { get; init; }
     public IReadOnlyList<string> AdditionalDirectories { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> ToolNames { get; init; } = Array.Empty<string>();
+
+    /// <summary>오프라인 모드(<see cref="NetworkPolicy"/>) — 환경 절에 인터넷이 없다고 적는다.</summary>
+    public bool Offline { get; init; }
 }
