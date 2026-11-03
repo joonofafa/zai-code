@@ -166,6 +166,9 @@ public sealed class BackgroundShellRegistry
     private readonly int _maxChars;
     private int _seq;
 
+    // 신호 등록은 객체가 살아 있어야 유지된다(수거되면 해제) — 필드로 붙잡아 둔다.
+    private readonly List<PosixSignalRegistration> _signals = new();
+
     /// <summary>
     /// 셸 완료(정상/킬 포함) 시 UI 스레드에 전달되는 콜백. null 이면 통보 없음.
     /// ReplApp 이 구독해 "백그라운드 완료 → 자동 재개 터"을 구동한다.
@@ -176,6 +179,24 @@ public sealed class BackgroundShellRegistry
     {
         _maxChars = maxChars;
         AppDomain.CurrentDomain.ProcessExit += (_, _) => KillAll();
+
+        // 처리되지 않은 예외로 죽을 때도 ProcessExit 는 오지 않는다. tmux 창을 닫으면 신호 없이 닫힌 터미널에
+        // 쓰다가 EIO(IOException)로 이렇게 죽었다.
+        AppDomain.CurrentDomain.UnhandledException += (_, _) => KillAll();
+
+        // 창을 닫거나(SIGHUP) kill 로 끝낼 때(SIGTERM·SIGQUIT)는 ProcessExit 가 오지 않는다. 셸은 setsid 로 떠서
+        // 터미널 hangup 도 받지 못하므로 그대로 고아가 됐다. 여기서 죽이고 기본 동작(종료)은 그대로 둔다.
+        foreach (var sig in new[] { PosixSignal.SIGHUP, PosixSignal.SIGTERM, PosixSignal.SIGQUIT })
+        {
+            try
+            {
+                _signals.Add(PosixSignalRegistration.Create(sig, _ => KillAll()));
+            }
+            catch (PlatformNotSupportedException)
+            {
+                // Windows 는 SIGHUP·SIGQUIT 이 없다.
+            }
+        }
     }
 
     public BackgroundShell Start(string command, string workingDirectory)

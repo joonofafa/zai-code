@@ -299,16 +299,28 @@ public sealed class BashTool : ITool
     // 그룹 킬에 실패했을 때의 폴백으로 /proc children 순회 킬을 유지한다.
     internal static void KillProcessTree(int processId, CancellationTokenSource cts)
     {
-        try
+        // Unix 는 그룹 SIGKILL 을 Cancel 보다 먼저 보낸다. Cancel 은 CliWrap 콜백을 동기로 돌려 늦게 끝날 수 있는데,
+        // 창을 닫을 때(SIGHUP) 그 사이 메인 스레드가 닫힌 터미널에 쓰다 죽어 그룹 킬까지 가지 못하고 셸이 고아로 남았다.
+        if (processId > 0 && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            cts.Cancel();   // CliWrap 이 메인 프로세스를 kill 하게 한다.
-        }
-        catch
-        {
-            // best effort
+            try
+            {
+                // 새 세션 리더이므로 PID == PGID. 부정적 kill(-PGID, 0) 로 그룹 존재 확인 후 SIGKILL.
+                if (UnixSignal.kill(-processId, 0) == 0 && UnixSignal.kill(-processId, UnixSignal.SIGKILL) == 0)
+                {
+                    CancelQuietly(cts);
+                    return;
+                }
+            }
+            catch
+            {
+                // best effort — 아래 폴백으로 간다.
+            }
         }
 
-        // PID 를 모르면(0) 여기서 멈춘다 — kill(-0) 은 '호출자 자신의 프로세스 그룹' 이라 zaiCode 까지 죽인다.
+        CancelQuietly(cts);   // CliWrap 이 메인 프로세스를 kill 하게 한다.
+
+        // PID 를 모르면(0) 여기서 멈춘다 — kill(-0) 은 '호출자 자신의 프로세스 그룹' 이라 에이전트 자신까지 죽인다.
         if (processId <= 0)
         {
             return;
@@ -325,13 +337,6 @@ public sealed class BashTool : ITool
                 });
                 return;
             }
-
-            // 새 세션 리더이므로 PID == PGID. 부정적 kill(-PGID, 0) 로 그룹 존재 확인 후 SIGKILL.
-            if (UnixSignal.kill(-processId, 0) == 0)
-            {
-                UnixSignal.kill(-processId, UnixSignal.SIGKILL);
-                return;
-            }
         }
         catch
         {
@@ -341,6 +346,18 @@ public sealed class BashTool : ITool
         try
         {
             KillSelfAndDescendants(processId);
+        }
+        catch
+        {
+            // best effort
+        }
+    }
+
+    private static void CancelQuietly(CancellationTokenSource cts)
+    {
+        try
+        {
+            cts.Cancel();
         }
         catch
         {

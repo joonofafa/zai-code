@@ -204,4 +204,58 @@ public class BackgroundShellTests
         Assert.Equal(shell.Id, note!.Id);
         Assert.Equal(BackgroundShellStatus.Killed, note.Status);
     }
+
+    [Fact]
+    public void Group_is_killed_before_the_cancel_callbacks_run()
+    {
+        // 창을 닫으면(SIGHUP) 종료 처리 중 CliWrap 취소 콜백이 늦어지는 사이 프로세스가 죽어, 그룹 SIGKILL 까지
+        // 가지 못하고 백그라운드 셸이 고아로 남았다. 이제 그룹을 먼저 죽인다 — 콜백이 돌 때는 이미 없어야 한다.
+        if (OperatingSystem.IsWindows() || !File.Exists("/usr/bin/setsid"))
+        {
+            return;
+        }
+
+        using var p = System.Diagnostics.Process.Start("/usr/bin/setsid", "sleep 30")!;
+        var pid = p.Id;
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (UnixSignal.kill(-pid, 0) != 0 && DateTime.UtcNow < deadline)
+        {
+            Thread.Sleep(10);   // setsid 가 그룹을 만들 때까지
+        }
+
+        Assert.Equal(0, UnixSignal.kill(-pid, 0));
+
+        using var cts = new CancellationTokenSource();
+        bool? aliveAtCancel = null;
+        // 콜백 안에서 1초까지 기다려 본다. 그룹 킬이 먼저 나갔으면 곧 죽는다(좀비 'Z' 도 죽은 것 — 부모가 거두기 전까지
+        // kill(-pid, 0) 은 성공하므로 그것으로는 판정하지 않는다). 콜백이 먼저면 킬이 아직 안 나가 1초 내내 살아 있다.
+        cts.Token.Register(() =>
+        {
+            var until = DateTime.UtcNow.AddSeconds(1);
+            while (IsAlive(pid) && DateTime.UtcNow < until)
+            {
+                Thread.Sleep(10);
+            }
+
+            aliveAtCancel = IsAlive(pid);
+        });
+
+        BashTool.KillProcessTree(pid, cts);
+
+        Assert.False(aliveAtCancel);
+        Assert.True(p.WaitForExit(5_000));
+    }
+
+    private static bool IsAlive(int pid)
+    {
+        try
+        {
+            var stat = File.ReadAllText($"/proc/{pid}/stat");
+            return stat[(stat.LastIndexOf(')') + 2)..][0] != 'Z';
+        }
+        catch (IOException)
+        {
+            return false;   // 이미 거둬짐
+        }
+    }
 }
