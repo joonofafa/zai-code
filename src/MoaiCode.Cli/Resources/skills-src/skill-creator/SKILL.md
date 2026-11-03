@@ -1,7 +1,7 @@
 ---
 name: skill-creator
 description: Create new skills, modify and improve existing skills, and measure skill performance. Use when users want to create a skill from scratch, edit, or optimize an existing skill, run evals to test a skill, benchmark skill performance with variance analysis, or optimize a skill's description for better triggering accuracy.
-license: zaiCode original — principles referenced from anthropics/skills skill-creator (Apache-2.0); body self-authored (description line retained verbatim to preserve trigger behavior)
+license: MATE Builder original — principles referenced from anthropics/skills skill-creator (Apache-2.0); body self-authored (description line retained verbatim to preserve trigger behavior)
 ---
 
 # Skill creator
@@ -11,7 +11,7 @@ lifecycle: capture what the user wants, write the SKILL.md, verify it works, and
 it whenever the user asks to create, edit, optimize, or test a skill — even if they just say
 "turn this into a skill".
 
-## 0. zaiCode skill mechanics — read this first
+## 0. MATE Builder skill mechanics — read this first
 
 Your rewritten skill must match how this product actually loads skills. Verify facts against
 the source (`MoaiCode.Mcp/Skills/`) when in doubt.
@@ -25,7 +25,7 @@ the source (`MoaiCode.Mcp/Skills/`) when in doubt.
   ---
   ```
   A single loose `~/.claude/skills/my-skill.md` file also works, but prefer the directory form.
-- **Discovery order** — `<workspace>/.claude/skills` → `~/.claude/skills` → `~/.zaicode/skills`
+- **Discovery order** — `<workspace>/.claude/skills` → `~/.claude/skills` → `~/.mate/skills`
   → plugins → bundled. First hit with the same name wins; a user copy shadows the bundled one.
 - **Triggering** — the model never sees SKILL.md bodies up front. It sees one line per skill,
   `name — description`, inside the `Skill` tool description. It picks a skill and calls
@@ -37,8 +37,8 @@ the source (`MoaiCode.Mcp/Skills/`) when in doubt.
   well under the cap.
 - **Update flow** — pick up edits live with `/skills` (reloads without restart). Bundled skills
   re-extract on version bump.
-- **zaiCode house style** — user-facing strings in English; the agent you run in this workspace
-  is the zaiCode CLI/TUI (no org-server, no GUI). Tailor examples and instructions accordingly.
+- **MATE Builder house style** — user-facing strings in English; the agent you run in this workspace
+  is the MATE Builder CLI/TUI (no org-server, no GUI). Tailor examples and instructions accordingly.
 
 ## 1. Capture intent
 
@@ -84,7 +84,7 @@ Share the draft path with the user when done.
 
 ### Smoke check (always)
 
-1. `zaiCode run "Use the <name> skill to <one test prompt>"` — in a fresh process the skill
+1. `mate run "Use the <name> skill to <one test prompt>"` — in a fresh process the skill
    list is rebuilt, so this tests discovery + triggering + body, end to end.
 2. Read the run transcript: did the model call `Skill(<name>)` at the right moment? Did it
    follow the body?
@@ -97,7 +97,7 @@ Keep it lightweight — this is a script plus discipline, not a framework.
 
 1. Write test prompts the way a real user would type them, with real file names and messy
    context — not abstract one-liners. 2–3 for a first pass.
-2. Run each prompt through a fresh `zaiCode run` process with the skill installed
+2. Run each prompt through a fresh `mate run` process with the skill installed
    (the with-skill condition). To see what the skill actually adds, also run the same
    prompt with the skill disabled (`/skills` toggle, or rename the directory away) —
    that's the baseline.
@@ -121,7 +121,7 @@ should), tune the description:
    similar but *should not* (adjacent domains, keyword overlap, another tool wins). The
    near-misses are the valuable ones — trivially unrelated queries test nothing.
 2. For each query, ask: would this description make me load this skill? Run the genuinely
-   ambiguous ones as `zaiCode run "<query>"` in a scratch directory and observe whether
+   ambiguous ones as `mate run "<query>"` in a scratch directory and observe whether
    `Skill(<name>)` gets called.
 3. Edit the description to cover the misses: add the missed trigger phrases, add
    discriminating detail that wards off the near-misses.
@@ -132,8 +132,8 @@ should), tune the description:
 Where the skill lives decides who sees it:
 
 - **This project only** — `<workspace>/.claude/skills/<name>/SKILL.md`
-- **All projects of this user** — `~/.claude/skills/<name>/SKILL.md` (or `~/.zaicode/skills`)
-- **Shipped inside zaiCode itself** — `src/MoaiCode.Cli/Resources/skills-src/<name>/SKILL.md`
+- **All projects of this user** — `~/.claude/skills/<name>/SKILL.md` (or `~/.mate/skills`)
+- **Shipped inside MATE Builder itself** — `src/MoaiCode.Cli/Resources/skills-src/<name>/SKILL.md`
   + re-zip + bump `BundledSkills.Version` (see `skills-src/README.md`). Only for skills the
   product should ship to every user.
 

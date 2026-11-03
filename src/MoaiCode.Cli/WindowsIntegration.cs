@@ -3,7 +3,7 @@ using MoaiCode.Localization;
 namespace MoaiCode.Cli;
 
 /// <summary>
-/// Windows 셸 통합(설치/제거): 사용자 PATH 등록 + 탐색기 우클릭 "Z.ai Code로 열기".
+/// Windows 셸 통합(설치/제거): 사용자 PATH 등록 + 탐색기 우클릭 "MATE Builder로 열기".
 /// 전부 HKCU 범위라 관리자 권한이 필요 없다. Windows 11 은 새 우클릭 메뉴를 쓰므로 이 항목은
 /// "추가 옵션 표시"(Shift+F10) 안의 클래식 메뉴에 나타난다(기본 메뉴 노출은 MSIX 패키징 필요).
 /// Windows 외 플랫폼에서는 아무 것도 하지 않고 안내만 돌려준다.
@@ -13,8 +13,13 @@ public static class WindowsIntegration
     // 레지스트리 키 이름(제거 시 동일 키를 지운다). 표시 문구와 분리해 언어를 바꿔도 제거가 되게 한다.
     private const string VerbKey = "MoaiCode";
 
-    /// <summary>설치 위치 — %LOCALAPPDATA%\Programs\Z.ai Code. 다운로드 폴더를 지워도 깨지지 않게 복사한다.</summary>
+    /// <summary>설치 위치 — %LOCALAPPDATA%\Programs\MATE Builder. 다운로드 폴더를 지워도 깨지지 않게 복사한다.</summary>
     public static string InstallDir => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "Programs", "MATE Builder");
+
+    // 1.3.x 까지의 설치 위치. PATH 에 남아 있으면 새 판보다 먼저 잡혀 옛 판이 실행되므로 설치·제거 때 PATH 에서 뺀다.
+    private static string LegacyInstallDir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Programs", "Z.ai Code");
 
@@ -58,7 +63,7 @@ public static class WindowsIntegration
             }
 
             var lines = new List<string>();
-            var target = Path.Combine(InstallDir, "moai.exe");
+            var target = Path.Combine(InstallDir, "mate.exe");
 
             // 1) 실행 파일 복사 (이미 설치 위치에서 실행 중이면 건너뜀 — 자기 자신은 덮어쓸 수 없다).
             if (!string.Equals(Path.GetFullPath(exe), Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase))
@@ -73,6 +78,7 @@ public static class WindowsIntegration
             }
 
             // 2) 사용자 PATH 등록 (.NET 이 WM_SETTINGCHANGE 를 브로드캐스트하므로 새 터미널부터 적용).
+            RemoveFromUserPath(LegacyInstallDir);
             var path = Environment.GetEnvironmentVariable("Path", EnvironmentVariableTarget.User) ?? "";
             var already = path.Split(';', StringSplitOptions.RemoveEmptyEntries)
                 .Any(p => string.Equals(p.Trim().TrimEnd('\\'), InstallDir.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase));
@@ -122,19 +128,8 @@ public static class WindowsIntegration
             lines.Add(removed ? L10n.Get("cli.win.verbRemoved") : L10n.Get("cli.win.verbNone"));
 
             // 2) PATH 에서 설치 경로 제거.
-            var path = Environment.GetEnvironmentVariable("Path", EnvironmentVariableTarget.User) ?? "";
-            var parts = path.Split(';', StringSplitOptions.RemoveEmptyEntries).ToList();
-            var kept = parts.Where(p =>
-                !string.Equals(p.Trim().TrimEnd('\\'), InstallDir.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)).ToList();
-            if (kept.Count != parts.Count)
-            {
-                Environment.SetEnvironmentVariable("Path", string.Join(";", kept), EnvironmentVariableTarget.User);
-                lines.Add(L10n.Get("cli.win.pathRemoved"));
-            }
-            else
-            {
-                lines.Add(L10n.Get("cli.win.pathNotFound"));
-            }
+            RemoveFromUserPath(LegacyInstallDir);
+            lines.Add(RemoveFromUserPath(InstallDir) ? L10n.Get("cli.win.pathRemoved") : L10n.Get("cli.win.pathNotFound"));
 
             // 3) 설치 폴더 삭제 — 단, 지금 그 실행 파일로 돌고 있으면 지울 수 없다(윈도우 파일 잠금).
             var exe = Environment.ProcessPath ?? "";
@@ -173,7 +168,23 @@ public static class WindowsIntegration
             "Microsoft", "WindowsApps", "wt.exe");
         return File.Exists(wt)
             ? $"\"{wt}\" -d \"%V\" \"{exePath}\""
-            : $"cmd.exe /c start \"Z.ai Code\" /D \"%V\" \"{exePath}\"";
+            : $"cmd.exe /c start \"MATE Builder\" /D \"%V\" \"{exePath}\"";
+    }
+
+    // 사용자 PATH 에서 dir 항목을 뺀다. 뺐으면 true.
+    private static bool RemoveFromUserPath(string dir)
+    {
+        var path = Environment.GetEnvironmentVariable("Path", EnvironmentVariableTarget.User) ?? "";
+        var parts = path.Split(';', StringSplitOptions.RemoveEmptyEntries).ToList();
+        var kept = parts.Where(p =>
+            !string.Equals(p.Trim().TrimEnd('\\'), dir.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)).ToList();
+        if (kept.Count == parts.Count)
+        {
+            return false;
+        }
+
+        Environment.SetEnvironmentVariable("Path", string.Join(";", kept), EnvironmentVariableTarget.User);
+        return true;
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]

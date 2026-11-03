@@ -11,6 +11,12 @@ using MoaiCode.Tui.Commands;
 // Windows 콘솔을 UTF-8 로 (기본 CP949 에서 ❯·✓·• 가 '?' 로 깨지는 문제). 어떤 출력보다 먼저.
 ConsoleSetup.EnsureUtf8();
 
+// 1.4.0 리브랜딩(Z.ai Code → MATE Builder): 데이터 루트 ~/.zaicode → ~/.mate. 설정을 읽기 전에 옮긴다.
+if (MoaiCode.Core.AppPaths.MigrateLegacyHome())
+{
+    MoaiLog.Info("data root moved from ~/.zaicode to ~/.mate");
+}
+
 // 도움말을 만들기 전에 언어를 확정해야 System.CommandLine 설명도 선택 언어로 생성된다.
 var startupSettings = SettingsLoader.Load(Directory.GetCurrentDirectory());
 L10n.SetLanguage(startupSettings.Language);
@@ -256,7 +262,7 @@ root.SetAction(async (ParseResult pr, CancellationToken ct) =>
     }
 
     var printPrompt = pr.GetValue(printOpt);
-    // `cat prompt | zaiCode -p --output-format json`: 값 없는 -p 는 stdin 을 프롬프트로 읽는다(claude CLI 와 같음).
+    // `cat prompt | mate -p --output-format json`: 값 없는 -p 는 stdin 을 프롬프트로 읽는다(claude CLI 와 같음).
     // 예전엔 REPL 로 빠져 배너가 stdout 에 찍히고 JSON 이 나오지 않은 채 종료 코드 0 이었다.
     if (string.IsNullOrEmpty(printPrompt) && pr.GetResult(printOpt) is not null)
     {

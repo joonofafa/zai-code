@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <AssemblyName>zaiCode</AssemblyName>
+    <AssemblyName>mate</AssemblyName>
     <!-- Z.ai Code 1.2.0 — moai-code 에서 갈라져 나온 z.ai 전용 단일 코딩 에이전트.
          (조직 서버 연동·GUI 제거, WebSearch=Gemini grounding, stream-json 프로토콜)
          1.3.0: 멀티 프로바이더 — /provider 로 Z.ai·OpenAI·Claude·OpenRouter·vLLM 선택(API 키 붙여넣기,
@@ -100,7 +100,7 @@
           CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
   </ItemGroup>
   <ItemGroup>
-    <!-- 기본 번들 스킬(자체 저작 7종 + Apache-2.0 공개 스킬 2종). 첫 실행 시 ~/.zaicode/bundled-skills 로 추출. -->
+    <!-- 기본 번들 스킬(자체 저작 7종 + Apache-2.0 공개 스킬 2종). 첫 실행 시 ~/.mate/bundled-skills 로 추출. -->
     <EmbeddedResource Include="Resources/bundled-skills.zip" LogicalName="bundled-skills.zip" />
   </ItemGroup>
   <ItemGroup>

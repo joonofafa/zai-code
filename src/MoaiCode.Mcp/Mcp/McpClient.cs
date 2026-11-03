@@ -38,7 +38,7 @@ public sealed class McpClient : IAsyncDisposable
         {
             ["protocolVersion"] = ProtocolVersion,
             ["capabilities"] = new JsonObject(),
-            ["clientInfo"] = new JsonObject { ["name"] = "moai-code", ["version"] = ClientVersion },
+            ["clientInfo"] = new JsonObject { ["name"] = "mate-builder", ["version"] = ClientVersion },
         };
 
         await RequestAsync("initialize", p, ct).ConfigureAwait(false);

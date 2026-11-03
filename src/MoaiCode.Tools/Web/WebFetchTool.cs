@@ -123,7 +123,7 @@ public sealed class WebFetchTool : ITool
         Uri uri, int maxLength, CancellationToken ct)
     {
         using var client = ToolHttp.CreateDownloader();
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("MoAI-Code/0.1 (+webfetch)");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("MATE-Builder/0.1 (+webfetch)");
         client.DefaultRequestHeaders.Accept.ParseAdd("text/html,application/xhtml+xml,text/plain,application/json;q=0.9,*/*;q=0.8");
 
         var current = uri;

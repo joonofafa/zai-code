@@ -222,7 +222,7 @@ public sealed class CheckpointStore
         Directory.CreateDirectory(_gitDir);
         await GitAsync("init", ct).ConfigureAwait(false);
         await GitAsync("config user.email moai-code@local", ct).ConfigureAwait(false);
-        await GitAsync("config user.name Z.ai Code", ct).ConfigureAwait(false);
+        await RunGitAsync(["config", "user.name", "MATE Builder"], ct).ConfigureAwait(false);   // 공백 포함 — GitAsync 는 공백으로 쪼갠다
 
         var info = Path.Combine(_gitDir, "info");
         Directory.CreateDirectory(info);

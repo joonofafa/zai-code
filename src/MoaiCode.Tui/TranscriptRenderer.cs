@@ -45,7 +45,7 @@ public static class TranscriptRenderer
                     if (!string.IsNullOrWhiteSpace(text))
                     {
                         AnsiConsole.Write(new Panel(MarkdownRenderer.Render(text))
-                            .Header("[aqua]Z.ai Code[/]")
+                            .Header("[aqua]MATE Builder[/]")
                             .Border(BoxBorder.Rounded)
                             .BorderColor(Color.Grey));
                     }

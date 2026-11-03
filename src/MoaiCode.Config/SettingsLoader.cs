@@ -96,7 +96,7 @@ public static class SettingsLoader
                 // 상속하지 않는다. Claude Code 의 model(예: "opus[1m]")이 새어들어와 게이트웨이 404 를
                 // 내던 문제 방지 — moai 는 ~/.moai + env(+/model) 에서만 모델을 받는다.
                 Model = allowModel ? GetString(root, "model", "model_id") ?? baseline.Model : baseline.Model,
-                // 프로바이더 선택·주소는 키가 실려 나가는 곳을 정한다 — 사용자 레이어(~/.zaicode)에서만 받는다.
+                // 프로바이더 선택·주소는 키가 실려 나가는 곳을 정한다 — 사용자 레이어(~/.mate)에서만 받는다.
                 // 예전 최상위 provider/baseUrl 키(upstream 서버 시절 잔재)는 읽지 않는다.
                 ActiveProvider = allowSensitive && allowModel
                     ? GetString(root, "activeProvider") ?? baseline.ActiveProvider

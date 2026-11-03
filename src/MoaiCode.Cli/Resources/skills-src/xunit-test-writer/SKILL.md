@@ -1,7 +1,7 @@
 ---
 name: xunit-test-writer
 description: Use when asked to write, add, or improve unit tests for C#/.NET code with xUnit — for changed code, a new function, or to reproduce a bug before fixing it.
-license: zaiCode original — authored for the zaiCode workspace; no external content
+license: MATE Builder original — authored for the MATE Builder workspace; no external content
 ---
 
 # Writing xUnit tests (C#/.NET)

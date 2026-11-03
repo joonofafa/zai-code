@@ -1,3 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- 도메인 모델, 에이전트 루프, Tool/Model 추상화. 외부 의존성 없음. -->
+  <ItemGroup>
+    <!-- 데이터 루트 이전(AppPaths.MigrateLegacyHome) 을 임시 홈으로 검증. -->
+    <InternalsVisibleTo Include="MoaiCode.Core.Tests" />
+  </ItemGroup>
 </Project>

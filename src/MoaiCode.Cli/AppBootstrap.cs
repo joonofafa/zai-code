@@ -93,7 +93,7 @@ public static class AppBootstrap
         if (!allowProjectMcp && McpConfigLoader.HasProjectConfig(cwd))
         {
             Console.Error.WriteLine(
-                "zaiCode: project MCP config (.mcp.json) found but not loaded (untrusted). " +
+                "mate: project MCP config (.mcp.json) found but not loaded (untrusted). " +
                 "Set MOAI_ALLOW_PROJECT_MCP=1 to enable it for this project.");
         }
         var mcpConfigs = McpConfigLoader.Discover(cwd, includeProjectScope: allowProjectMcp);

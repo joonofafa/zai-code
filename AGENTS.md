@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This is a C#/.NET 10 solution for the `zaiCode` coding agent. Runtime code is under `src/`: `MoaiCode.Core` contains the agent loop and contracts; `Providers`, `Tools`, and `Tools.Bash` provide models and tools; `Mcp`, `Config`, `Persistence`, `Localization`, and `Tui` provide supporting services and UI; `Cli` is the executable entry point; and `Sdk` contains public client types. Tests are in `tests/` (`Core.Tests`, `OpenXml.Tests`, and Windows-only `Office.Tests`). Use `demo/` for the sample program and `docs/` for design and format notes. Build output in `bin/`, `obj/`, `dist/`, and `publish/` is generated and ignored.
+This is a C#/.NET 10 solution for the MATE Builder (`mate`) coding agent. Runtime code is under `src/`: `MoaiCode.Core` contains the agent loop and contracts; `Providers`, `Tools`, and `Tools.Bash` provide models and tools; `Mcp`, `Config`, `Persistence`, `Localization`, and `Tui` provide supporting services and UI; `Cli` is the executable entry point; and `Sdk` contains public client types. Tests are in `tests/` (`Core.Tests`, `OpenXml.Tests`, and Windows-only `Office.Tests`). Use `demo/` for the sample program and `docs/` for design and format notes. Build output in `bin/`, `obj/`, `dist/`, and `publish/` is generated and ignored.
 
 ## Build, Test, and Development Commands
 
@@ -14,8 +14,8 @@ dotnet test tests/MoaiCode.Core.Tests
 dotnet test tests/MoaiCode.OpenXml.Tests
 dotnet run --project src/MoaiCode.Cli
 dotnet run --project src/MoaiCode.Cli -- run "prompt"
-./publish-linux.sh                 # dist/linux-x64/zaiCode
-./publish-win.sh win-x64            # dist/win-x64/zaiCode.exe
+./publish-linux.sh                 # dist/linux-x64/mate
+./publish-win.sh win-x64            # dist/win-x64/mate.exe
 ```
 
 Run `dotnet test MoaiCode.sln` for the full suite when on Windows; `Office.Tests` targets `net10.0-windows` and requires Windows/Office-specific validation where applicable. Use `dotnet test ... --filter "FullyQualifiedName~TestName"` for focused runs.

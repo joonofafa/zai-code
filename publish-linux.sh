@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Linux용 self-contained 단일 바이너리 게시 (런타임 미설치 환경에서 그대로 실행).
-# 결과물은 dist/<rid>/zaiCode 단일 파일 — .NET 런타임 내장, pdb 미생성.
+# 결과물은 dist/<rid>/mate 단일 파일 — .NET 런타임 내장, pdb 미생성.
 #
 # 안전장치: 기존 게시본은 '새 빌드가 성공한 뒤에만' 교체한다. 예전엔 시작하자마자 dist 를 지워서,
 # dotnet 이 PATH 에 없어 빌드가 실패하면 멀쩡한 바이너리만 사라졌다(여러 번 당함).
@@ -52,18 +52,18 @@ dotnet publish src/MoaiCode.Cli/MoaiCode.Cli.csproj \
   -o "${TMP}"
 
 # 산출물 검증 — 빈 디렉토리/깨진 빌드를 기존본과 바꿔치지 않는다.
-if [ ! -s "${TMP}/zaiCode" ]; then
-  echo "❌ 빌드 산출물이 없습니다(${TMP}/zaiCode). 기존 게시본을 유지합니다." >&2
+if [ ! -s "${TMP}/mate" ]; then
+  echo "❌ 빌드 산출물이 없습니다(${TMP}/mate). 기존 게시본을 유지합니다." >&2
   exit 1
 fi
 
 # SHA-256 해시 생성 (무결성 검증용). sha256sum 표준 포맷: "<hash>  <file>".
-( cd "${TMP}" && sha256sum zaiCode > zaiCode.sha256 )
+( cd "${TMP}" && sha256sum mate > mate.sha256 )
 
 # 여기까지 왔으면 성공 — 교체한다. 단, 실행 중인 옛 세션을 깨뜨리지 않게 inode 를 보존한다:
 # 단일 파일 바이너리는 어셈블리를 lazy 로드하므로, 실행 파일을 지우고 새로 놓으면 이미 떠 있는
 # 프로세스의 이후 어셈블리 로드(예: 첫 Bash 호출 시 CliWrap)가 'Could not load file or assembly'
-# 로 실패한다(세션 내 자가복구 불가). 따라서 버전 디렉터리에 보관하고 zaiCode 는 심볼릭 링크로
+# 로 실패한다(세션 내 자가복구 불가). 따라서 버전 디렉터리에 보관하고 mate 는 심볼릭 링크로
 # 가리킨다 — 링크 교체는 옛 inode 를 건드리지 않아 옛 세션이 계속 옛 파일을 읽는다.
 STAMP="$(date +%Y%m%d-%H%M%S)"
 VERSIONED="dist/versions/${RID}/${STAMP}-$$"
@@ -71,9 +71,9 @@ mkdir -p "$(dirname "${VERSIONED}")"
 rm -rf "${OUT}"   # 옛 링크/디렉터리 제거(있으면)
 mkdir -p "${OUT}"
 mv "${TMP}" "${VERSIONED}"
-# 링크는 ${OUT}/zaiCode 파일이어야 런처 경로(dist/<rid>/zaiCode)가 유지된다. 상대경로는
+# 링크는 ${OUT}/mate 파일이어야 런처 경로(dist/<rid>/mate)가 유지된다. 상대경로는
 # 링크 위치(dist/<rid>/) 기준으로 해석되므로 ../ 로 dist/versions 를 가리킨다.
-ln -s "../versions/${RID}/${STAMP}-$$/zaiCode" "${OUT}/zaiCode"
+ln -s "../versions/${RID}/${STAMP}-$$/mate" "${OUT}/mate"
 # 제3자 고지도 같은 자리에 둔다 — 배포본을 dist/<rid>/ 에서 복사해 가므로 함께 보여야 한다.
 ln -s "../versions/${RID}/${STAMP}-$$/THIRD_PARTY_NOTICES.md" "${OUT}/THIRD_PARTY_NOTICES.md"
 
@@ -81,13 +81,13 @@ ln -s "../versions/${RID}/${STAMP}-$$/THIRD_PARTY_NOTICES.md" "${OUT}/THIRD_PART
 ls -1dt "$(dirname "${VERSIONED}")"/[0-9]*-* 2>/dev/null | tail -n +6 | xargs -r rm -rf
 
 # 검증: 링크가 실제 실행 파일을 가리키는지.
-if [ ! -x "${OUT}/zaiCode" ]; then
-  echo "❌ 게시 검증 실패: ${OUT}/zaiCode 가 실행 파일이 아닙니다." >&2
+if [ ! -x "${OUT}/mate" ]; then
+  echo "❌ 게시 검증 실패: ${OUT}/mate 가 실행 파일이 아닙니다." >&2
   exit 1
 fi
 
 echo ""
-echo "✅ 게시 완료: ${OUT}/zaiCode -> versions/${RID}/${STAMP}-$$/zaiCode"
-echo "   SHA-256: $(cut -d' ' -f1 "${VERSIONED}/zaiCode.sha256")"
-echo "   → 실행 파일과 THIRD_PARTY_NOTICES.md 를 함께 복사하세요(제3자 라이선스 고지 — 배포 시 동봉 필수). 런타임 설치 없이 실행됩니다. (검증: versions 폴더에서 sha256sum -c zaiCode.sha256)"
+echo "✅ 게시 완료: ${OUT}/mate -> versions/${RID}/${STAMP}-$$/mate"
+echo "   SHA-256: $(cut -d' ' -f1 "${VERSIONED}/mate.sha256")"
+echo "   → 실행 파일과 THIRD_PARTY_NOTICES.md 를 함께 복사하세요(제3자 라이선스 고지 — 배포 시 동봉 필수). 런타임 설치 없이 실행됩니다. (검증: versions 폴더에서 sha256sum -c mate.sha256)"
 echo "   ⚠ 심볼릭 링크 교체 방식이라 기존 세션도 계속 동작하지만, 새 기능은 재시작해야 씁니다."

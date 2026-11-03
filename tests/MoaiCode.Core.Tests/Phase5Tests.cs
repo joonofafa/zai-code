@@ -125,7 +125,7 @@ public class SettingsLoaderTests
         Assert.Equal(30, s1.SessionRetainDays);
         Assert.NotEqual(0, s1.SessionRetainCount);
 
-        // 사용자 레이어(~/.zaicode)는 자기 설정이므로 여전히 바꿀 수 있다.
+        // 사용자 레이어(~/.mate)는 자기 설정이므로 여전히 바꿀 수 있다.
         var s2 = SettingsLoader.ApplyJson(Settings.Default, hostile, allowSensitive: true, allowAutomation: true, allowPermissionRules: true);
         Assert.False(s2.ConfineToWorkspace);
         Assert.False(s2.Checkpoints);

@@ -107,7 +107,7 @@ public sealed class ReplApp
     {
         // 시그니처 배너: 그라데이션 ASCII (Banner.Render)
         Banner.Render();
-        AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Accent)}]Z.ai Code — Coding Agent (V {Banner.Version()})[/]");
+        AnsiConsole.MarkupLine($"[{TuiTheme.Mark(TuiTheme.Role.Accent)}]MATE Builder — Coding Agent (V {Banner.Version()})[/]");
         // Build identity (git SHA + build time, or a "stale binary" flag when running a replaced binary).
         AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]{Markup.Escape(Banner.VersionString())}[/]");
         AnsiConsole.MarkupLine($"[{TuiTheme.Dim}]{Markup.Escape(L10n.Get("repl.help"))}[/]");
@@ -1190,7 +1190,7 @@ public sealed class ReplApp
             if (!string.IsNullOrWhiteSpace(cleanText))
             {
                 _producedOutputInTurn = true;
-                AnsiConsole.Markup("[aqua]Z.ai Code[/] ");
+                AnsiConsole.Markup("[aqua]MATE Builder[/] ");
                 AnsiConsole.Markup(Markup.Escape(cleanText));
                 AnsiConsole.WriteLine();
             }
@@ -1269,7 +1269,7 @@ public sealed class ReplApp
     // 완료 후: Markdig → Spectre 마크다운 렌더.
     private static Panel BuildRenderedPanel(string markdown)
         => new Panel(MarkdownRenderer.Render(markdown))
-            .Header("[aqua]Z.ai Code[/]")
+            .Header("[aqua]MATE Builder[/]")
             .Border(BoxBorder.Rounded)
             .BorderColor(Color.Grey);
 

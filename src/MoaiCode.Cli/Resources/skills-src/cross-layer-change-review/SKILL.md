@@ -1,7 +1,7 @@
 ---
 name: cross-layer-change-review
 description: Review commits, pull requests, or commit ranges for correctness, regressions, security, and incomplete cross-layer wiring. Use when reviewing feature work, bug fixes, refactors, UI/API changes, authentication, configuration, database, LLM/tool, or multi-platform changes.
-license: zaiCode original — authored for the zaiCode workspace; no external content
+license: MATE Builder original — authored for the MATE Builder workspace; no external content
 ---
 
 # Cross-layer change review

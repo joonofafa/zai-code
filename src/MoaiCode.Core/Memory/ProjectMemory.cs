@@ -4,7 +4,7 @@ namespace MoaiCode.Core.Memory;
 
 /// <summary>
 /// 프로젝트별 저장소 — 세션 간에 유지되는 '배운 사실'과 대화 세션을 cwd 단위로 갈라 담는다.
-/// 위치: ~/.zaicode/projects/&lt;cwd-slug&gt;/{memory,sessions}/ (저장소 밖 — 커밋되지 않음).
+/// 위치: ~/.mate/projects/&lt;cwd-slug&gt;/{memory,sessions}/ (저장소 밖 — 커밋되지 않음).
 /// 키는 **cwd 절대경로**를 percent-encoding 한 슬러그다(PathSlug 참조). git 탐색을 쓰지 않으므로
 /// $HOME 이 git repo 여도 홈 아래 전체가 한 슬러그로 뭉개지지 않는다.
 /// 각 사실은 frontmatter + 본문의 단일 .md 파일이고, MEMORY.md 인덱스는 매 세션 시스템 프롬프트에 주입된다.
@@ -20,7 +20,7 @@ public static class ProjectMemory
     /// <summary>이 프로젝트(cwd)의 세션 디렉터리 절대경로. /resume 가 현재 프로젝트만 보게 한다.</summary>
     public static string SessionsDir(string cwd) => Path.Combine(ProjectDir(cwd), "sessions");
 
-    /// <summary>~/.zaicode/projects/&lt;slug&gt; — memory/ 와 sessions/ 의 공통 부모.</summary>
+    /// <summary>~/.mate/projects/&lt;slug&gt; — memory/ 와 sessions/ 의 공통 부모.</summary>
     private static string ProjectDir(string cwd)
     {
         var dir = AppPaths.Combine("projects", PathSlug(cwd));

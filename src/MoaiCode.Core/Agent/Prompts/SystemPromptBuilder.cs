@@ -41,7 +41,7 @@ public static class SystemPromptBuilder
     }
 
     private static string Intro() =>
-        "You are Z.ai Code, an interactive agent that helps users with software engineering tasks. " +
+        "You are MATE Builder, an interactive agent that helps users with software engineering tasks. " +
         "Use the instructions below and the tools available to you to assist the user.\n\n" +
         CyberRiskInstruction + "\n" +
         "IMPORTANT: You must NEVER generate or guess URLs for the user unless you are confident that " +

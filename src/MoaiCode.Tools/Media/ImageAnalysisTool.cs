@@ -403,7 +403,7 @@ public sealed class ImageAnalysisTool : ITool, IConditionalTool
         timeoutCts.CancelAfter(DownloadTimeout);
 
         using var client = ToolHttp.CreateDownloader();
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("MoAI-Code/0.1 (+imagefetch)");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("MATE-Builder/0.1 (+imagefetch)");
         client.DefaultRequestHeaders.Accept.ParseAdd("image/*,*/*;q=0.8");
 
         var current = uri;

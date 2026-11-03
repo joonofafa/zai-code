@@ -2,13 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-# Zai Code 프로젝트 지침 (moai-code 의 zai 브랜치)
+# MATE Builder 프로젝트 지침 (moai-code 의 zai 브랜치)
 
-Claude Code(OpenClaude 계열 에이전트)를 C#/.NET 10 으로 포팅한 코딩·문서 에이전트. CLI(`zaiCode`) + TUI 가 동일한 코어(`QueryEngine`)를 공유한다. 프로바이더는 Z.ai·OpenAI·Claude·OpenRouter·vLLM 중 `/provider` 로 고른다(아래 "프로바이더"). 솔루션은 제품 13개 + 테스트 3개(xUnit) 프로젝트.
+Claude Code(OpenClaude 계열 에이전트)를 C#/.NET 10 으로 포팅한 코딩·문서 에이전트. CLI(`mate`) + TUI 가 동일한 코어(`QueryEngine`)를 공유한다. 프로바이더는 Z.ai·OpenAI·Claude·OpenRouter·vLLM 중 `/provider` 로 고른다(아래 "프로바이더"). 솔루션은 제품 13개 + 테스트 3개(xUnit) 프로젝트.
 
-**문서 주의**: 루트의 `README.md`·`PROGRESS.md` 는 upstream moai-code(조직 서버·Avalonia GUI·`moai` 바이너리·v1.8.5) 기준이라 **이 브랜치와 안 맞는다** (GUI 프로젝트 없음, `~/.moai` 아닌 `~/.zaicode`). `docs/SERVER_TASK_*.md`·`GUI_*.md`·`HANDOFF_*.md` 도 제거된 조직 서버/GUI 이야기다. 이 브랜치의 진실은 이 파일과 코드.
+**이름 (2026-11-03, 1.4.0)**: 제품 이름은 **MATE Builder**, 실행 파일은 `mate`, 데이터 루트는 `~/.mate` 다(예전 Z.ai Code·`zaiCode`·`~/.zaicode`). 시작할 때 `AppPaths.MigrateLegacyHome` 이 `~/.zaicode` 를 `~/.mate` 로 옮기고 옛 자리에 링크를 남긴다. 사용자 눈에 보이는 이름만 바꿨다 — 네임스페이스·프로젝트(`MoaiCode.*`), 환경변수(`MOAI_*`·`ZAI_API_KEY`), 저장소·폴더 이름은 그대로다.
 
-**이 브랜치(`zai`)는 서버 의존이 없는 단일 코딩 에이전트다.** upstream moai-code 에 있던 조직 서버(open-moai) 연동 — 팀 공유 스킬 동기화, 조직 문서함/RecordDB 툴(`Org*`), 서버 로그인 플로우(`/login`), 서버 임베딩(`EmbeddingClient`) 과 그에 의존하던 RAG 툴, 서버 경유 `WebSearch`, Avalonia GUI — 는 모두 제거했다. **다시 추가하지 말 것.** 기본 프로바이더는 z.ai GLM Coding Plan(`https://api.z.ai/api/coding/paas/v4`)이고, 런처(`../zaiCode`)는 z.ai 키(`ZAI_API_KEY`)만 폴백으로 넣는다(2026-11-01 부터 모델·주소는 넣지 않음).
+**문서 주의**: 루트의 `README.md`·`PROGRESS.md` 는 upstream moai-code(조직 서버·Avalonia GUI·`moai` 바이너리·v1.8.5) 기준이라 **이 브랜치와 안 맞는다** (GUI 프로젝트 없음, `~/.moai` 아닌 `~/.mate`). `docs/SERVER_TASK_*.md`·`GUI_*.md`·`HANDOFF_*.md` 도 제거된 조직 서버/GUI 이야기다. 이 브랜치의 진실은 이 파일과 코드.
+
+**이 브랜치(`zai`)는 서버 의존이 없는 단일 코딩 에이전트다.** upstream moai-code 에 있던 조직 서버(open-moai) 연동 — 팀 공유 스킬 동기화, 조직 문서함/RecordDB 툴(`Org*`), 서버 로그인 플로우(`/login`), 서버 임베딩(`EmbeddingClient`) 과 그에 의존하던 RAG 툴, 서버 경유 `WebSearch`, Avalonia GUI — 는 모두 제거했다. **다시 추가하지 말 것.** 기본 프로바이더는 z.ai GLM Coding Plan(`https://api.z.ai/api/coding/paas/v4`)이고, 런처(`../mate`, 옛 이름 `../zaiCode` 는 이리로 넘기는 별칭)는 z.ai 키(`ZAI_API_KEY`)만 폴백으로 넣는다(2026-11-01 부터 모델·주소는 넣지 않음).
 
 ## 코딩 원칙: 재활용 우선 (DRY)
 
@@ -59,7 +61,7 @@ dotnet run --project src/MoaiCode.Cli -- run "이 저장소 요약"   # 헤드�
 - **CLI**(`MoaiCode.Cli/AppBootstrap.cs`): `BuiltIn` + **`BashTool`** (전체 권한).
 
 **프로바이더 (2026-11-01)** — `/provider` 로 Z.ai·OpenAI·Claude·OpenRouter·vLLM 중 고르고, API 키는 붙여넣기(화면엔 앞 8자만, `SecretPrompt`)로 받는다. 모델 목록 조회로 접속을 확인한 뒤에만 저장한다(실패·취소 시 아무것도 안 바꿈).
-- 저장: 키는 `credentials.json` 에 프로바이더별(`ZAI_API_KEY`·`OPENAI_API_KEY`·`ANTHROPIC_API_KEY`·`OPENROUTER_API_KEY`·`VLLM_API_KEY`), 선택값은 `settings.json` 의 `activeProvider` + `providers.<id>.{model, visionModel, baseUrl(vLLM), contextWindow}`. 이 두 키는 **사용자 레이어(~/.zaicode)에서만** 읽는다(프로젝트 설정이 키를 다른 주소로 보내지 못하게). 예전 최상위 `provider`/`baseUrl`(upstream 서버 잔재)은 읽지 않는다.
+- 저장: 키는 `credentials.json` 에 프로바이더별(`ZAI_API_KEY`·`OPENAI_API_KEY`·`ANTHROPIC_API_KEY`·`OPENROUTER_API_KEY`·`VLLM_API_KEY`), 선택값은 `settings.json` 의 `activeProvider` + `providers.<id>.{model, visionModel, baseUrl(vLLM), contextWindow}`. 이 두 키는 **사용자 레이어(~/.mate)에서만** 읽는다(프로젝트 설정이 키를 다른 주소로 보내지 못하게). 예전 최상위 `provider`/`baseUrl`(upstream 서버 잔재)은 읽지 않는다.
 - 우선순위: `--model` → 저장값 → 환경변수(키 폴백, z.ai 는 `MOAI_MODEL`/`ZAI_MODEL` 도) → 기본값. z.ai 외 프로바이더는 `MOAI_MODEL` 을 보지 않는다(옛 런처의 glm-5.3 이 새지 않게).
 - `/model`: 대화 모델 → 이미지 분석 모델("사용 안 함" = 이미지 분석 툴 숨김) 순으로 고른다. 목록이 30개를 넘으면 검색어로 먼저 거른다(`ModelPicker`).
 - 대화 중 교체는 `SwitchableChatModel` 의 안쪽만 바꾼다(엔진·하위 에이전트·위험 분류기가 같은 인스턴스를 쥠). 컨텍스트 창은 모델 목록이 알려 주면(OpenRouter `context_length`·vLLM `max_model_len`·Claude `max_input_tokens`) 함께 저장하고 `QueryEngine.SetContextWindow` 로 바로 반영, 아니면 z.ai 표 → 프로바이더 기본값(vLLM 32K 등).
@@ -72,15 +74,15 @@ dotnet run --project src/MoaiCode.Cli -- run "이 저장소 요약"   # 헤드�
 
 **로컬 청킹 파이프라인(문서 검색)**: 로컬 청킹(`MoaiCode.Tools.OpenXml` 의 `ChunkBuild`/`TextChunker`) + 로컬 벡터(`.moai-chunks/*.vec` float32 + `vectors.json`, 포맷은 `docs/CHUNK_VEC_FORMAT.md`) + 오프라인 코사인 검색(`ChunkSearch`). **CLI 는 임베딩하지 않는다** — 질의 벡터는 외부 파이프라인이 만들어 넘긴다(z.ai Coding Plan 에 임베딩 모델이 없다).
 
-**로컬라이제이션 — `MoaiCode.Localization`**: **기본(base) 언어는 영어다.** 원칙: 소스 코드의 사용자 노출 문자열 리터럴은 **반드시 영어로 작성**하고(하드코딩 한글 금지), **한국어는 사용자를 위한 번역 레이어**로 `Resources/ko.json` 에 둔다. `en.json` 이 base(진실의 원천), `ko.json` 은 그 번역. 접근은 `L10n.Get(key, args)` (`string.Format(InvariantCulture)`), 임베드 `Resources/en.json`+`ko.json`. 키 규칙 `cli.*`/`slash.*`/`common.*` — **문장을 키로 쓰지 않는다**. 언어 결정: 설정(`language`) → `MOAI_LANGUAGE` env → **기본 `en`**, 폴백 `en`→키. **한국어 사용자는 `language: ko`(설정) 또는 `MOAI_LANGUAGE=ko` 로 명시**한다(한국어권 배포본은 이 설정을 포함). 규칙 상세: `docs/LOCALIZATION.md`. **en/ko 키는 항상 완전 일치시킬 것.** (로그는 이와 별개로 항상 영어 ASCII — 아래 로깅 섹션.) **영어 UI 라벨은 첫 글자 대문자(sentence case)** — 예: "Selected", "No such rule". 단 **명령어 미러(`install:`/`uninstall:`), 프로그램 프리픽스(`zaiCode:`), 괄호 상태(`(none)`), 기술 토큰/경로(`.mcp.json`)** 는 소문자 유지.
+**로컬라이제이션 — `MoaiCode.Localization`**: **기본(base) 언어는 영어다.** 원칙: 소스 코드의 사용자 노출 문자열 리터럴은 **반드시 영어로 작성**하고(하드코딩 한글 금지), **한국어는 사용자를 위한 번역 레이어**로 `Resources/ko.json` 에 둔다. `en.json` 이 base(진실의 원천), `ko.json` 은 그 번역. 접근은 `L10n.Get(key, args)` (`string.Format(InvariantCulture)`), 임베드 `Resources/en.json`+`ko.json`. 키 규칙 `cli.*`/`slash.*`/`common.*` — **문장을 키로 쓰지 않는다**. 언어 결정: 설정(`language`) → `MOAI_LANGUAGE` env → **기본 `en`**, 폴백 `en`→키. **한국어 사용자는 `language: ko`(설정) 또는 `MOAI_LANGUAGE=ko` 로 명시**한다(한국어권 배포본은 이 설정을 포함). 규칙 상세: `docs/LOCALIZATION.md`. **en/ko 키는 항상 완전 일치시킬 것.** (로그는 이와 별개로 항상 영어 ASCII — 아래 로깅 섹션.) **영어 UI 라벨은 첫 글자 대문자(sentence case)** — 예: "Selected", "No such rule". 단 **명령어 미러(`install:`/`uninstall:`), 프로그램 프리픽스(`mate:`), 괄호 상태(`(none)`), 기술 토큰/경로(`.mcp.json`)** 는 소문자 유지.
 
-**설정 병합 순서**(뒤가 우선): `~/.claude/settings.json` → `~/.zaicode/settings.json` → `<workspace>/.claude/settings.json` → 환경변수. 자격증명은 `~/.zaicode/credentials.json`(Unix `0600`, `zaiCode auth set` 으로 기록). 자격증명 파일을 **직접 읽지 말 것** — `FileCredentialStore` 를 경유.
+**설정 병합 순서**(뒤가 우선): `~/.claude/settings.json` → `~/.mate/settings.json` → `<workspace>/.claude/settings.json` → 환경변수. 자격증명은 `~/.mate/credentials.json`(Unix `0600`, `mate auth set` 으로 기록). 자격증명 파일을 **직접 읽지 말 것** — `FileCredentialStore` 를 경유.
 
-**세션·메모리는 프로젝트(cwd)별로 스코핑**된다 (`src/MoaiCode.Core/Memory/ProjectMemory.cs`): `~/.zaicode/projects/<percent-encoded-cwd-slug>/{sessions,memory}`. 슬러그는 cwd 절대경로의 percent-encoding이며 git 탐색을 쓰지 않는다(구 형식 슬러그는 마이그레이션 처리). 경계 밖 파일을 임의로 지우지 말 것.
+**세션·메모리는 프로젝트(cwd)별로 스코핑**된다 (`src/MoaiCode.Core/Memory/ProjectMemory.cs`): `~/.mate/projects/<percent-encoded-cwd-slug>/{sessions,memory}`. 슬러그는 cwd 절대경로의 percent-encoding이며 git 탐색을 쓰지 않는다(구 형식 슬러그는 마이그레이션 처리). 경계 밖 파일을 임의로 지우지 말 것.
 
 ## 배포
 
-- **CLI**: `./publish-win.sh` / `./publish-linux.sh` / `./publish-all.sh` → self-contained 단일 파일(`dist/<rid>/zaiCode`) + SHA-256.
+- **CLI**: `./publish-win.sh` / `./publish-linux.sh` / `./publish-all.sh` → self-contained 단일 파일(`dist/<rid>/mate`) + SHA-256.
 
 ## 디렉터리 레이아웃
 
@@ -95,7 +97,7 @@ src/
   MoaiCode.Mcp            MCP stdio + 스킬(SkillLoader)·플러그인 로더
   MoaiCode.Config         Settings(SettingsLoader 3단 병합), CredentialStore, PermissionRules, MoaiLog, ProxyConfig
   MoaiCode.Localization   L10n.Get + Resources/en.json(base)·ko.json
-  MoaiCode.Persistence    Session/History/Checkpoint/Usage 저장(JSONL/JSON, ~/.zaicode)
+  MoaiCode.Persistence    Session/History/Checkpoint/Usage 저장(JSONL/JSON, ~/.mate)
   MoaiCode.Tui            Spectre.Console REPL(ReplApp), LineEditor, 슬래시 명령(Commands/), Input/(raw 모드 터미널 입력·VT 파서·bracketed paste), MVU
   MoaiCode.Cli            진입점·AppBootstrap(툴 셋 구성), HeadlessRunner, StreamJsonRunner, TUI
   MoaiCode.Sdk            공개 SDK 계약(MoaiCodeClient)
@@ -114,4 +116,4 @@ scripts/                  현재 비어 있음
   - 이유: Windows 기본 코드페이지(CP949) 등 환경에서 로그 파일/콘솔이 깨지는 것을 방지.
   - 적용 대상: `MoaiLog`를 포함한 모든 로그 메시지, 예외 컨텍스트 문자열, 진단 출력.
   - 사용자 입력(요청 텍스트 등)은 비-ASCII일 수 있으므로 **원문을 로그에 넣지 말고** 길이·해시 등 ASCII 메타데이터로 대체한다.
-  - 공용 로거는 `MoaiCode.Config.MoaiLog` (파일: `~/.zaicode/logs/zaicode.log`, 레벨은 `~/.zaicode/settings.json`의 `logLevel`).
+  - 공용 로거는 `MoaiCode.Config.MoaiLog` (파일: `~/.mate/logs/mate.log`, 레벨은 `~/.mate/settings.json`의 `logLevel`).

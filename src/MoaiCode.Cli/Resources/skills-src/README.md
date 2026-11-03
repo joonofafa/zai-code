@@ -1,6 +1,6 @@
 # Bundled skill sources
 
-이 폴더는 **zaiCode가 자체 저작한 기본 번들 스킬의 원본(SKILL.md)**입니다. 빌드 시 실제로 배포되는 것은
+이 폴더는 **MATE Builder가 자체 저작한 기본 번들 스킬의 원본(SKILL.md)**입니다. 빌드 시 실제로 배포되는 것은
 같은 디렉터리의 `bundled-skills.zip`(임베디드 리소스)이며, 이 폴더는 그 zip 을 다시 만들 수 있게 소스를
 추적하기 위한 것입니다.
 
@@ -10,7 +10,7 @@
 - `code-review` — 정확성·보안·호환성·성능·테스트 관점의 변경사항 검토 (v5)
 - `systematic-debugging` — 재현→원인 분리→근본 원인→최소 수정→검증 절차 (v5)
 - `source-driven-development` — 낯선 API는 설치된 소스·공식 문서로 검증 후 작성 (v5)
-- `skill-creator` — 스킬 작성·개선·평가 루프, zaiCode 스킬 메커니즘 기준 (v9)
+- `skill-creator` — 스킬 작성·개선·평가 루프, MATE Builder 스킬 메커니즘 기준 (v9)
 - `cross-layer-change-review` — 커밋/PR/범위의 계층 간 배선 누락 중심 교차 검토 (v10, 사용자 로컬 스킬을 자체 저작 재집필 후 등재)
 
 > `cross-layer-change-review`는 `~/.claude/skills/`에 동일 이름의 사용자 로컬 원본(한글)이 있어
@@ -24,7 +24,7 @@
 > - `xunit-test-writer`, `cross-layer-change-review` — 외부 참조 없는 순수 자체 저작
 >
 > 원문 아이디어(addyosmani/agent-skills, obra/superpowers, getsentry/skills, anthropics/skills)의 원칙을 참고했으나
-> 본문은 zaiCode 용도로 자체 저작(영문) — 외부 원문 미포함, 라이선스 의무 없음.
+> 본문은 MATE Builder 용도로 자체 저작(영문) — 외부 원문 미포함, 라이선스 의무 없음.
 
 ## Vendored 공개 스킬 (v7~v8, v9에서 자체 저작으로 대체)
 
@@ -58,4 +58,4 @@
    PY
    ```
    (기존 항목을 교체하려면 zip 을 새로 만들거나 해당 항목을 지운 뒤 다시 추가한다.)
-3. `BundledSkills.Version` 을 올린다 → 다음 실행 시 `~/.moai/bundled-skills` 로 **재추출**된다.
+3. `BundledSkills.Version` 을 올린다 → 다음 실행 시 `~/.mate/bundled-skills` 로 **재추출**된다.

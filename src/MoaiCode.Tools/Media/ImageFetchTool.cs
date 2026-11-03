@@ -183,7 +183,7 @@ public sealed class ImageFetchTool : ITool
     private static async Task<(byte[] Bytes, string MediaType)> DownloadAsync(Uri uri, CancellationToken ct)
     {
         using var client = ToolHttp.CreateDownloader();
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("MoAI-Code/0.1 (+imagefetch)");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("MATE-Builder/0.1 (+imagefetch)");
         client.DefaultRequestHeaders.Accept.ParseAdd("image/*,*/*;q=0.8");
 
         var current = uri;
