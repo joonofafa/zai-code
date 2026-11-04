@@ -4,6 +4,9 @@
     <AssemblyName>mate</AssemblyName>
     <!-- Z.ai Code 1.2.0 — moai-code 에서 갈라져 나온 z.ai 전용 단일 코딩 에이전트.
          (조직 서버 연동·GUI 제거, WebSearch=Gemini grounding, stream-json 프로토콜)
+         1.5.0: 망분리 인프라용 — 오프라인 모드·인프라 번들 스킬 9종(BundledSkills v12), 파괴적 명령은
+               항상 사람 확인(ignore-confirm 배치 옵션 + 감사 로그 ~/.mate/logs/audit.jsonl), 사람이 승인하지
+               않은 셸 명령은 bubblewrap 격리 실행, 배너 MATE 아래 Builder 표기
          1.4.0: MATE Builder 로 리브랜딩 — 표시 이름·시스템 프롬프트·배너, 실행 파일 zaiCode → mate,
                데이터 루트 ~/.zaicode → ~/.mate(시작 시 자동 이전, 옛 자리에 링크), 로그 mate.log,
                Windows 설치 폴더 Programs\MATE Builder(mate.exe, 옛 PATH 항목 정리). 내부 네임스페이스·환경변수는 그대로
@@ -84,7 +87,7 @@
          1.2.0: 세션/메모리 프로젝트별 스코핑, 백그라운드 셸(run_in_background·BashOutput/KillShell),
                입력바 표시폭 클램프(한글 wrap 잔상 제거)
          1.1.0: GEMINI 키 저장소 복원, 붙여넣기 홍수 수정, 큐잉 플래시 피드백, 턴 중 Shift+Tab -->
-    <Version>1.4.0</Version>
+    <Version>1.5.0</Version>
     <!-- 멀티타깃: win-* RID 는 net10.0-windows(Office COM 툴 포함), 나머지는 net10.0. -->
     <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
     <!-- 크로스 게시 대상 (Linux에서 win-x64 self-contained exe 생성 가능) -->
