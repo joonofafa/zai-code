@@ -1,4 +1,6 @@
+using MoaiCode.Core;
 using MoaiCode.Localization;
+using MoaiCode.Tui.Commands;
 using MoaiCode.Tui.Input;
 using Spectre.Console;
 
@@ -33,6 +35,60 @@ public static class ModelPicker
 {
     // 이보다 많으면 선택 목록 전에 검색어를 묻는다(OpenRouter 는 수백 개 — 12줄 창으로 넘기기엔 너무 길다).
     internal const int FilterThreshold = 30;
+
+    // 컨텍스트 창으로 받는 범위(토큰). 이보다 작으면 압축만 되풀이하고, 크면 오타일 가능성이 높다.
+    internal const int MinContextWindow = 1_024;
+    internal const int MaxContextWindow = 100_000_000;
+
+    /// <summary>
+    /// 고른 모델의 컨텍스트 창(토큰)을 묻는다(/provider·/model 공용). Enter 는 제안값 — 모델 목록이 알려 준 값,
+    /// 없으면 같은 모델에 저장해 둔 값, 그것도 없으면 프로바이더 기본값이다. settings.json 최상위 contextWindow 로
+    /// 고정했으면 묻지 않는다. <paramref name="window"/> 가 null 이면 "자동"(목록 값 또는 기본값). 취소하면 false.
+    /// </summary>
+    /// <param name="basis">그 프로바이더의 지금 설정(저장된 모델·창 크기).</param>
+    public static bool AskContextWindow(PromptIo io, IProviderSetup setup, ProviderProfile basis, string model, out int? window)
+    {
+        window = null;
+        if (setup.FixedContextWindow is { } fixedWindow)
+        {
+            io.Info(L10n.Get("slash.model.windowFixed", fixedWindow));
+            return true;
+        }
+
+        var listed = setup.ListedContextWindow(model);
+        var known = listed ?? (string.Equals(basis.Model, model, StringComparison.Ordinal) ? basis.ContextWindow : null);
+        var suggested = known ?? (basis with { Model = model, ContextWindow = null }).EffectiveContextWindow;
+        var label = listed is not null
+            ? L10n.Get("slash.model.windowPromptListed", suggested)
+            : known is not null
+                ? L10n.Get("slash.model.windowPromptSaved", suggested)
+                : L10n.Get("slash.model.windowPromptDefault", suggested);
+
+        while (true)
+        {
+            var typed = io.ReadLine(label);
+            if (typed is null)
+            {
+                return false;
+            }
+
+            var text = typed.Trim().Replace(",", "").Replace("_", "");
+            if (text.Length == 0)
+            {
+                window = known;
+                return true;
+            }
+
+            if (int.TryParse(text, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var n)
+                && n is >= MinContextWindow and <= MaxContextWindow)
+            {
+                window = n;
+                return true;
+            }
+
+            io.Info(L10n.Get("slash.model.windowInvalid", MinContextWindow, MaxContextWindow));
+        }
+    }
 
     /// <summary>대화 모델 하나를 고른다. 취소하면 null.</summary>
     public static string? Pick(PromptIo io, IReadOnlyList<string> models, string? current)

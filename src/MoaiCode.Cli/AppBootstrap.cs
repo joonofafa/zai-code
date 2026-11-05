@@ -323,7 +323,8 @@ public static class AppBootstrap
                 .ToList(),
             PlanTree: () => MoaiCode.Tools.Tasks.PlanRender.PlainTree(taskStore.Phases()),
             ProviderSetup: new CliProviderSetup(
-                cwd, model, new FileCredentialStore(), settings.ContextWindowTokens > 0 ? null : engine.SetContextWindow));
+                cwd, model, new FileCredentialStore(), settings.ContextWindowTokens > 0 ? null : engine.SetContextWindow,
+                settings.ContextWindowTokens > 0 ? settings.ContextWindowTokens : null));
 
         return new AppRuntime(
             mcp, ctx, toolList, skills.Select(s => s.Name).ToList(), mcpConfigs, providerDesc, settings, streamGate);

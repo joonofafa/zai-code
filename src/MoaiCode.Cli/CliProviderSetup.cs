@@ -12,14 +12,20 @@ namespace MoaiCode.Cli;
 /// 모델 목록이 알려 준 컨텍스트 창은 고른 모델과 함께 저장하고 엔진에 바로 적용한다.
 /// </summary>
 /// <param name="applyContextWindow">엔진 컨텍스트 창 변경. 설정에 contextWindow 를 고정했으면 null(바꾸지 않음).</param>
+/// <param name="fixedContextWindow">settings.json 최상위 contextWindow 로 고정한 값(없으면 null).</param>
 internal sealed class CliProviderSetup(
-    string workingDirectory, SwitchableChatModel model, ICredentialStore credentials, Action<int>? applyContextWindow = null)
+    string workingDirectory, SwitchableChatModel model, ICredentialStore credentials, Action<int>? applyContextWindow = null,
+    int? fixedContextWindow = null)
     : IProviderSetup
 {
     // 마지막 모델 목록 조회가 알려 준 모델별 컨텍스트 창 — Apply·SetModel 이 고른 모델의 값을 찾는다.
     private IReadOnlyDictionary<string, int> _windows = new Dictionary<string, int>();
 
     public ProviderProfile Current => ActiveProvider.Current;
+
+    public int? FixedContextWindow => fixedContextWindow;
+
+    public int? ListedContextWindow(string modelId) => WindowOf(modelId);
 
     public ProviderProfile Effective(ProviderKind kind)
         => kind == Current.Kind
@@ -40,7 +46,8 @@ internal sealed class CliProviderSetup(
 
     public string Apply(ProviderProfile profile, string? newKey)
     {
-        profile = profile with { ContextWindow = WindowOf(profile.Model) };
+        // 사용자가 정한 창 크기(/provider 마지막 단계)가 우선, 없으면 목록이 알려 준 값.
+        profile = profile with { ContextWindow = profile.ContextWindow ?? WindowOf(profile.Model) };
 
         // 설정을 먼저 쓴다 — 깨진 settings.json 이라 거부되면 아무것도 바꾸지 않은 채 예외가 올라간다.
         var fields = new Dictionary<string, JsonNode?>
@@ -66,9 +73,9 @@ internal sealed class CliProviderSetup(
         return description;
     }
 
-    public void SetModel(string chosen)
+    public void SetModel(string chosen, int? contextWindow = null)
     {
-        var current = Current with { Model = chosen, ContextWindow = WindowOf(chosen) };
+        var current = Current with { Model = chosen, ContextWindow = contextWindow ?? WindowOf(chosen) };
         var fields = new Dictionary<string, JsonNode?> { ["model"] = chosen };
         SetWindowField(fields, current.ContextWindow);
         SettingsWriter.SetProvider(ProviderCatalog.Id(current.Kind), fields);

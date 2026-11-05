@@ -85,6 +85,13 @@ public sealed class ProviderToolsAndWindowTests : IDisposable
         Assert.Equal(32_768, applied[^1]);
         Assert.DoesNotContain("contextWindow", File.ReadAllText(Path.Combine(_root, "settings.json")));
         Assert.Equal("small", ActiveProvider.Current.Model);
+
+        // 사용자가 /model·/provider 에서 직접 정한 값이 목록 값보다 우선한다.
+        setup.SetModel("small", 65_536);
+        Assert.Equal(65_536, applied[^1]);
+        Assert.Contains("\"contextWindow\": 65536", File.ReadAllText(Path.Combine(_root, "settings.json")));
+        setup.Apply(candidate with { Model = "big", ContextWindow = 100_000 }, newKey: null);
+        Assert.Equal(100_000, applied[^1]);
     }
 
     [Fact]

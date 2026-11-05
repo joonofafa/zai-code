@@ -24,14 +24,23 @@ public interface IProviderSetup
     /// <summary>저장하고 대화 모델을 바꾼다. <paramref name="newKey"/> 가 null 이면 키는 그대로 둔다. 반환은 프로바이더 설명.</summary>
     string Apply(ProviderProfile profile, string? newKey);
 
-    /// <summary>현재 프로바이더의 대화 모델을 바꾸고 저장한다(/model). 컨텍스트 창도 그 모델에 맞춘다.</summary>
-    void SetModel(string model);
+    /// <summary>
+    /// 현재 프로바이더의 대화 모델을 바꾸고 저장한다(/model). 컨텍스트 창은 <paramref name="contextWindow"/>,
+    /// null 이면 모델 목록이 알려 준 값(없으면 프로바이더 기본값).
+    /// </summary>
+    void SetModel(string model, int? contextWindow = null);
+
+    /// <summary>마지막 모델 목록 조회가 알려 준 그 모델의 컨텍스트 창(토큰). 모르면 null.</summary>
+    int? ListedContextWindow(string model);
+
+    /// <summary>settings.json 최상위 contextWindow 로 고정한 값 — 이때는 /provider·/model 에서 묻지 않는다. 고정하지 않았으면 null.</summary>
+    int? FixedContextWindow { get; }
 
     /// <summary>현재 프로바이더의 이미지 분석 모델을 저장·적용한다. 빈 문자열은 "사용 안 함".</summary>
     void SetVisionModel(string visionModel);
 }
 
-/// <summary>/provider — 프로바이더 선택 → API 키(붙여넣기·마스킹) → (vLLM 주소) → 접속 확인 → 모델·이미지 분석 모델 선택 → 저장.</summary>
+/// <summary>/provider — 프로바이더 선택 → API 키(붙여넣기·마스킹) → (vLLM 주소) → 접속 확인 → 모델·이미지 분석 모델·컨텍스트 창 → 저장.</summary>
 internal sealed class ProviderCommand : ISlashCommand
 {
     public string Name => "provider";
@@ -138,10 +147,16 @@ internal static class ProviderFlow
             return L10n.Get("common.unchanged");
         }
 
+        // 5) 컨텍스트 창 — 서버가 한도를 알려 주지 않는 사내 vLLM 등에서 직접 맞춘다. Enter = 제안값.
+        if (!ModelPicker.AskContextWindow(io, setup, effective, model, out var window))
+        {
+            return L10n.Get("common.unchanged");
+        }
+
         try
         {
             var description = setup.Apply(
-                candidate with { Model = model, VisionModel = vision.Length == 0 ? null : vision }, newKey);
+                candidate with { Model = model, VisionModel = vision.Length == 0 ? null : vision, ContextWindow = window }, newKey);
             return L10n.Get("slash.provider.switched", description);
         }
         catch (InvalidOperationException ex)   // settings.json 이 깨져 덮어쓰기를 거부한 경우 등

@@ -83,7 +83,12 @@ internal sealed class ModelCommand : ISlashCommand
 
         if (setup is not null)
         {
-            setup.SetModel(chosen);              // 라이브 반영 + providers.<현재>.model 저장 + 컨텍스트 창
+            if (!ModelPicker.AskContextWindow(io, setup, setup.Current, chosen, out var window))
+            {
+                return new SlashResult(L10n.Get("common.unchanged"));
+            }
+
+            setup.SetModel(chosen, window);      // 라이브 반영 + providers.<현재>.model 저장 + 컨텍스트 창
         }
         else
         {

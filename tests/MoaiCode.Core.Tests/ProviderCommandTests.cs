@@ -89,13 +89,22 @@ public sealed class ProviderCommandTests
             return Task.FromResult(Listing);
         }
 
+        public int ApplyCount { get; private set; }
+
         public string Apply(ProviderProfile profile, string? newKey)
         {
+            ApplyCount++;
             Applied = (profile, newKey);
             return "applied";
         }
 
-        public void SetModel(string model) => throw new NotSupportedException();
+        public void SetModel(string model, int? contextWindow = null) => throw new NotSupportedException();
+
+        public Dictionary<string, int> Windows { get; } = new();
+
+        public int? ListedContextWindow(string model) => Windows.TryGetValue(model, out var w) ? w : null;
+
+        public int? FixedContextWindow { get; set; }
 
         public void SetVisionModel(string visionModel) => throw new NotSupportedException();
     }
@@ -119,7 +128,7 @@ public sealed class ProviderCommandTests
         var io = Script(
             new Queue<int>([Index(ProviderKind.OpenRouter), 0, 0]),   // 프로바이더 → 모델(거른 뒤 첫 항목) → 이미지 분석 "사용 안 함"
             new Queue<string?>([Key]),
-            new Queue<string?>(["qwen", ""]));                       // 모델 거르기 "qwen", 비전 거르기는 전체
+            new Queue<string?>(["qwen", "", ""]));                   // 모델 거르기 "qwen", 비전 거르기는 전체, 컨텍스트 창은 Enter
 
         var result = await ProviderFlow.RunAsync(io, setup, default);
 
@@ -153,7 +162,7 @@ public sealed class ProviderCommandTests
         var io = Script(
             new Queue<int>([Index(ProviderKind.Zai), 0, 1]),   // 비전 목록 1번 = 목록에 없던 현재 비전 모델
             new Queue<string?>([""]),
-            new Queue<string?>(),
+            new Queue<string?>([""]),
             titles);
 
         await ProviderFlow.RunAsync(io, setup, default);
@@ -187,13 +196,62 @@ public sealed class ProviderCommandTests
         Assert.Null(setup.Applied);
 
         await ProviderFlow.RunAsync(
-            Script(new Queue<int>([Index(ProviderKind.Vllm), 1, 2]), new Queue<string?>([""]), new Queue<string?>(["http://10.0.0.5:8000/v1/"])),
+            Script(new Queue<int>([Index(ProviderKind.Vllm), 1, 2]), new Queue<string?>([""]), new Queue<string?>(["http://10.0.0.5:8000/v1/", ""])),
             setup, default);
         var (profile, _) = setup.Applied!.Value;
         Assert.Equal("http://10.0.0.5:8000/v1", profile.BaseUrl);
         Assert.Null(profile.ApiKey);
         Assert.Equal("b-model", profile.Model);
         Assert.Equal("b-model", profile.VisionModel);
+    }
+
+    [Fact]
+    public async Task Vllm_context_window_can_be_typed_when_the_server_does_not_report_one()
+    {
+        var setup = new FakeSetup();
+        var prompts = new List<string>();
+        var lines = new Queue<string?>(["http://10.0.0.5:8000/v1", "12", "131,072"]);   // 너무 작은 값은 다시 묻는다
+        var io = new PromptIo(
+            (_, _, _) => 0,
+            _ => "",
+            label => { prompts.Add(label); return lines.Dequeue(); },
+            m => prompts.Add(m));
+        var picks = new Queue<int>([Index(ProviderKind.Vllm), 0, 0]);
+        io = io with { Select = (_, _, _) => picks.Dequeue() };
+
+        await ProviderFlow.RunAsync(io, setup, default);
+
+        Assert.Equal(131_072, setup.Applied!.Value.Profile.ContextWindow);
+        Assert.Contains(L10n.Get("slash.model.windowPromptDefault", 32_768), prompts);
+        Assert.Contains(L10n.Get("slash.model.windowInvalid", ModelPicker.MinContextWindow, ModelPicker.MaxContextWindow), prompts);
+    }
+
+    [Fact]
+    public async Task Enter_on_the_context_window_keeps_the_listed_value_and_a_fixed_setting_skips_the_question()
+    {
+        var setup = new FakeSetup();
+        setup.Windows["a-model"] = 1_048_576;
+        var prompts = new List<string>();
+        var picks = new Queue<int>([Index(ProviderKind.OpenRouter), 0, 0]);
+        var lines = new Queue<string?>([""]);
+        var io = new PromptIo((_, _, _) => picks.Dequeue(), _ => Key, label => { prompts.Add(label); return lines.Dequeue(); }, _ => { });
+
+        await ProviderFlow.RunAsync(io, setup, default);
+        Assert.Equal(1_048_576, setup.Applied!.Value.Profile.ContextWindow);   // Enter = 서버가 알려 준 값
+        Assert.Contains(L10n.Get("slash.model.windowPromptListed", 1_048_576), prompts);
+
+        // 최상위 contextWindow 로 고정했으면 묻지 않는다(줄 입력이 남아 있지 않아도 끝난다).
+        setup.FixedContextWindow = 65_536;
+        picks = new Queue<int>([Index(ProviderKind.OpenRouter), 0, 0]);
+        Assert.Equal(L10n.Get("slash.provider.switched", "applied"), await ProviderFlow.RunAsync(io, setup, default));
+
+        // 취소하면 아무것도 바꾸지 않는다.
+        setup.FixedContextWindow = null;
+        var before = setup.ApplyCount;
+        picks = new Queue<int>([Index(ProviderKind.OpenRouter), 0, 0]);
+        lines = new Queue<string?>([null]);
+        Assert.Equal(L10n.Get("common.unchanged"), await ProviderFlow.RunAsync(io, setup, default));
+        Assert.Equal(before, setup.ApplyCount);
     }
 
     // ---- 모델 목록 조회 ----
