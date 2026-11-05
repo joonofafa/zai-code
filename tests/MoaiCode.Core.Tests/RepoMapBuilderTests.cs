@@ -9,7 +9,8 @@ public sealed class RepoMapBuilderTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "repomap-" + Guid.NewGuid().ToString("N")[..8]);
 
-    public RepoMapBuilderTests() => Directory.CreateDirectory(_root);
+    // 코드 지도는 git 저장소 안에서만 만든다 — 테스트 폴더를 저장소처럼 보이게 한다.
+    public RepoMapBuilderTests() => Directory.CreateDirectory(Path.Combine(_root, ".git"));
 
     public void Dispose()
     {
@@ -47,6 +48,27 @@ public sealed class RepoMapBuilderTests : IDisposable
         finally
         {
             try { Directory.Delete(outside, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
+    public void Builds_only_inside_a_git_repository()
+    {
+        var sub = Path.Combine(_root, "src");
+        Directory.CreateDirectory(sub);
+        File.WriteAllText(Path.Combine(sub, "Sample.cs"), "public class Widget\n{\n}\n");
+        Assert.Contains("Widget", RepoMapBuilder.Build(sub, 4000));   // 저장소의 하위 폴더에서 켜도 만든다
+
+        var plain = Path.Combine(Path.GetTempPath(), "repomap-plain-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(plain);
+        try
+        {
+            File.WriteAllText(Path.Combine(plain, "Sample.cs"), "public class Widget\n{\n}\n");
+            Assert.Null(RepoMapBuilder.Build(plain, 4000));            // 홈 폴더처럼 저장소가 아닌 곳은 건너뛴다
+        }
+        finally
+        {
+            try { Directory.Delete(plain, recursive: true); } catch (IOException) { }
         }
     }
 

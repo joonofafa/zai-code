@@ -15,31 +15,43 @@ public sealed class McpManager : IAsyncDisposable
     public async Task ConnectAllAsync(
         IEnumerable<McpServerConfig> configs, CancellationToken ct)
     {
-        foreach (var config in configs)
+        // 서버마다 기동이 수 초씩 걸리므로(node·python 시작) 한꺼번에 연결한다 — 시작 대기가 합이 아니라 가장 느린 서버만큼.
+        // 결과는 설정 순서대로 모은다(툴 목록 순서가 실행마다 바뀌지 않게).
+        var results = await Task.WhenAll(configs.Select(c => ConnectOneAsync(c, ct))).ConfigureAwait(false);
+        foreach (var (client, tools, error) in results)
         {
-            McpClient? client = null;
-            try
+            if (error is not null)
             {
-                var transport = StdioTransport.Start(config);
-                client = new McpClient(transport);
-                await client.InitializeAsync(ct).ConfigureAwait(false);
-                var tools = await client.ListToolsAsync(ct).ConfigureAwait(false);
-                foreach (var t in tools)
-                {
-                    _tools.Add(new McpTool(client, config.Name, t));
-                }
+                _errors.Add(error);
+                continue;
+            }
 
-                _clients.Add(client);
-            }
-            catch (Exception ex)
+            _tools.AddRange(tools);
+            _clients.Add(client!);
+        }
+    }
+
+    private static async Task<(McpClient? Client, List<ITool> Tools, string? Error)> ConnectOneAsync(
+        McpServerConfig config, CancellationToken ct)
+    {
+        McpClient? client = null;
+        try
+        {
+            var transport = StdioTransport.Start(config);
+            client = new McpClient(transport);
+            await client.InitializeAsync(ct).ConfigureAwait(false);
+            var tools = await client.ListToolsAsync(ct).ConfigureAwait(false);
+            return (client, tools.Select(t => (ITool)new McpTool(client, config.Name, t)).ToList(), null);
+        }
+        catch (Exception ex)
+        {
+            // 초기화에 실패한(멈춘) 서버 프로세스를 남기지 않는다 — _clients 에 없으니 종료 때도 정리되지 않았다.
+            if (client is not null)
             {
-                _errors.Add($"{config.Name}: {ex.Message}");
-                // 초기화에 실패한(멈춘) 서버 프로세스를 남기지 않는다 — _clients 에 없으니 종료 때도 정리되지 않았다.
-                if (client is not null)
-                {
-                    await client.DisposeAsync().ConfigureAwait(false);
-                }
+                await client.DisposeAsync().ConfigureAwait(false);
             }
+
+            return (null, [], $"{config.Name}: {ex.Message}");
         }
     }
 

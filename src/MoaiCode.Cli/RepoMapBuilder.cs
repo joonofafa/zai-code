@@ -19,9 +19,13 @@ public static class RepoMapBuilder
         @"^\s*(public|private|protected|internal|export|async|static|sealed|abstract|partial|\s)*\s*(class|interface|record|struct|enum|def|function|func|fn|type)\s+[A-Za-z_][\w<>,]*",
         RegexOptions.Compiled);
 
+    /// <summary>
+    /// 시작 폴더의 코드 지도. git 저장소 안에서만 만든다 — 홈 폴더처럼 프로젝트가 아닌 곳에서 켜면
+    /// 홈 전체(SDK·다른 저장소들)를 훑다 예산(3초)을 다 쓰고 쓸모없는 지도만 남기기 때문이다.
+    /// </summary>
     public static string? Build(string root, int tokenBudget)
     {
-        if (tokenBudget <= 0 || !Directory.Exists(root))
+        if (tokenBudget <= 0 || !Directory.Exists(root) || !InsideGitRepo(root))
         {
             return null;
         }
@@ -95,6 +99,21 @@ public static class RepoMapBuilder
     // 끝나지 않는다)·빌드 디렉토리 가지치기·시간 예산이 거기 모여 있다. 여기서 다시 구현하지 말 것.
     private static IEnumerable<string> EnumerateSourceFiles(string root)
         => new FileWalker(ScanBudget).Walk(root, CancellationToken.None);
+
+    // root 또는 그 상위에 .git(폴더, 워크트리·서브모듈은 파일)이 있으면 git 저장소 안이다.
+    private static bool InsideGitRepo(string root)
+    {
+        for (var dir = new DirectoryInfo(Path.GetFullPath(root)); dir is not null; dir = dir.Parent)
+        {
+            var git = Path.Combine(dir.FullName, ".git");
+            if (Directory.Exists(git) || File.Exists(git))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static string Relative(string root, string file)
     {

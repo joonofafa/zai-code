@@ -66,6 +66,58 @@ public class McpTests
         await Assert.ThrowsAsync<McpException>(() => client.ListToolsAsync(CancellationToken.None));
     }
 
+    // 시작 때 MCP 서버를 하나씩 연결해 대기가 서버들 기동 시간의 합이었다(rea 2.7초 + scrcpy 0.9초 …).
+    // 한꺼번에 연결하되 툴 순서는 설정 순서를 지키고, 실패한 서버는 오류로만 남는다.
+    [Fact]
+    public async Task ConnectAll_starts_servers_in_parallel_and_keeps_config_order()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        var dir = Path.Combine(Path.GetTempPath(), "mcp-par-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(dir);
+        var script = Path.Combine(dir, "slow_server.py");
+        File.WriteAllText(script, """
+            import json, sys, time
+            time.sleep(1.5)   # 느린 기동(node·python 서버 흉내)
+            for line in sys.stdin:
+                msg = json.loads(line)
+                if "id" not in msg:
+                    continue
+                if msg["method"] == "initialize":
+                    result = {"protocolVersion": "2024-11-05", "serverInfo": {"name": sys.argv[1]}}
+                elif msg["method"] == "tools/list":
+                    result = {"tools": [{"name": "t", "description": "", "inputSchema": {"type": "object"}}]}
+                else:
+                    result = {}
+                print(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": result}), flush=True)
+            """);
+        var empty = new Dictionary<string, string>();
+        await using var manager = new McpManager();
+        try
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            await manager.ConnectAllAsync(
+            [
+                new McpServerConfig("first", "python3", [script, "first"], empty),
+                new McpServerConfig("broken", "/nonexistent/mcp-server", [], empty),
+                new McpServerConfig("second", "python3", [script, "second"], empty),
+                new McpServerConfig("third", "python3", [script, "third"], empty),
+            ], CancellationToken.None);
+
+            Assert.True(sw.Elapsed < TimeSpan.FromSeconds(3.5), $"took {sw.Elapsed} — servers were connected one by one");
+            Assert.Equal(["first", "second", "third"], manager.Tools.Select(t => t.Name.Split("__")[1]));
+            Assert.Single(manager.Errors);
+            Assert.StartsWith("broken:", manager.Errors[0]);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
     /// <summary>인메모리 MCP 서버 — JSON-RPC 요청에 즉시 응답.</summary>
     private sealed class FakeMcpServer : IMcpTransport
     {

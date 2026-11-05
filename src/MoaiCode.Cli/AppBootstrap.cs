@@ -116,6 +116,8 @@ public static class AppBootstrap
         // 3) MCP 서버 — 보안(SEC-001): 프로젝트(작업 디렉터리) .mcp.json 은 신뢰하지 않는 저장소가 시작 시
         // 임의 프로세스를 실행하는 통로다. 기본은 사용자 홈 설정만 로드하고, MOAI_ALLOW_PROJECT_MCP=1 로
         // 명시적으로 신뢰했을 때만 프로젝트 MCP 를 로드한다.
+        // 코드 지도(최대 3초)는 MCP 서버 기동(수 초)을 기다리는 동안 함께 만든다 — 시작 대기가 둘의 합이 되지 않게.
+        var repoMapTask = Task.Run(() => RepoMapBuilder.Build(cwd, settings.RepoMapTokens), ct);
         var allowProjectMcp = IsEnvTruthy("MOAI_ALLOW_PROJECT_MCP");
         if (!allowProjectMcp && McpConfigLoader.HasProjectConfig(cwd))
         {
@@ -253,7 +255,7 @@ public static class AppBootstrap
             harvestMemories: true,
             log: MoaiLog.Info,   // 턴/툴/한도 이벤트를 ~/.moai/logs/moai.log 에 기록(진단용).
             currentPhase: taskStore.CurrentPhase);   // 페이즈 경계에서 하베스트→압축→다음 안내
-        var promptCtx = BuildPromptContext(cwd, settings, toolList);
+        var promptCtx = BuildPromptContext(cwd, settings, toolList, await repoMapTask.ConfigureAwait(false));
         engine.Seed(new[] { new SystemMessage(SystemPromptBuilder.Build(promptCtx)) });
 
         var ctx = new SlashContext(
@@ -392,7 +394,7 @@ public static class AppBootstrap
         }
     }
 
-    private static PromptContext BuildPromptContext(string cwd, Settings settings, IReadOnlyList<ITool> tools)
+    private static PromptContext BuildPromptContext(string cwd, Settings settings, IReadOnlyList<ITool> tools, string? repoMap)
     {
         var platform = OperatingSystem.IsWindows() ? "windows"
             : OperatingSystem.IsMacOS() ? "macos"
@@ -414,7 +416,7 @@ public static class AppBootstrap
             ModelDescription = modelDescription,
             ClaudeMd = LoadProjectInstructions(cwd),
             MemoryIndex = ProjectMemory.LoadIndex(cwd),
-            RepoMap = RepoMapBuilder.Build(cwd, settings.RepoMapTokens),
+            RepoMap = repoMap,
             OutputStyle = settings.OutputStyle,
             // 프로바이더·오프라인 때문에 숨긴 툴은 목록에도 넣지 않는다(엔진도 요청마다 같은 기준으로 거른다).
             ToolNames = tools.Where(t => t is not IConditionalTool { IsAvailable: false }).Select(t => t.Name).ToList(),
