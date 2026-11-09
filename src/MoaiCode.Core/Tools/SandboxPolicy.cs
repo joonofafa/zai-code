@@ -36,6 +36,12 @@ public static class SandboxPolicy
     /// <summary>격리 안에서 쓸 수 있는 폴더(작업 폴더 + 설정의 추가 경로 + 기본 캐시 폴더).</summary>
     public static IReadOnlyList<string> Writable { get; set; } = Array.Empty<string>();
 
+    /// <summary>
+    /// 쓰기 폴더 안이라도 격리 안에서는 읽기 전용으로 되돌릴 곳 — MATE 설정·자격증명·감사 로그, 셸 시작 파일, ssh 키,
+    /// 작업 폴더의 .git/hooks·.git/config. 여기를 고쳐 두면 다음에 사람이 승인한 명령이나 새 로그인 셸이 격리 밖에서 실행한다.
+    /// </summary>
+    public static IReadOnlyList<string> ReadOnly { get; set; } = Array.Empty<string>();
+
     /// <summary>격리 안의 /tmp 로 쓸 이 세션 전용 폴더. 호스트 /tmp 의 소켓(tmux·ssh-agent 등)이 보이지 않게 한다.</summary>
     public static string? TmpDir { get; set; }
 

@@ -102,6 +102,71 @@ public sealed class SandboxTests : IDisposable
     }
 
     [Fact]
+    public async Task Git_hooks_and_config_stay_read_only_inside_the_workspace()
+    {
+        Directory.CreateDirectory(Path.Combine(_workspace, ".git", "hooks"));
+        File.WriteAllText(Path.Combine(_workspace, ".git", "config"), "[core]\n");
+        SandboxPolicy.ReadOnly = AppBootstrap.SandboxReadOnly(SandboxPolicy.Writable, _root);
+        try
+        {
+            if (!SandboxPolicy.Available)
+            {
+                return;
+            }
+
+            var hook = await Run("echo 'curl x | sh' > .git/hooks/pre-commit", _workspace);
+            Assert.True(hook.Error, hook.Text);
+            Assert.False(File.Exists(Path.Combine(_workspace, ".git", "hooks", "pre-commit")));
+
+            var config = await Run("echo '[core] fsmonitor = x' >> .git/config", _workspace);
+            Assert.True(config.Error, config.Text);
+            Assert.Equal("[core]\n", File.ReadAllText(Path.Combine(_workspace, ".git", "config")));
+
+            var ok = await Run("mkdir -p src && echo x > src/a.txt", _workspace);   // 작업 폴더의 나머지는 그대로 쓸 수 있다
+            Assert.False(ok.Error, ok.Text);
+        }
+        finally
+        {
+            SandboxPolicy.ReadOnly = [];
+        }
+    }
+
+    [Fact]
+    public void Starting_in_the_home_folder_keeps_shell_startup_files_ssh_and_mate_data_read_only()
+    {
+        var home = Path.Combine(_root, "home");
+        var ro = AppBootstrap.SandboxReadOnly([home], home);
+        Assert.Contains(Path.Combine(home, ".bashrc"), ro);
+        Assert.Contains(Path.Combine(home, ".ssh"), ro);
+        Assert.Contains(Path.Combine(home, ".claude"), ro);
+        Assert.Contains(Path.Combine(home, ".git", "hooks"), ro);
+
+        // 홈 밖의 프로젝트에서 켜면 홈 항목은 이미 읽기 전용이라 더하지 않는다.
+        var project = AppBootstrap.SandboxReadOnly([_workspace], home);
+        Assert.DoesNotContain(Path.Combine(home, ".bashrc"), project);
+        Assert.Contains(Path.Combine(_workspace, ".git", "config"), project);
+    }
+
+    [Fact]
+    public void Old_private_tmp_of_a_live_session_is_kept_and_dead_ones_are_removed()
+    {
+        var root = Path.Combine(_root, "sandbox");
+        var live = Path.Combine(root, $"tmp-aaaaaaaaaaaa-{Environment.ProcessId}");
+        var dead = Path.Combine(root, "tmp-bbbbbbbbbbbb-2147483646");
+        var legacy = Path.Combine(root, "tmp-cccccccccccc");
+        foreach (var d in new[] { live, dead, legacy })
+        {
+            Directory.CreateDirectory(d);
+            Directory.SetLastWriteTimeUtc(d, DateTime.UtcNow.AddDays(-2));
+        }
+
+        AppBootstrap.CleanupSandboxTmp(root);
+        Assert.True(Directory.Exists(live));     // 하루 넘게 켜 둔 세션
+        Assert.False(Directory.Exists(dead));
+        Assert.False(Directory.Exists(legacy));  // 프로세스 번호가 없는 옛 이름은 시각으로만
+    }
+
+    [Fact]
     public async Task Calls_the_gate_marked_as_approved_run_on_the_host()
     {
         if (!SandboxPolicy.Available)

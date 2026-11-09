@@ -91,6 +91,12 @@ public static class Sandbox
             }
         }
 
+        // 쓰기 폴더 안의 보호 대상은 그 뒤에 읽기 전용으로 다시 붙인다(뒤의 마운트가 앞의 것을 덮는다). 없는 경로는 건너뛴다.
+        foreach (var r in SandboxPolicy.ReadOnly)
+        {
+            a.AddRange(new[] { "--ro-bind-try", r, r });
+        }
+
         a.AddRange(new[]
         {
             "--unshare-user", "--unshare-pid", "--unshare-ipc", "--unshare-uts", "--unshare-cgroup-try",

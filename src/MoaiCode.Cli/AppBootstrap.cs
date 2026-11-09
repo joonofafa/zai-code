@@ -332,6 +332,80 @@ public static class AppBootstrap
             mcp, ctx, toolList, skills.Select(s => s.Name).ToList(), mcpConfigs, providerDesc, settings, streamGate);
     }
 
+    // 홈 아래에서 격리 안 명령이 고치면 격리 밖으로 이어지는 곳: MATE 데이터·설정 레이어, 로그인 셸 시작 파일, ssh·gpg, 사용자 실행 경로.
+    private static readonly string[] ProtectedHomeEntries =
+    {
+        ".claude", ".bashrc", ".bash_profile", ".bash_login", ".bash_logout", ".profile", ".zshrc", ".zprofile", ".zshenv",
+        ".pam_environment", ".ssh", ".gnupg", ".gitconfig", ".config/git", ".config/systemd", ".config/autostart",
+        ".config/environment.d", ".local/bin", "bin",
+    };
+
+    /// <summary>
+    /// 쓰기 폴더 안에서 읽기 전용으로 되돌릴 경로. 쓰기 폴더마다 .git/hooks·.git/config(core.hooksPath·fsmonitor 도 명령이 된다),
+    /// 그리고 쓰기 폴더 안에 든 MATE 데이터 폴더와 <see cref="ProtectedHomeEntries"/> — mate 를 홈에서 켰을 때 홈 전체가 쓰기 폴더가 된다.
+    /// </summary>
+    internal static List<string> SandboxReadOnly(IReadOnlyList<string> writable, string home)
+    {
+        static bool Inside(string path, string dir) =>
+            path == dir || path.StartsWith(Path.TrimEndingDirectorySeparator(dir) + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+
+        var candidates = writable.SelectMany(w => new[] { Path.Combine(w, ".git", "hooks"), Path.Combine(w, ".git", "config") })
+            .Append(AppPaths.Home)
+            .Concat(ProtectedHomeEntries.Select(e => Path.Combine(home, e)));
+        return candidates.Select(Path.GetFullPath)
+            .Where(p => writable.Any(w => Inside(p, w)))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+    }
+
+    /// <summary>
+    /// 끝난 세션의 격리용 /tmp 를 지운다. 폴더 이름 끝의 프로세스 번호가 아직 살아 있으면 오래 켜 둔 세션이므로 남긴다
+    /// (최상위 수정 시각만으로는 하루 넘게 켜 둔 mate 의 /tmp 를 새 mate 가 지웠다). 지우지 못한 폴더는 건너뛴다.
+    /// </summary>
+    internal static void CleanupSandboxTmp(string root)
+    {
+        string[] dirs;
+        try
+        {
+            Directory.CreateDirectory(root);
+            dirs = Directory.GetDirectories(root, "tmp-*");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        foreach (var old in dirs)
+        {
+            try
+            {
+                var dash = old.LastIndexOf('-');
+                var alive = int.TryParse(old[(dash + 1)..], out var pid) && ProcessAlive(pid);
+                if (!alive && Directory.GetLastWriteTimeUtc(old) < DateTime.UtcNow.AddDays(-1))
+                {
+                    Directory.Delete(old, recursive: true);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                MoaiLog.Debug($"sandbox: old tmp kept ({ex.GetType().Name})");
+            }
+        }
+    }
+
+    private static bool ProcessAlive(int pid)
+    {
+        try
+        {
+            using var p = System.Diagnostics.Process.GetProcessById(pid);
+            return !p.HasExited;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
     // 격리 실행 설정: 방식·사용 가능 여부(시험 실행)·쓰기 경로·이 세션 전용 /tmp. 시작할 때 한 번.
     private static void ConfigureSandbox(Settings settings, string cwd)
     {
@@ -351,23 +425,16 @@ public static class AppBootstrap
         writable.AddRange(new[] { ".cache", ".npm", ".nuget/packages", ".gradle/caches", ".m2/repository", ".cargo/registry", ".local/share/pnpm" }
             .Select(d => Path.Combine(home, d)).Where(Directory.Exists));
         SandboxPolicy.Writable = writable.Distinct(StringComparer.Ordinal).ToList();
+        SandboxPolicy.ReadOnly = SandboxReadOnly(SandboxPolicy.Writable, home);
 
         if (SandboxPolicy.Active)
         {
-            // 호스트 /tmp 의 소켓(tmux·ssh-agent·X11)이 보이지 않게 이 세션 전용 /tmp 를 쓴다. 하루 지난 것은 지운다.
+            // 호스트 /tmp 의 소켓(tmux·ssh-agent·X11)이 보이지 않게 이 세션 전용 /tmp 를 쓴다.
             var root = AppPaths.Combine("sandbox");
+            CleanupSandboxTmp(root);
             try
             {
-                Directory.CreateDirectory(root);
-                foreach (var old in Directory.GetDirectories(root, "tmp-*"))
-                {
-                    if (Directory.GetLastWriteTimeUtc(old) < DateTime.UtcNow.AddDays(-1))
-                    {
-                        Directory.Delete(old, recursive: true);
-                    }
-                }
-
-                var tmp = Path.Combine(root, "tmp-" + AuditLog.SessionId);
+                var tmp = Path.Combine(root, $"tmp-{AuditLog.SessionId}-{Environment.ProcessId}");
                 Directory.CreateDirectory(tmp);
                 if (!OperatingSystem.IsWindows())
                 {
