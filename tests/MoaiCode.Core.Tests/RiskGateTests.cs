@@ -12,6 +12,8 @@ namespace MoaiCode.Core.Tests;
 /// ModeAwarePermissionGate + LLM 분류기 연동. 핵심은 fail-closed:
 /// 분류기가 죽으면(게이트웨이 다운/쿼터 소진/타임아웃) 대화형은 확인, 헤드리스는 거부.
 /// </summary>
+// 게이트는 정적 SandboxPolicy·AuditLog 를 읽는다 — 이를 바꾸는 SandboxTests·SafetyGateTests 와 같이 돌면 결과가 순서에 따라 달라진다.
+[Collection("EnvMutating")]
 public sealed class RiskGateTests
 {
     private sealed class FakeTool : ITool

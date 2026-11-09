@@ -33,6 +33,9 @@ public sealed class AnthropicChatModel : IChatModel, IModelControl
     // 서버가 거부한 선택 설정 — 같은 모델에는 다음 요청부터 처음부터 뺀다(/model 로 바뀌면 비운다).
     private readonly HashSet<string> _rejected = new(StringComparer.Ordinal);
 
+    // 서버가 알려 준 이 모델의 출력 한도(max_tokens: 64000 > 32000). 구형 모델은 64K 를 받지 않는다. /model 로 바뀌면 비운다.
+    private volatile int _maxTokensCap;
+
     public AnthropicChatModel(HttpClient http, string baseUrl, string apiKey, string model)
     {
         _http = http;
@@ -49,6 +52,7 @@ public sealed class AnthropicChatModel : IChatModel, IModelControl
             if (!string.IsNullOrWhiteSpace(value))
             {
                 _model = value;
+                _maxTokensCap = 0;
                 lock (_rejected)
                 {
                     _rejected.Clear();
@@ -87,6 +91,13 @@ public sealed class AnthropicChatModel : IChatModel, IModelControl
                 if (!stripReasoning && IsSignatureMismatch(errBody))
                 {
                     stripReasoning = true;
+                    continue;
+                }
+
+                // 출력 한도가 더 낮은 모델(claude-opus-4-1 32K, 3.5 haiku 8K) → 알려 준 한도로 다시.
+                if (OutputLimit(errBody) is { } limit && (_maxTokensCap == 0 || limit < _maxTokensCap))
+                {
+                    _maxTokensCap = limit;
                     continue;
                 }
 
@@ -251,7 +262,7 @@ public sealed class AnthropicChatModel : IChatModel, IModelControl
         var body = new JsonObject
         {
             ["model"] = _model,
-            ["max_tokens"] = MaxTokens(),
+            ["max_tokens"] = _maxTokensCap > 0 ? Math.Min(_maxTokensCap, MaxTokens()) : MaxTokens(),
             ["stream"] = true,
         };
         if (system.Length > 0)
@@ -489,6 +500,13 @@ public sealed class AnthropicChatModel : IChatModel, IModelControl
 
         return m.Contains("cache_control") ? "cache_control" : null;
     }
+
+    // "max_tokens: 64000 > 32000, which is the maximum allowed number of output tokens for …" → 32000.
+    private static readonly System.Text.RegularExpressions.Regex OutputLimitPattern =
+        new(@"max_tokens:\s*\d+\s*>\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    internal static int? OutputLimit(string errorBody)
+        => OutputLimitPattern.Match(errorBody) is { Success: true } m && int.TryParse(m.Groups[1].Value, out var n) && n >= 256 ? n : null;
 
     private static bool IsSignatureMismatch(string errorBody)
         => errorBody.Contains("bound to a different conversation", StringComparison.OrdinalIgnoreCase)

@@ -10,6 +10,8 @@ namespace MoaiCode.Core.Tests;
 
 // stream-json 승인 왕복: permission_response 라우팅과 StreamJsonPermissionGate 의 허용/거부/타임아웃.
 // 게이트의 stdout 출력은 emit 콜백으로 캡처한다(콘솔 오염 방지).
+// 게이트는 정적 SandboxPolicy·AuditLog 를 읽는다 — 이를 바꾸는 SandboxTests·SafetyGateTests 와 같이 돌면 결과가 순서에 따라 달라진다.
+[Collection("EnvMutating")]
 public sealed class StreamJsonPermissionGateTests
 {
     private static (StreamJsonPermissionGate Gate, List<JsonObject> Events) Make(Action<string>? persist = null)

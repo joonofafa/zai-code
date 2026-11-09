@@ -88,6 +88,22 @@ public sealed class DiffCommandTests
     }
 
     [Fact]
+    public void Sub_agent_engine_does_not_clear_the_parent_journal()
+    {
+        var parent = new MoaiCode.Core.Agent.QueryEngine(new MoaiCode.Providers.EchoChatModel(), Array.Empty<ITool>());
+        parent.FileChanges.BeginTurn("edit");
+        parent.FileChanges.Record(Path.Combine(Path.GetTempPath(), "p.txt"), "a", "b");
+
+        // AgentTool 처럼 부모 기록부를 넘겨 만든 엔진이 Seed(→ Reset) 해도 부모 기록은 남는다.
+        var sub = new MoaiCode.Core.Agent.QueryEngine(new MoaiCode.Providers.EchoChatModel(), Array.Empty<ITool>(), fileChanges: parent.FileChanges);
+        sub.Seed([]);
+        Assert.Single(parent.FileChanges.Snapshot());
+
+        parent.Reset();   // /clear 는 자기 기록을 비운다
+        Assert.Empty(parent.FileChanges.Snapshot());
+    }
+
+    [Fact]
     public void Journal_keeps_first_before_and_last_after_per_turn()
     {
         var j = new FileChangeJournal();
@@ -234,14 +250,16 @@ public sealed class DiffCommandTests
             Git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "a");
             File.WriteAllText(Path.Combine(dir, "a.txt"), "one\ntwo\n");
             File.WriteAllText(Path.Combine(dir, "b.txt"), "new\nfile\n");
+            File.WriteAllText(Path.Combine(dir, "보고서.md"), "x\n");
 
             var view = GitWorkingDiff.Load(dir);
 
-            Assert.Equal(["a.txt", "b.txt"], view.Files.Select(f => f.Path));
+            Assert.Equal(["a.txt", "b.txt", "보고서.md"], view.Files.Select(f => f.Path));
             Assert.Equal((1, 0), (view.Files[0].Added, view.Files[0].Removed));
             Assert.True(view.Files[1].IsUntracked);
             Assert.Equal(2, view.Files[1].Added);   // 작은 텍스트 새 파일은 내용을 추가 줄로 보여 준다
-            Assert.Equal(3, view.Added);
+            Assert.Equal(1, view.Files[2].Added);   // 한글 이름도 따옴표 이스케이프 없이 찾아 내용을 읽는다
+            Assert.Equal(4, view.Added);
         }
         finally
         {

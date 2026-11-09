@@ -86,6 +86,7 @@ public sealed class QueryEngine
         MoaiCode.Core.Diff.FileChangeJournal? fileChanges = null)
     {
         FileChanges = fileChanges ?? new MoaiCode.Core.Diff.FileChangeJournal();
+        _ownsFileChanges = fileChanges is null;
         _model = model;
         _tools = tools;
         _gate = gate ?? new AutoApproveGate();
@@ -148,11 +149,17 @@ public sealed class QueryEngine
     /// <summary>/diff 턴별 변경 기록. 서브에이전트 엔진은 부모의 것을 받아 같은 턴에 쌓는다.</summary>
     public MoaiCode.Core.Diff.FileChangeJournal FileChanges { get; }
 
+    // 받은 기록부(서브에이전트)는 부모 것이다 — Seed/Reset 이 비우면 부모의 /diff 턴 기록이 사라진다.
+    private readonly bool _ownsFileChanges;
+
     public void Reset()
     {
         _messages.Clear();
         _messages.AddRange(_seed);
-        FileChanges.Clear();
+        if (_ownsFileChanges)
+        {
+            FileChanges.Clear();
+        }
     }
 
     /// <summary>저장된 세션 메시지로 대화 상태를 교체 (/resume).</summary>

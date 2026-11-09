@@ -704,13 +704,18 @@ public sealed class SafetyGateTests : IDisposable
     [Fact]
     public void Retention_trims_old_lines_and_keeps_the_file_private()
     {
+        // 줄은 시간순으로 덧붙는다 — 정리는 앞에서부터 기한이 지난 줄만 지운다.
+        string Ago(int d) => DateTimeOffset.Now.AddDays(-d).ToString("yyyy-MM-ddTHH:mm:sszzz");
+        AuditLog.TryWrite(AuditLog.Create("Bash", "old", "ok", "user", null, "Act", "o") with { Ts = Ago(100) });
+        AuditLog.TryWrite(AuditLog.Create("Bash", "older-than-90", "ok", "user", null, "Act", "o2") with { Ts = Ago(95) });
         AuditLog.TryWrite(AuditLog.Create("Bash", "new", "ok", "user", null, "Act", "n"));
-        var old = AuditLog.Create("Bash", "old", "ok", "user", null, "Act", "o") with { Ts = DateTimeOffset.Now.AddDays(-100).ToString("yyyy-MM-ddTHH:mm:sszzz") };
-        AuditLog.TryWrite(old);
 
         AuditLog.Trim(90);
-
         Assert.Equal(["new"], AuditLines().Select(l => l.GetProperty("target").GetString()));
+
+        AuditLog.Trim(90);   // 지울 것이 없으면 그대로(맨 앞 줄만 본다)
+        Assert.Equal(["new"], AuditLines().Select(l => l.GetProperty("target").GetString()));
+        Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(_auditPath)!, Path.GetFileName(_auditPath) + ".*.tmp"));
         if (!OperatingSystem.IsWindows())
         {
             Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(_auditPath));

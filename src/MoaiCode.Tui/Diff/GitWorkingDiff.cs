@@ -70,11 +70,12 @@ internal static partial class GitWorkingDiff
         }
 
         // 추적하지 않는 새 파일. 원본은 이름만 보여 주지만, 작은 텍스트 파일은 내용을 추가된 줄로 보여 준다.
-        if (files.Count < MaxFiles && Git(root, "ls-files", "--others", "--exclude-standard", "--full-name") is { Code: 0 } untracked)
+        // -z: 한글 등 비ASCII 이름을 따옴표·8진 이스케이프로 감싸지 않고 그대로 준다(NUL 구분).
+        if (files.Count < MaxFiles && Git(root, "ls-files", "-z", "--others", "--exclude-standard", "--full-name") is { Code: 0 } untracked)
         {
-            foreach (var path in untracked.Out.Split('\n', StringSplitOptions.RemoveEmptyEntries).Take(MaxFiles - files.Count))
+            foreach (var path in untracked.Out.Split('\0', StringSplitOptions.RemoveEmptyEntries).Take(MaxFiles - files.Count))
             {
-                files.Add(Untracked(root, path.TrimEnd('\r')));
+                files.Add(Untracked(root, path));
             }
         }
 

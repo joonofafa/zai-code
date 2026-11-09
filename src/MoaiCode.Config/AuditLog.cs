@@ -185,27 +185,45 @@ public static class AuditLog
                     return;
                 }
 
-                // 다른 mate 프로세스(동시에 도는 배치)가 그 사이 덧붙인 줄을 잃지 않게, 파일을 독점으로 연 채 읽고 제자리에서 다시 쓴다.
-                using var fs = OpenExclusive(FileMode.Open, FileAccess.ReadWrite);
-                string all;
-                using (var reader = new StreamReader(fs, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: false, leaveOpen: true))
+                // 다른 mate 프로세스(동시에 도는 배치)가 그 사이 덧붙인 줄을 잃지 않게 파일을 독점으로 연 채 읽고 바꾼다.
+                // 줄은 시간순으로 덧붙으므로 맨 앞 줄만 보고 지울 것이 없으면 바로 끝낸다(매 시작마다 전체를 읽지 않게).
+                var fs = OpenExclusive(FileMode.Open, FileAccess.ReadWrite);
+                try
                 {
-                    all = reader.ReadToEnd();
-                }
+                    var cutoff = DateTimeOffset.Now.AddDays(-days);
+                    string? first;
+                    string rest;
+                    using (var reader = new StreamReader(fs, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: false, leaveOpen: true))
+                    {
+                        first = reader.ReadLine();
+                        if (first is null || !IsOlderThan(first, cutoff))
+                        {
+                            return;
+                        }
 
-                var lines = all.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-                var cutoff = DateTimeOffset.Now.AddDays(-days);
-                var kept = lines.Where(l => !IsOlderThan(l, cutoff)).ToList();
-                if (kept.Count == lines.Length)
+                        rest = reader.ReadToEnd();
+                    }
+
+                    // 앞에서부터 기한이 지난 줄만 건너뛴다 — 처음으로 남길 줄(깨진 줄 포함)부터는 그대로 둔다.
+                    var lines = rest.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                    var drop = 1 + lines.TakeWhile(l => IsOlderThan(l, cutoff)).Count();
+                    var kept = lines.Skip(drop - 1).ToList();
+                    var bytes = new UTF8Encoding(false).GetBytes(kept.Count == 0 ? string.Empty : string.Join('\n', kept) + "\n");
+
+                    // 원자적 교체(임시 파일 → 이름 바꾸기): 도중에 죽거나 전원이 나가도 감사 로그가 비거나 잘리지 않는다.
+                    // Unix 는 잠금을 쥔 채 바꿔 다른 프로세스가 끼어들 틈이 없다. Windows 는 연 파일을 바꿀 수 없어 닫고 바꾼다.
+                    if (OperatingSystem.IsWindows())
+                    {
+                        fs.Dispose();
+                    }
+
+                    AtomicFile.WriteAllBytes(FilePath, bytes);
+                    MoaiLog.Info($"audit: trimmed {drop} line(s) older than {days} day(s)");
+                }
+                finally
                 {
-                    return;
+                    fs.Dispose();
                 }
-
-                var bytes = new UTF8Encoding(false).GetBytes(kept.Count == 0 ? string.Empty : string.Join('\n', kept) + "\n");
-                fs.SetLength(0);
-                fs.Write(bytes);
-                fs.Flush(flushToDisk: true);
-                MoaiLog.Info($"audit: trimmed {lines.Length - kept.Count} line(s) older than {days} day(s)");
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

@@ -163,6 +163,25 @@ public sealed class AnthropicChatModelTests : IDisposable
     }
 
     [Fact]
+    public async Task A_lower_output_limit_from_the_server_is_used_from_then_on()
+    {
+        var h = new ScriptedHandler(
+            (HttpStatusCode.BadRequest, """{"type":"error","error":{"type":"invalid_request_error","message":"max_tokens: 64000 > 32000, which is the maximum allowed number of output tokens for claude-opus-4-1-20250805"}}"""),
+            (HttpStatusCode.OK, ToolTurn));
+        var model = Model(h);
+
+        await Run(model, [new UserMessage("hi")]);
+        await Run(model, [new UserMessage("again")]);   // 다음 요청은 처음부터 한도 안에서
+
+        int Max(int i) => JsonDocument.Parse(h.Requests[i].Body).RootElement.GetProperty("max_tokens").GetInt32();
+        Assert.Equal([64_000, 32_000, 32_000], Enumerable.Range(0, h.Requests.Count).Select(Max));
+
+        model.CurrentModel = "claude-y";   // 모델을 바꾸면 다시 기본값
+        await Run(model, [new UserMessage("new model")]);
+        Assert.Equal(64_000, Max(3));
+    }
+
+    [Fact]
     public async Task Unsupported_setting_and_signature_mismatch_are_retried_without_them()
     {
         var h = new ScriptedHandler(
