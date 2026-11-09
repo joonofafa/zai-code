@@ -58,6 +58,10 @@ public static class BashSecurity
         (Rx(@"\\!"), "tools.bashSecurity.shellIndirection"),   // psql \! — SQL 클라이언트 안에서 셸 명령
     };
 
+    // 코드 문자열·MCP 입력 같은 일반 문자열은 SQL 문장처럼 시작할 때만 SQL 로 본다("Please grant access" 는 문장이다).
+    private static readonly Regex SqlStatement = Rx(
+        @"(^|[;\n(])\s*(DROP|TRUNCATE|DELETE|UPDATE|ALTER|GRANT|REVOKE|VACUUM|REINDEX|SHUTDOWN|FLUSHALL|FLUSHDB)\b|\b(pg_terminate_backend|pg_drop_replication_slot)\b");
+
     private static readonly Regex DeleteApi = Rx(
         @"\b(shutil\.rmtree|os\.(remove|unlink|rmdir|removedirs|system)\s*\(|rmSync\s*\(|rimraf\b|fs\.(rm|unlink|rmdir)(Sync)?\s*\(|" +
         @"File\.Delete\s*\(|Directory\.Delete\s*\(|FileUtils\.(rm_rf|rm_r|rm|remove_dir|remove_entry)\b|\.unlink\s*\(|\.rmdir\s*\(|" +
@@ -107,7 +111,7 @@ public static class BashSecurity
         (Rx(@"\b(del|erase)\b[^|;&]*\s/[a-z]*[sq]"), "tools.bashSecurity.winDelErase"),
         (Rx(@"\b(rd|rmdir)\b[^|;&]*\s/s\b"), "tools.bashSecurity.winRdRecursive"),
         (Rx(@"\bRemove-Item\b[^|;&]*\s-(Recurse|Force)\b"), "tools.bashSecurity.psRemoveItem"),
-        (Rx(@"\b(ri|del)\b[^|;&]*\s-Recurse\b"), "tools.bashSecurity.psRecursiveDelete"),
+        (Rx(@"\b(ri|del|rm|rmdir|rd|erase)\b[^|;&]*\s-Recurse\b"), "tools.bashSecurity.psRecursiveDelete"),
     };
 
     private static readonly Regex DiskDevice = Rx(@"^/dev/(sd|nvme|disk|hd|rdisk|vd|xvd|mmcblk|dm-|md[0-9]|loop[0-9]|mapper/|nbd|rbd|zd|sr[0-9])");
@@ -218,7 +222,9 @@ public static class BashSecurity
     /// <paramref name="kind"/> 가 스크립트·SQL·코드이면 파일 내용을 검사한다(해석할 수 없는 형태는 내용 검사에선 묻지 않는다 —
     /// 실제 스크립트는 변수로 프로그램을 부르는 일이 흔하다).
     /// </summary>
-    public static string? DestructiveReason(string command, Content kind = Content.Command)
+    /// <param name="trustRelative">상대 경로가 프로젝트 안을 가리킨다고 믿어도 되는가(빌드 폴더 삭제 예외). 셸이 작업 폴더 밖에 있거나
+    /// 작업 폴더가 홈이면 false.</param>
+    public static string? DestructiveReason(string command, Content kind = Content.Command, bool trustRelative = true)
     {
         var text = command ?? string.Empty;
         if (text.Trim().Length == 0)
@@ -234,7 +240,7 @@ public static class BashSecurity
                 return CodeReason(text);
         }
 
-        if (Rm.NeedsConfirmation(text))
+        if (Rm.NeedsConfirmation(text, trustRelative))
         {
             return L10n.Get(Rm.IsRecursiveDelete(text) ? "tools.bashSecurity.recursiveDelete" : "tools.bashSecurity.riskyDelete");
         }
@@ -420,7 +426,8 @@ public static class BashSecurity
                 }
             }
 
-            if (p.Words.Count > 0 && p.Words[0] != "(code)" && HardBlockKey(p.Words) is { } key)
+            // 프로그램 코드의 문자열(print("reboot"))은 명령인지 확신할 수 없다 — 차단하지 않고 CodeReason 이 확인을 받는다.
+            if (p.Words.Count > 0 && p.Words[0] != "(code)" && !p.CodeFromString && HardBlockKey(p.Words) is { } key)
             {
                 return Blocked(key);
             }
@@ -553,7 +560,8 @@ public static class BashSecurity
             case "mount" when args.Any(a => a.Contains("remount", StringComparison.Ordinal)):
             case "dd" when args.Any(a => a.StartsWith("of=", StringComparison.Ordinal) && a != "of=/dev/null"):
                 return "tools.bashSecurity.diskChange";
-            case "mv" or "cp" or "install" or "ln" or "rsync" when operands.Any(IsSystemPath):
+            case "mv" when operands.Any(IsSystemPath):   // 옮기면 원본도 사라진다
+            case "cp" or "install" or "ln" or "rsync" when CopyDestination(args) is { } dest && IsSystemPath(dest):
             case "tee" when operands.Any(IsSystemPath):
             case "sed" or "perl" when args.Any(a => a == "-i" || a.StartsWith("--in-place", StringComparison.Ordinal) || (a.StartsWith('-') && !a.StartsWith("--", StringComparison.Ordinal) && a.Contains('i')))
                                       && operands.Any(IsSystemPath):
@@ -609,6 +617,25 @@ public static class BashSecurity
         }
 
         return null;
+    }
+
+    // cp·install·ln·rsync 가 쓰는 곳: -t DIR / --target-directory=DIR, 아니면 마지막 일반 인자(원본은 읽기만 한다).
+    private static string? CopyDestination(List<string> args)
+    {
+        for (var i = 0; i < args.Count; i++)
+        {
+            if (args[i] is "-t" or "--target-directory" && i + 1 < args.Count)
+            {
+                return args[i + 1];
+            }
+
+            if (args[i].StartsWith("--target-directory=", StringComparison.Ordinal))
+            {
+                return args[i]["--target-directory=".Length..];
+            }
+        }
+
+        return args.LastOrDefault(a => !a.StartsWith('-'));
     }
 
     private static readonly Regex BulkDelete = Rx(@"^(delete|destroy|purge|prune|wipe|remove|kill)[-_]all([-_]\w+)?$");
@@ -832,6 +859,12 @@ public static class BashSecurity
             return L10n.Get("tools.bashSecurity.deleteApi");
         }
 
+        // cur.execute("DROP TABLE users"), query('DELETE FROM accounts') — 격리는 네트워크를 공유하므로 DB 변경은 사람이 본다.
+        if (EmbeddedSqlReason(ShellCommand.StringLiterals(code)) is { } sqlReason)
+        {
+            return sqlReason;
+        }
+
         foreach (var p in ShellCommand.ParseCode(code))
         {
             if (p.Words.Count == 0 || p.Words[0] == "(code)")
@@ -839,7 +872,7 @@ public static class BashSecurity
                 continue;
             }
 
-            if (ProgramReason(p.Words) is { } key)
+            if ((ProgramReason(p.Words) ?? HardBlockKey(p.Words)) is { } key)
             {
                 return L10n.Get(key);
             }
@@ -847,6 +880,21 @@ public static class BashSecurity
             if (Prog(p.Words[0]) == "rm" && Rm.NeedsConfirmation(string.Join(' ', p.Words)))
             {
                 return L10n.Get("tools.bashSecurity.recursiveDelete");
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>SQL 클라이언트 입력이 아닌 문자열(코드의 문자열 리터럴, MCP 툴 입력)에서 SQL 문장처럼 시작하는 것만 SQL 로 판정한다.</summary>
+    public static string? EmbeddedSqlReason(IEnumerable<string> strings)
+    {
+        foreach (var s in strings)
+        {
+            var sql = StripSqlComments(s);
+            if (SqlStatement.IsMatch(sql) && SqlReason(sql) is { } reason)
+            {
+                return reason;
             }
         }
 

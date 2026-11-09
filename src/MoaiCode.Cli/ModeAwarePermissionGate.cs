@@ -179,7 +179,7 @@ public sealed class ModeAwarePermissionGate : IPermissionGate, IReadOnlyToolGate
             var unsandbox = SandboxPolicy.Active && ReadBool(call, "dangerously_disable_sandbox")
                 ? L10n.Get("permission.unsandboxedRequest")
                 : null;
-            var critical = BashSecurity.DestructiveReason(command) ?? scriptReason ?? unsandbox;
+            var critical = BashSecurity.DestructiveReason(command, trustRelative: RelativePathsStayInProject()) ?? scriptReason ?? unsandbox;
             if (critical is not null)
             {
                 return await CriticalAsync(tool, call, critical, ct).ConfigureAwait(false);
@@ -377,12 +377,13 @@ public sealed class ModeAwarePermissionGate : IPermissionGate, IReadOnlyToolGate
                     continue;
                 }
 
-                if (kind != BashSecurity.Content.Sql && BashSecurity.Check(text) is { Allowed: false } hard)
+                // 하드 차단은 셸 스크립트에만 — Python/JS 파일의 shutdown()·reboot = False 같은 코드 줄은 명령이 아니다(CodeReason 이 확인).
+                if (kind == BashSecurity.Content.ShellScript && BashSecurity.Check(text) is { Allowed: false } hard)
                 {
                     return (null, L10n.Get("permission.scriptContains", path, hard.Reason ?? string.Empty));
                 }
 
-                if (BashSecurity.DestructiveReason(text, kind) is { } reason)
+                if (BashSecurity.DestructiveReason(text, kind, RelativePathsStayInProject()) is { } reason)
                 {
                     return (L10n.Get("permission.scriptContains", path, reason), null);
                 }
@@ -406,16 +407,11 @@ public sealed class ModeAwarePermissionGate : IPermissionGate, IReadOnlyToolGate
             or "deno" or "bun" or "Rscript" or "tclsh";
         if (isShell || isCode)
         {
-            // -c/-e(코드 문자열)·-m(모듈)이 있으면 파일을 읽지 않는다. 첫 일반 인자가 스크립트다.
-            if (!w.Skip(1).TakeWhile(a => a.StartsWith('-')).Any(a => a is "-m" or "-e" or "-E" or "--eval" or "-r"
-                    || (isShell && !a.StartsWith("--", StringComparison.Ordinal) && a.Contains('c'))
-                    || (!isShell && a is "-c")))
+            // 셸 판정과 같은 인자 해석: -c/-e(코드 문자열)·-m(모듈)·-s(표준 입력)면 파일이 없고, 값을 받는 옵션(-W, -r 모듈)은 건너뛴다.
+            var (source, at) = ShellCommand.LocateProgram(prog, w, 1);
+            if (source == ShellCommand.ProgramSource.Script)
             {
-                var script = w.Skip(1).FirstOrDefault(a => !a.StartsWith('-'));
-                if (script is not null && script is not ("/dev/stdin" or "-"))
-                {
-                    yield return (script, isShell ? BashSecurity.Content.ShellScript : BashSecurity.Content.Code, true);
-                }
+                yield return (w[at], isShell ? BashSecurity.Content.ShellScript : BashSecurity.Content.Code, true);
             }
 
             foreach (var r in p.Redirects.Where(r => r.Op == "<"))
@@ -542,33 +538,65 @@ public sealed class ModeAwarePermissionGate : IPermissionGate, IReadOnlyToolGate
         }
     }
 
+    // 상대 경로 빌드 폴더(rm -rf bin)를 확인 없이 지워도 되는가: 셸이 지금 작업 폴더 안에 있고, 작업 폴더가 홈(또는 그 위)이 아니다.
+    private bool RelativePathsStayInProject()
+    {
+        var cmp = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        static string Dir(string p) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(p)) + Path.DirectorySeparatorChar;
+        try
+        {
+            var ws = Dir(_workspace);
+            var cwd = Dir(_shellCwd?.Invoke() ?? _workspace);
+            return !Dir(MoaiCode.Core.AppPaths.UserHome).StartsWith(ws, cmp) && cwd.StartsWith(ws, cmp);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
+    }
+
+    // 명령·SQL 을 담는 입력 이름. 이런 값만 셸·SQL 로 해석하고, 나머지(메일 본문·메시지·제목 …)는 SQL 문장처럼 시작할 때만 본다 —
+    // "Please grant access", "kill the stale job" 같은 문장이 파괴적 명령으로 분류되지 않게.
+    private static readonly HashSet<string> McpCommandKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "command", "cmd", "commands", "script", "shell", "sql", "query", "statement", "statements", "code", "exec", "args", "argv",
+    };
+
     // MCP 툴 입력의 문자열 값들에 파괴적 SQL·셸 명령이 있으면 그 사유.
     private static string? McpContentReason(ToolUseBlock call)
     {
-        foreach (var value in Strings(call.Input))
+        var prose = new List<string>();
+        foreach (var (key, value) in Strings(call.Input, null))
         {
+            if (key is null || !McpCommandKeys.Contains(key))
+            {
+                prose.Add(value);
+                continue;
+            }
+
             var reason = BashSecurity.DestructiveReason(value, BashSecurity.Content.Sql)
-                         ?? BashSecurity.DestructiveReason(value, BashSecurity.Content.ShellScript);
+                         ?? BashSecurity.DestructiveReason(value, BashSecurity.Content.ShellScript, trustRelative: false);
             if (reason is not null)
             {
                 return L10n.Get("permission.toolInputContains", reason);
             }
         }
 
-        return null;
+        return BashSecurity.EmbeddedSqlReason(prose) is { } sqlReason ? L10n.Get("permission.toolInputContains", sqlReason) : null;
     }
 
-    private static IEnumerable<string> Strings(JsonElement e)
+    // (속성 이름, 문자열 값). 배열 안의 값은 배열의 속성 이름을 물려받는다.
+    private static IEnumerable<(string? Key, string Value)> Strings(JsonElement e, string? key)
     {
         switch (e.ValueKind)
         {
             case JsonValueKind.String:
-                yield return e.GetString() ?? string.Empty;
+                yield return (key, e.GetString() ?? string.Empty);
                 break;
             case JsonValueKind.Object:
                 foreach (var p in e.EnumerateObject())
                 {
-                    foreach (var s in Strings(p.Value))
+                    foreach (var s in Strings(p.Value, p.Name))
                     {
                         yield return s;
                     }
@@ -578,7 +606,7 @@ public sealed class ModeAwarePermissionGate : IPermissionGate, IReadOnlyToolGate
             case JsonValueKind.Array:
                 foreach (var item in e.EnumerateArray())
                 {
-                    foreach (var s in Strings(item))
+                    foreach (var s in Strings(item, key))
                     {
                         yield return s;
                     }

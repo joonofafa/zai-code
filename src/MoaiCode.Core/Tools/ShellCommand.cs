@@ -769,6 +769,15 @@ public static class ShellCommand
             {
                 indirect ??= ProgramFromInput(toks, i, stdin, fromPipe, pipedFrom, depth, result, name);
             }
+            else if (name is "source" or ".")
+            {
+                // source <(curl …), curl … | source /dev/stdin : 내용을 모르는 프로그램을 현재 셸에서 실행한다.
+                var arg = toks.Skip(i + 1).FirstOrDefault();
+                if (arg is { ProcSub: true } || (fromPipe && arg?.Text is null or "/dev/stdin" or "/dev/fd/0" or "/proc/self/fd/0"))
+                {
+                    indirect ??= "program-from-input";
+                }
+            }
             else if (name == "alias")
             {
                 // alias x='rm -rf /' : 정의된 문자열을 명령으로 본다(expand_aliases 를 켜면 실행된다).
@@ -800,68 +809,31 @@ public static class ShellCommand
     private static string? ProgramFromInput(
         List<Token> toks, int i, string? stdin, bool fromPipe, string? pipedFrom, int depth, List<Parsed> result, string name)
     {
-        var shell = IsShell(name);
-        for (var k = i + 1; k < toks.Count; k++)
+        var (source, at) = LocateProgram(name, toks.Select(t => t.Text).ToList(), i + 1);
+        switch (source)
         {
-            var t = toks[k];
-            var text = t.Text;
-            if (text.StartsWith('-') && text.Length > 1 && !t.ProcSub)
-            {
-                // -c / -lc / -ec (셸), -c / -e / -E (인터프리터): 다음 단어가 실행할 코드.
-                var codeFlag = shell
-                    ? !text.StartsWith("--", StringComparison.Ordinal) && text.Contains('c')
-                    : text is "-c" or "-e" or "-E" or "--eval" or "-r" || (name is "perl" or "ruby" && text.StartsWith('-') && !text.StartsWith("--", StringComparison.Ordinal) && text.Contains('e'));
-                if (codeFlag)
+            case ProgramSource.Code:
+                var code = toks[at];
+                if (IsShell(name))
                 {
-                    if (k + 1 < toks.Count)
-                    {
-                        var code = toks[k + 1];
-                        if (shell)
-                        {
-                            ParseInto(code.Text, depth + 1, result, codeFromString: false);
-                        }
-                        else
-                        {
-                            AddCode(code.Text, depth, result);
-                        }
-
-                        return code.Expanded ? "variable-program" : null;
-                    }
-
-                    return null;
+                    ParseInto(code.Text, depth + 1, result, codeFromString: false);
+                }
+                else
+                {
+                    AddCode(code.Text, depth, result);   // awk 'BEGIN{system("…")}' 도 여기 — 프로그램 텍스트
                 }
 
-                if (name is "awk" or "gawk" && text == "-f")
-                {
-                    return null;   // 스크립트 파일 — 게이트가 읽는다
-                }
-
-                continue;
-            }
-
-            // 첫 번째 일반 인자 = 스크립트 파일(게이트가 읽는다). /dev/stdin·- ·<(…) 는 입력에서 읽는다.
-            if (t.ProcSub)
-            {
-                return "program-from-input";
-            }
-
-            if (text is "-" or "/dev/stdin" or "/dev/fd/0" or "/proc/self/fd/0")
-            {
-                break;
-            }
-
-            if (name is "awk" or "gawk")
-            {
-                AddCode(text, depth, result);   // awk 'BEGIN{system("…")}' — 프로그램 텍스트
-            }
-
-            return null;
+                return code.Expanded ? "variable-program" : null;
+            case ProgramSource.Script:
+                return toks[at].ProcSub ? "program-from-input" : null;   // 스크립트 파일 — 게이트가 읽는다
+            case ProgramSource.None:
+                return null;
         }
 
         // 인자 없이(또는 -s/-) 실행: 프로그램을 표준 입력에서 읽는다.
         if (stdin is not null)
         {
-            if (shell)
+            if (IsShell(name))
             {
                 ParseInto(stdin, depth + 1, result, codeFromString: false);
                 return null;
@@ -874,6 +846,119 @@ public static class ShellCommand
         return fromPipe ? "program-from-input" : null;   // 파이프로 들어오는 프로그램은 내용을 모른다
     }
 
+    /// <summary>셸·인터프리터가 실행할 프로그램의 출처.</summary>
+    public enum ProgramSource
+    {
+        /// <summary>파일도 코드 문자열도 아니다(python -m 모듈, 코드 플래그 뒤에 단어 없음).</summary>
+        None,
+
+        /// <summary>표준 입력(-s, -, /dev/stdin, 인자 없음).</summary>
+        Stdin,
+
+        /// <summary>-c/-e 다음 단어, 또는 awk 의 첫 일반 인자.</summary>
+        Code,
+
+        /// <summary>스크립트 파일.</summary>
+        Script,
+    }
+
+    private enum Flag { Plain, Code, Value, Script, Module, Stdin }
+
+    /// <summary>
+    /// 셸·인터프리터(<paramref name="name"/>)가 실행할 프로그램을 어디서 읽는가. 인자는 <paramref name="args"/>[<paramref name="start"/>..].
+    /// 반환한 Index 는 코드 문자열·스크립트 파일의 위치(그 외 -1). 셸 판정과 게이트의 스크립트 내용 검사가 같은 해석을 쓴다.
+    /// </summary>
+    public static (ProgramSource Source, int Index) LocateProgram(string name, IReadOnlyList<string> args, int start)
+    {
+        var shell = IsShell(name);
+        var fromStdin = false;
+        for (var k = start; k < args.Count; k++)
+        {
+            var a = args[k];
+            if (a.StartsWith('-') && a.Length > 1)
+            {
+                switch (a == "--" ? Flag.Plain : FlagOf(name, a, shell))
+                {
+                    case Flag.Code:
+                        return k + 1 < args.Count ? (ProgramSource.Code, k + 1) : (ProgramSource.None, -1);
+                    case Flag.Script:
+                        return k + 1 < args.Count ? (ProgramSource.Script, k + 1) : (ProgramSource.None, -1);
+                    case Flag.Module:
+                        return (ProgramSource.None, -1);
+                    case Flag.Value:
+                        k++;
+                        break;
+                    case Flag.Stdin:
+                        fromStdin = true;   // bash -s -- a b : 뒤의 단어는 스크립트가 아니라 위치 인자
+                        break;
+                }
+
+                continue;
+            }
+
+            if (fromStdin || a is "-" or "/dev/stdin" or "/dev/fd/0" or "/proc/self/fd/0")
+            {
+                return (ProgramSource.Stdin, -1);
+            }
+
+            if (name is "deno" or "bun" && a == "run")
+            {
+                continue;   // deno run x.ts / bun run x.js
+            }
+
+            return name is "awk" or "gawk" ? (ProgramSource.Code, k) : (ProgramSource.Script, k);
+        }
+
+        return (ProgramSource.Stdin, -1);
+    }
+
+    // 인터프리터마다 다른 옵션 뜻: 코드 문자열(-c/-e), 값을 받는 옵션(python -W, node -r 모듈), 모듈 실행(python -m).
+    private static Flag FlagOf(string name, string a, bool shell)
+    {
+        var bundle = !a.StartsWith("--", StringComparison.Ordinal);
+        if (shell)
+        {
+            return bundle && a.Contains('c') ? Flag.Code
+                : bundle && a.Contains('s') ? Flag.Stdin
+                : a is "-o" or "-O" or "--rcfile" or "--init-file" ? Flag.Value
+                : Flag.Plain;
+        }
+
+        if (name.StartsWith("python", StringComparison.Ordinal))
+        {
+            return a == "-c" ? Flag.Code : a == "-m" ? Flag.Module : a is "-W" or "-X" ? Flag.Value : Flag.Plain;
+        }
+
+        switch (name)
+        {
+            case "perl":
+                return a is "-I" or "-M" or "-m" ? Flag.Value
+                    : a.StartsWith("-I", StringComparison.Ordinal) || a.StartsWith("-M", StringComparison.Ordinal) || a.StartsWith("-m", StringComparison.Ordinal) ? Flag.Plain
+                    : bundle && (a.Contains('e') || a.Contains('E')) ? Flag.Code
+                    : Flag.Plain;
+            case "ruby":
+                return a is "-r" or "-I" or "-C" ? Flag.Value
+                    : a.StartsWith("-r", StringComparison.Ordinal) || a.StartsWith("-I", StringComparison.Ordinal) ? Flag.Plain
+                    : bundle && a.Contains('e') ? Flag.Code
+                    : Flag.Plain;
+            case "node" or "nodejs" or "bun" or "deno":
+                return a is "-e" or "--eval" or "-p" or "--print" ? Flag.Code
+                    : a is "-r" or "--require" or "--import" or "--loader" or "--experimental-loader" or "--env-file" ? Flag.Value
+                    : Flag.Plain;
+            case "php":
+                return a == "-r" ? Flag.Code : a == "-f" ? Flag.Script : a is "-c" or "-d" or "-z" ? Flag.Value : Flag.Plain;
+            case "lua":
+                return a == "-e" ? Flag.Code : a == "-l" ? Flag.Value : Flag.Plain;
+            case "awk" or "gawk":
+                return a == "-f" ? Flag.Script : a is "-v" or "-F" ? Flag.Value : Flag.Plain;
+            case "pwsh" or "powershell":
+                var l = a.ToLowerInvariant();
+                return l is "-c" or "-command" ? Flag.Code : l is "-f" or "-file" ? Flag.Script : Flag.Plain;
+            default:
+                return a is "-c" or "-e" ? Flag.Code : Flag.Plain;
+        }
+    }
+
     // 인터프리터 코드: 문자열 리터럴을 셸 명령으로도 본다(os.system("rm -rf /data")). 코드 자체는 CodeFromString 표시로 넘긴다.
     private static void AddCode(string code, int depth, List<Parsed> result)
     {
@@ -884,7 +969,8 @@ public static class ShellCommand
         }
     }
 
-    private static IEnumerable<string> StringLiterals(string code)
+    /// <summary>코드 안의 따옴표 문자열(작은·큰따옴표)들.</summary>
+    public static IEnumerable<string> StringLiterals(string code)
     {
         for (var i = 0; i < code.Length; i++)
         {

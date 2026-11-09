@@ -42,7 +42,7 @@ public static class Rm
     /// <summary>재귀 삭제가 루트·홈·시스템 디렉토리를 향하면 true (차단 대상).</summary>
     public static bool IsCriticalDelete(string command)
     {
-        foreach (var (recursive, targets) in Parse(command))
+        foreach (var (recursive, targets, _) in Parse(command))
         {
             if (!recursive)
             {
@@ -95,9 +95,13 @@ public static class Rm
     /// <summary>
     /// 확인을 받아야 하는 삭제: 재귀, 와일드카드(rm *.sql), 변수·입력에서 온 대상, 시스템·로그 경로(rm /var/log/secure).
     /// 작업 폴더의 파일 하나(`rm out.txt`)나 빌드 산출물(`rm -rf node_modules bin obj`)은 해당하지 않는다.
+    /// 빌드 산출물 예외는 상대 경로가 프로젝트 안이라고 믿을 수 있을 때만 쓴다: <paramref name="trustRelative"/>(셸이 작업 폴더 안,
+    /// 작업 폴더가 홈이 아님)이고 같은 줄에서 먼저 cd 하지 않았을 때(`cd ~ &amp;&amp; rm -rf bin` 은 ~/bin 이다).
     /// </summary>
-    public static bool NeedsConfirmation(string command) =>
-        Parse(command).Any(r => r.Targets.Count > 0 && !(r.Recursive && r.Targets.All(IsBuildOutput)) && (r.Recursive || r.Targets.Any(IsRisky)));
+    public static bool NeedsConfirmation(string command, bool trustRelative = true) =>
+        Parse(command).Any(r => r.Targets.Count > 0
+                                && !(trustRelative && !r.Moved && r.Recursive && r.Targets.All(IsBuildOutput))
+                                && (r.Recursive || r.Targets.Any(IsRisky)));
 
     private static bool IsBuildOutput(string target)
     {
@@ -124,10 +128,11 @@ public static class Rm
         ShellCommand.Commands(command).Any(w => ShellCommand.Program(w[0]) == "rm" && w.Contains("--no-preserve-root"))
         || command.Contains("--no-preserve-root", StringComparison.OrdinalIgnoreCase);
 
-    // 명령 위치에 rm 이 있는 단순 명령마다 (재귀 여부, 대상들). 같은 줄의 cd 로 상대 경로를 푼다.
-    private static IEnumerable<(bool Recursive, List<string> Targets)> Parse(string command)
+    // 명령 위치에 rm 이 있는 단순 명령마다 (재귀 여부, 대상들, 앞서 cd 했는가). 같은 줄의 cd 로 상대 경로를 푼다.
+    private static IEnumerable<(bool Recursive, List<string> Targets, bool Moved)> Parse(string command)
     {
         string? cwd = null;
+        var moved = false;
         foreach (var p in ShellCommand.Parse(command))
         {
             var words = p.Words;
@@ -137,6 +142,11 @@ public static class Rm
             }
 
             var prog = ShellCommand.Program(words[0]);
+            if (prog is "cd" or "pushd" or "popd")
+            {
+                moved = true;
+            }
+
             if (prog is "cd" or "pushd" && p.Depth == 0)
             {
                 var dir = words.Skip(1).FirstOrDefault(a => !a.StartsWith('-')) ?? "~";
@@ -182,7 +192,7 @@ public static class Rm
                 targets.Add(t);
             }
 
-            yield return (recursive, targets);
+            yield return (recursive, targets, moved);
         }
     }
 }
