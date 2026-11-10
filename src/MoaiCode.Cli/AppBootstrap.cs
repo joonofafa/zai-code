@@ -154,13 +154,12 @@ public static class AppBootstrap
         }
 
         // 4) 스킬 — 우선순위 user > plugin > bundled. 로컬 비활성(/skills)로 끈 스킬은 제외.
+        // 상시(passive) 스킬은 켜졌을 때만 본문을 시스템 프롬프트에 넣고, Skill 툴 목록에는 넣지 않는다.
         BundledSkills.EnsureExtracted();
 
-        var disabledSkills = SkillState.LoadDisabled();
-        var skills = SkillCatalog.DiscoverAll(cwd)
-            .Where(x => !disabledSkills.Contains(x.Skill.Name))
-            .Select(x => x.Skill)
-            .ToList();
+        var activeSkills = SkillCatalog.ActiveSkills(cwd);
+        var skills = activeSkills.Where(s => !s.Passive).ToList();
+        var alwaysOnSkills = SkillTool.AlwaysOnSection(activeSkills.Where(s => s.Passive));
         var skillTool = new SkillTool(skills);
         if (skills.Count > 0)
         {
@@ -237,7 +236,7 @@ public static class AppBootstrap
             shellCwd: () => bashTool.CurrentDirectory);
 
         // 하위 에이전트가 부모와 동일한 게이트를 쓰도록 여기서 생성해 툴 목록에 추가(SEC-004).
-        toolList.Add(new AgentTool(model, subTools, gate: gate));
+        toolList.Add(new AgentTool(model, subTools, gate: gate, extraInstructions: () => alwaysOnSkills));
 
         var observer = new HarnessToolObserver(settings, checkpoints);
         // 단일 툴 결과의 컨텍스트 유입 상한(거대 출력 → 잦은 컴팩션 방지). MOAI_MAX_TOOL_RESULT_CHARS 로 조정, 0/음수면 무제한.
@@ -256,7 +255,7 @@ public static class AppBootstrap
             log: MoaiLog.Info,   // 턴/툴/한도 이벤트를 ~/.moai/logs/moai.log 에 기록(진단용).
             currentPhase: taskStore.CurrentPhase);   // 페이즈 경계에서 하베스트→압축→다음 안내
         var promptCtx = BuildPromptContext(cwd, settings, toolList, await repoMapTask.ConfigureAwait(false));
-        engine.Seed(new[] { new SystemMessage(SystemPromptBuilder.Build(promptCtx)) });
+        engine.Seed(new[] { new SystemMessage(SystemPromptBuilder.Build(promptCtx with { AlwaysOnSkills = alwaysOnSkills })) });
 
         var ctx = new SlashContext(
             engine,
@@ -270,7 +269,7 @@ public static class AppBootstrap
             checkpoints,
             state,
             toolList.Select(t => t.Name).ToList(),
-            skills.Select(s => s.Name).ToList(),
+            activeSkills.Select(s => s.Name).ToList(),
             mcpConfigs.Select(c => c.Name).ToList(),
             providerDesc,
             // /model 로 라이브 전환. 저장·컨텍스트 창은 아래 ProviderSetup 이 맡는다.
@@ -302,19 +301,28 @@ public static class AppBootstrap
             GetSkillChoices: () =>
             {
                 var dis = SkillState.LoadDisabled();
+                var on = SkillState.LoadEnabled();
                 return SkillCatalog.DiscoverAll(cwd)
-                    .Select(x => (x.Skill.Name, x.Source, Enabled: !dis.Contains(x.Skill.Name)))
+                    .Select(x => (x.Skill.Name,
+                        x.Skill.Passive ? $"{x.Source} · {L10n.Get("slash.skills.alwaysOn")}" : x.Source,
+                        Enabled: SkillState.IsActive(x.Skill, dis, on)))
                     .ToList();
             },
-            // /skills: 비활성 목록 저장 + 라이브 SkillTool 재적재.
+            // /skills: 상태 저장 + 라이브 SkillTool 재적재. 상시 스킬이 바뀌면 시스템 프롬프트도 바로 교체.
             SetDisabledSkills: disabledNames =>
             {
-                SkillState.SaveDisabled(disabledNames);
-                var dis = new HashSet<string>(disabledNames, StringComparer.OrdinalIgnoreCase);
-                var active = SkillCatalog.DiscoverAll(cwd)
-                    .Where(x => !dis.Contains(x.Skill.Name)).Select(x => x.Skill).ToList();
-                skillTool.Reload(active);
-                return L10n.Get("slash.skills.toggleSaved", active.Count, dis.Count);
+                var all = SkillCatalog.DiscoverAll(cwd).Select(x => x.Skill).ToList();
+                SkillState.Save(all, disabledNames);
+                var active = SkillCatalog.ActiveSkills(cwd);
+                skillTool.Reload(active.Where(s => !s.Passive).ToList());
+                var section = SkillTool.AlwaysOnSection(active.Where(s => s.Passive));
+                if (section != alwaysOnSkills)
+                {
+                    alwaysOnSkills = section;
+                    engine.ReplaceSeed(new[] { new SystemMessage(SystemPromptBuilder.Build(promptCtx with { AlwaysOnSkills = section })) });
+                }
+
+                return L10n.Get("slash.skills.toggleSaved", active.Count, all.Count - active.Count);
             },
             // /install·/uninstall: Windows 셸 통합(PATH + 탐색기 우클릭 메뉴).
             InstallIntegration: () => WindowsIntegration.Install(L10n.Get("slash.install.menuLabel")),
@@ -329,7 +337,7 @@ public static class AppBootstrap
                 settings.ContextWindowTokens > 0 ? settings.ContextWindowTokens : null));
 
         return new AppRuntime(
-            mcp, ctx, toolList, skills.Select(s => s.Name).ToList(), mcpConfigs, providerDesc, settings, streamGate);
+            mcp, ctx, toolList, activeSkills.Select(s => s.Name).ToList(), mcpConfigs, providerDesc, settings, streamGate);
     }
 
     // 홈 아래에서 격리 안 명령이 고치면 격리 밖으로 이어지는 곳: MATE 데이터·설정 레이어, 로그인 셸 시작 파일, ssh·gpg, 사용자 실행 경로.

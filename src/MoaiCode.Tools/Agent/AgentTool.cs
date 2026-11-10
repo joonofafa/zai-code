@@ -19,16 +19,20 @@ public sealed class AgentTool : ITool
     private readonly IReadOnlyList<ITool> _subTools;
     private readonly int _maxTurns;
     private readonly IPermissionGate? _gate;
+    private readonly Func<string?>? _extraInstructions;
 
     // gate: 하위 에이전트가 쓸 권한 게이트(부모와 동일). null 이면 거부(fail-closed) — 보안상
     // 호출측이 반드시 부모 게이트를 넘겨야 한다(SEC-004). 과거 AutoApprove 폴백은 fail-open 이라 제거:
     // 게이트 누락 버그가 서브에이전트의 모든 쓰기 툴을 무승인 실행으로 이어졌다.
-    public AgentTool(IChatModel model, IReadOnlyList<ITool> subTools, int maxTurns = 8, IPermissionGate? gate = null)
+    // extraInstructions: 하위 에이전트 시스템 프롬프트 뒤에 붙일 지침(켜진 상시 스킬). 호출 시점 값을 쓴다.
+    public AgentTool(IChatModel model, IReadOnlyList<ITool> subTools, int maxTurns = 8, IPermissionGate? gate = null,
+        Func<string?>? extraInstructions = null)
     {
         _model = model;
         _subTools = subTools;
         _maxTurns = maxTurns;
         _gate = gate;
+        _extraInstructions = extraInstructions;
     }
 
     public string Name => "Agent";
@@ -91,7 +95,9 @@ public sealed class AgentTool : ITool
             fileChanges: context.Changes);   // 서브에이전트가 고친 파일도 부모 턴의 /diff 에 보이게
         subEngine.Seed(new[]
         {
-            new SystemMessage(SubAgentPrompts.ForType(inp.SubagentType)),
+            new SystemMessage(_extraInstructions?.Invoke() is { Length: > 0 } extra
+                ? SubAgentPrompts.ForType(inp.SubagentType) + "\n\n" + extra
+                : SubAgentPrompts.ForType(inp.SubagentType)),
         });
 
         var sb = new StringBuilder();

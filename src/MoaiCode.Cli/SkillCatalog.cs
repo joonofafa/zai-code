@@ -30,4 +30,12 @@ public static class SkillCatalog
         Add(SkillLoader.LoadFromDir(BundledSkills.Dir), "bundled");
         return all;
     }
+
+    /// <summary>지금 켜진 스킬(일반=끄지 않은 것, 상시=켠 것).</summary>
+    public static List<Skill> ActiveSkills(string cwd)
+    {
+        var disabled = SkillState.LoadDisabled();
+        var enabled = SkillState.LoadEnabled();
+        return DiscoverAll(cwd).Select(x => x.Skill).Where(s => SkillState.IsActive(s, disabled, enabled)).ToList();
+    }
 }

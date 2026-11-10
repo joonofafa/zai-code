@@ -74,6 +74,7 @@
   "slash.skills.cancelled": "skills: (취소됨)",
   "slash.skills.pickerTitle": "스킬 활성/비활성 — Space 토글 · Enter 저장 · Esc 취소",
   "slash.skills.toggleSaved": "skills: 활성 {0}개 · 비활성 {1}개 (저장됨).",
+  "slash.skills.alwaysOn": "상시",
   "common.multiselect.help": "(↑/↓ 이동 · Space 토글 · a 전체 · Enter 저장 · Esc 취소)",
   "common.multiselect.saved": "  ✓ {0}개 활성 · {1}개 비활성 저장",
   "common.select.help": "(↑/↓ 이동 · Enter 선택 · Esc 취소 · 숫자 즉시선택{0})",

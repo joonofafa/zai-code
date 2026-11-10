@@ -87,6 +87,7 @@ public static class SkillLoader
         var name = meta.TryGetValue("name", out var n) && n.Length > 0 ? n : fallbackName;
         var desc = meta.TryGetValue("description", out var d) ? d : "";
         var license = meta.TryGetValue("license", out var l) && l.Length > 0 ? l : null;
-        return new Skill(name, desc, body, path, license);
+        var passive = meta.TryGetValue("passive", out var p) && p.Equals("true", StringComparison.OrdinalIgnoreCase);
+        return new Skill(name, desc, body, path, license, passive);
     }
 }

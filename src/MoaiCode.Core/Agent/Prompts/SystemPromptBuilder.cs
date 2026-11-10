@@ -26,6 +26,7 @@ public static class SystemPromptBuilder
             System(),
             DoingTasks(),
             CodingGuidelines(),
+            ctx.AlwaysOnSkills,
             ExecutingActionsWithCare(),
             UsingYourTools(ctx.ToolNames),
             ToneAndOutput(),

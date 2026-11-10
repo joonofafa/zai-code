@@ -96,7 +96,7 @@ public sealed class OfflineModeTests : IDisposable
     [
         "man-page-lookup", "oracle-to-postgresql", "postgresql-diagnostics", "openshift-diagnostics",
         "k8s-manifest-review", "vllm-serving", "financial-secure-code-review", "external-code-intake",
-        "change-and-incident-runbook",
+        "change-and-incident-runbook", "secure-coding",
     ];
 
     [Fact]

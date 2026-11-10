@@ -74,6 +74,7 @@
   "slash.skills.cancelled": "skills: (cancelled)",
   "slash.skills.pickerTitle": "Enable/disable skills — Space toggle · Enter save · Esc cancel",
   "slash.skills.toggleSaved": "skills: {0} enabled · {1} disabled (saved).",
+  "slash.skills.alwaysOn": "always-on",
   "common.multiselect.help": "(↑/↓ move · Space toggle · a all · Enter save · Esc cancel)",
   "common.multiselect.saved": "  ✓ {0} enabled · {1} disabled — saved",
   "common.select.help": "(↑/↓ move · Enter select · Esc cancel · number to pick{0})",

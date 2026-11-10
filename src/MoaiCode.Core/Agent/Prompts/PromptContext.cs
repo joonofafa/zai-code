@@ -16,6 +16,9 @@ public sealed record PromptContext
     public string? MemoryIndex { get; init; }
     public string? RepoMap { get; init; }
     public string? OutputStyle { get; init; }
+
+    /// <summary>켜진 상시(passive) 스킬 절(SkillTool.AlwaysOnSection). null 이면 생략.</summary>
+    public string? AlwaysOnSkills { get; init; }
     public IReadOnlyList<string> AdditionalDirectories { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> ToolNames { get; init; } = Array.Empty<string>();
 

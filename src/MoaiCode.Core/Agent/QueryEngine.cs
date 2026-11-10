@@ -146,6 +146,19 @@ public sealed class QueryEngine
         Reset();
     }
 
+    /// <summary>
+    /// 대화는 유지한 채 시스템 프롬프트(seed)만 바꾼다 — /skills 로 상시 스킬을 켜고 끌 때.
+    /// 대화 앞머리는 언제나 seed 다(Reset·Restore·압축이 그 자리를 지킨다).
+    /// </summary>
+    public void ReplaceSeed(IEnumerable<Message> initial)
+    {
+        var old = _seed.Count;
+        _seed.Clear();
+        _seed.AddRange(initial);
+        _messages.RemoveRange(0, Math.Min(old, _messages.Count));
+        _messages.InsertRange(0, _seed);
+    }
+
     /// <summary>/diff 턴별 변경 기록. 서브에이전트 엔진은 부모의 것을 받아 같은 턴에 쌓는다.</summary>
     public MoaiCode.Core.Diff.FileChangeJournal FileChanges { get; }
 

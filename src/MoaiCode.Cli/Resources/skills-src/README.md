@@ -27,6 +27,13 @@
 - `external-code-intake` — 외부망에서 들여오는 코드·패키지·스킬 반입 검토(라이선스는 MIT/Apache 만 기본 수용)
 - `change-and-incident-runbook` — 변경 계획(사전 점검·단계·중단 조건·롤백)과 장애 대응·보고서 양식
 
+### 상시(passive) 스킬 (v13, 2026-11-10)
+frontmatter 에 `passive: true` 가 있는 스킬은 모델이 골라 부르는 대신, **켜져 있으면 본문 전체가 시스템 프롬프트에 상시 들어간다**
+(하위 에이전트 프롬프트에도). 기본은 꺼짐이고 `/skills` 에서 켜고 끈다 — 켠 이름은 `~/.mate/skills-enabled.json`
+(일반 스킬의 끈 이름은 `skills-disabled.json`). 켜고 끄면 대화를 유지한 채 시스템 프롬프트만 바로 바뀐다. 본문이 매 요청에
+들어가므로 짧게 유지하고, 언어별 상세는 `references/` 로 뺀다.
+- `secure-coding` — 코드를 쓰거나 고칠 때 OWASP Top 10·CWE Top 25 기준 취약점 회피 규칙(입력 검증·인젝션·XSS·경로·역직렬화·접근 제어·비밀값·암호·TLS·오류·로그). 언어별 안전/위험 API 짝은 `references/`(Java·Spring·MyBatis, JS·Node, Python, C#·.NET)
+
 > 오프라인 모드(`settings.json` 의 `"offline": true` 또는 `MOAI_OFFLINE=1`)에서는 `mcp-builder` 가 지시하는 웹 문서 가져오기가 동작하지 않는다.
 
 > `cross-layer-change-review`는 `~/.claude/skills/`에 동일 이름의 사용자 로컬 원본(한글)이 있어

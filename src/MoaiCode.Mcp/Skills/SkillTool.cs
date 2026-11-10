@@ -89,6 +89,25 @@ public sealed class SkillTool : ITool
                skill.Body;
     }
 
+    /// <summary>
+    /// 켜진 상시(passive) 스킬 본문을 시스템 프롬프트 절로 묶는다. 없으면 null(절 생략).
+    /// 메인 에이전트와 하위 에이전트 프롬프트가 같은 문구를 쓴다.
+    /// </summary>
+    public static string? AlwaysOnSection(IEnumerable<Skill> passive)
+    {
+        var list = passive.ToList();
+        if (list.Count == 0)
+        {
+            return null;
+        }
+
+        var parts = list.Select(s => $"## {s.Name}\n\n{BodyWithBaseDirectory(s).TrimEnd()}");
+        return "# Always-on skills\n\n" +
+               "The user turned these skills on for every task. Follow them whenever the work they describe comes up, " +
+               "without being asked and without invoking the Skill tool for them.\n\n" +
+               string.Join("\n\n", parts);
+    }
+
     private static JsonElement Parse(string json)
     {
         using var doc = JsonDocument.Parse(json);
