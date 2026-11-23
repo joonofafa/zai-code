@@ -692,6 +692,7 @@
   "tools.bashSecurity.dbChange": "Database data or schema change (DELETE/UPDATE/ALTER/GRANT)",
   "tools.bashSecurity.kernelChange": "Kernel setting or module change (sysctl/modprobe)",
   "tools.bashSecurity.containerHostAccess": "Container with host access (privileged, host root or system mounts)",
+  "permission.ignoreConfirmManaged": "--ignore-confirm is disabled by the organization's managed policy; confirmations stay on.",
   "permission.ignoreConfirmDenyMode": "mate: --ignore-confirm is ignored because permission is set to deny.",
   "permission.scriptUnreadable": "script {0} could not be read (missing, too large, or not text), so its contents cannot be checked",
   "permission.toolInputContains": "tool input contains: {0}",

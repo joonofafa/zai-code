@@ -692,6 +692,7 @@
   "tools.bashSecurity.dbChange": "데이터베이스 데이터·구조 변경(DELETE/UPDATE/ALTER/GRANT)",
   "tools.bashSecurity.kernelChange": "커널 설정·모듈 변경(sysctl/modprobe)",
   "tools.bashSecurity.containerHostAccess": "호스트에 접근하는 컨테이너(특권·호스트 루트·시스템 경로 마운트)",
+  "permission.ignoreConfirmManaged": "조직의 중앙 정책이 --ignore-confirm 을 금지했습니다. 확인 절차가 그대로 적용됩니다.",
   "permission.ignoreConfirmDenyMode": "mate: permission 이 deny 로 설정되어 있어 --ignore-confirm 을 무시합니다.",
   "permission.scriptUnreadable": "스크립트 {0} 을(를) 읽지 못해(없음·너무 큼·텍스트 아님) 내용을 확인할 수 없음",
   "permission.toolInputContains": "툴 입력 안에 있음: {0}",

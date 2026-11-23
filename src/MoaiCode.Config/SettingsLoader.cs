@@ -17,6 +17,16 @@ public static class SettingsLoader
         AllowTrailingCommas = true,
     };
 
+    /// <summary>
+    /// 중앙 정책 파일 — 관리자(보안 담당)가 배포하고 사용자는 고칠 수 없는 자리에 둔다
+    /// (Linux·macOS <c>/etc/mate/managed-settings.json</c>, Windows <c>%ProgramData%\MATE Builder\managed-settings.json</c>).
+    /// 다른 모든 레이어와 환경변수 뒤에 적용되므로 여기 적힌 키는 사용자가 바꿀 수 없다(적지 않은 키는 사용자 몫).
+    /// 경로를 환경변수로 바꾸는 길은 두지 않는다 — 빈 파일을 가리켜 정책을 벗을 수 있기 때문이다. 테스트만 이 속성을 바꾼다.
+    /// </summary>
+    public static string ManagedSettingsPath { get; set; } = OperatingSystem.IsWindows()
+        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "MATE Builder", "managed-settings.json")
+        : "/etc/mate/managed-settings.json";
+
     public static Settings Load(string workingDirectory)
     {
         var home = AppPaths.UserHome;
@@ -50,7 +60,15 @@ public static class SettingsLoader
             allowPermissionRules: false,
             allowModel: false);
 
-        return ApplyEnv(settings);
+        settings = ApplyEnv(settings);
+        return File.Exists(ManagedSettingsPath) ? ApplyManagedJson(settings, File.ReadAllText(ManagedSettingsPath)) : settings;
+    }
+
+    /// <summary>중앙 정책 레이어를 머지한다 — 모든 키를 받고, 중앙 전용 키(disableIgnoreConfirm)도 여기서만 읽는다.</summary>
+    public static Settings ApplyManagedJson(Settings baseline, string json)
+    {
+        var merged = ApplyJson(baseline, json, allowSensitive: true, allowAutomation: true, allowPermissionRules: true, allowModel: true, managed: true);
+        return merged with { ManagedPolicy = true };
     }
 
     /// <summary>JSON 한 레이어를 머지 (없는 키는 기존 값 유지). 순수 함수 — 테스트 용이.</summary>
@@ -72,7 +90,8 @@ public static class SettingsLoader
         bool allowSensitive,
         bool allowAutomation,
         bool allowPermissionRules,
-        bool allowModel = true)
+        bool allowModel = true,
+        bool managed = false)
     {
         JsonDocument doc;
         try
@@ -168,6 +187,9 @@ public static class SettingsLoader
                 AuditRetentionDays = allowSensitive
                     ? GetInt(root, "auditRetentionDays", "audit_retention_days") ?? baseline.AuditRetentionDays
                     : baseline.AuditRetentionDays,
+                DisableIgnoreConfirm = managed
+                    ? GetBool(root, "disableIgnoreConfirm", "disable_ignore_confirm") ?? baseline.DisableIgnoreConfirm
+                    : baseline.DisableIgnoreConfirm,
             };
         }
     }

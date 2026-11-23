@@ -75,6 +75,12 @@ public sealed record Settings
     /// <summary>감사 로그(~/.mate/logs/audit.jsonl) 보관일. 시작할 때 이보다 오래된 줄을 지운다. 0 = 지우지 않음. 기본 90(오피스챗과 같음).</summary>
     public int AuditRetentionDays { get; init; } = 90;
 
+    /// <summary>중앙 정책 파일(<see cref="SettingsLoader.ManagedSettingsPath"/>)을 읽었는지. 그 파일의 값은 사용자 설정·환경변수보다 우선한다.</summary>
+    public bool ManagedPolicy { get; init; }
+
+    /// <summary>--ignore-confirm(확인 없는 배치 실행)을 금지한다. 중앙 정책 파일에서만 읽는다.</summary>
+    public bool DisableIgnoreConfirm { get; init; }
+
     /// <summary>
     /// 격리 실행(bubblewrap): "auto"(기본, 쓸 수 있으면 켬) / "required"(반드시 — 못 쓰면 사람이 모든 명령을 승인) / "off".
     /// 사람이 직접 승인하지 않은 셸 명령을 작업 폴더 밖은 읽기 전용인 격리 환경에서 돌린다(<c>SandboxPolicy</c>).

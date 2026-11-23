@@ -71,7 +71,18 @@ public static class AppBootstrap
         // 감사 로그: 보관일을 넘긴 줄 정리 + 툴 실행 결과(ok/error)를 승인 기록에 잇는다(하위 에이전트 엔진 포함).
         AuditLog.Trim(settings.AuditRetentionDays);
         ToolEvents.Completed = AuditLog.Complete;
-        if (ignoreConfirm && settings.Permission == PermissionMode.Deny)
+        if (settings.ManagedPolicy)
+        {
+            MoaiLog.Info("settings: managed policy file applied");
+        }
+
+        if (ignoreConfirm && settings.DisableIgnoreConfirm)
+        {
+            // 중앙 정책이 확인 없는 배치 실행을 금지했다 — 옵션을 무시하고 평소 판정(사람 없으면 거부)으로 간다.
+            Console.Error.WriteLine(L10n.Get("permission.ignoreConfirmManaged"));
+            ignoreConfirm = false;
+        }
+        else if (ignoreConfirm && settings.Permission == PermissionMode.Deny)
         {
             // permission=deny 는 --ignore-confirm 보다 우선한다 — 확인 지점마다 자동 승인하면 deny 가 무의미해진다.
             Console.Error.WriteLine(L10n.Get("permission.ignoreConfirmDenyMode"));
