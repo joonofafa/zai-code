@@ -194,7 +194,10 @@ public sealed class ImageCreateTool : ITool, IConditionalTool
         }
 
         var kb = new FileInfo(outPath).Length / 1024.0;
-        yield return new ToolOutput(L10n.Get("tools.imageCreate.created", outPath, kb, data?.Model));
+        yield return new ToolOutput(L10n.Get("tools.imageCreate.created", outPath, kb, data?.Model))
+        {
+            Images = new List<(string, string)> { (b64!, "image/png") },
+        };
     }
 
     private static async Task<GenResponse?> CallAsync(

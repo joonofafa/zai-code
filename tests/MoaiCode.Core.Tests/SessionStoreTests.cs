@@ -46,18 +46,19 @@ public class SessionStoreTests : IDisposable
         await _store.SaveAsync("s1", original);
         var loaded = await _store.LoadAsync("s1");
 
-        Assert.Equal(4, loaded.Count);
-        Assert.IsType<SystemMessage>(loaded[0]);
-        Assert.Equal("hello", Assert.IsType<UserMessage>(loaded[1]).Text);
+        // 시스템 프롬프트는 저장하지 않는다(--append-system-prompt 문구가 세션에 남지 않게).
+        // 프롬프트는 실행할 때마다 다시 조립되고 복원(Restore)은 SystemMessage를 무시한다.
+        Assert.Equal(3, loaded.Count);
+        Assert.Equal("hello", Assert.IsType<UserMessage>(loaded[0]).Text);
 
-        var asst = Assert.IsType<AssistantMessage>(loaded[2]);
+        var asst = Assert.IsType<AssistantMessage>(loaded[1]);
         Assert.Equal(2, asst.Content.Count);
         Assert.Equal("running a tool", Assert.IsType<TextBlock>(asst.Content[0]).Text);
         var tu = Assert.IsType<ToolUseBlock>(asst.Content[1]);
         Assert.Equal("Bash", tu.Name);
         Assert.Equal("ls", tu.Input.GetProperty("command").GetString());
 
-        var tr = Assert.IsType<ToolResultMessage>(loaded[3]);
+        var tr = Assert.IsType<ToolResultMessage>(loaded[2]);
         Assert.Equal("call_1", tr.ToolUseId);
         Assert.Contains("file1", tr.Output);
     }

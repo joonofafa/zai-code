@@ -48,4 +48,31 @@ public sealed class StreamJsonRunnerTests
     [InlineData("   ")]
     public void Ignores_lines_that_are_not_a_user_turn(string line)
         => Assert.Null(StreamJsonRunner.ExtractUserText(line));
+
+    [Fact]
+    public void Builds_tool_result_content_with_images_as_block_array()
+    {
+        var images = new List<(string Base64, string MediaType)> { ("QUJD", "image/png") };
+        var content = StreamJsonRunner.BuildToolResultContent("saved to a.png", images);
+
+        Assert.Equal(2, content.Count);
+        Assert.Equal("text", content[0]!["type"]!.GetValue<string>());
+        Assert.Equal("saved to a.png", content[0]!["text"]!.GetValue<string>());
+        Assert.Equal("image", content[1]!["type"]!.GetValue<string>());
+        var source = content[1]!["source"]!;
+        Assert.Equal("base64", source["type"]!.GetValue<string>());
+        Assert.Equal("image/png", source["media_type"]!.GetValue<string>());
+        Assert.Equal("QUJD", source["data"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void Builds_tool_result_content_defaults_missing_media_type_to_png()
+    {
+        var images = new List<(string Base64, string MediaType)> { ("QUJD", "") };
+        var content = StreamJsonRunner.BuildToolResultContent("", images);
+
+        // 본문 텍스트가 비면 text 블록 없이 이미지만.
+        Assert.Single(content);
+        Assert.Equal("image/png", content[0]!["source"]!["media_type"]!.GetValue<string>());
+    }
 }

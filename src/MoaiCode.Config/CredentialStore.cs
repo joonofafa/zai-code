@@ -34,6 +34,19 @@ public sealed class FileCredentialStore : ICredentialStore
         Save(dict);
     }
 
+    /// <summary>저장된 항목을 지운다. 없었으면 false.</summary>
+    public bool Remove(string key)
+    {
+        var dict = Load();
+        if (!dict.Remove(key))
+        {
+            return false;
+        }
+
+        Save(dict);
+        return true;
+    }
+
     public IReadOnlyList<string> Keys() => Load().Keys.ToList();
 
     private Dictionary<string, string> Load()

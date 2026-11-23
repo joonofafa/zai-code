@@ -701,7 +701,7 @@ public sealed class QueryEngine
                 _log($"tool call: {call.Name} inputBytes={call.Input.GetRawText().Length}");
                 var callContext = toolContext with { ToolUseId = call.Id };
                 await _observer.BeforeToolAsync(tool, call, callContext, ct).ConfigureAwait(false);
-                var (output, isError) = await ExecuteToolAsync(tool, call, callContext, ct).ConfigureAwait(false);
+                var (output, isError, images) = await ExecuteToolAsync(tool, call, callContext, ct).ConfigureAwait(false);
                 _log($"tool done: {call.Name} error={isError} outputChars={output.Length}");
                 // 실패 시 에러 본문(ASCII 정규화 + 상한)을 남긴다 — outputChars 만으론 사후 디버깅 불가.
                 if (isError)
@@ -716,7 +716,7 @@ public sealed class QueryEngine
                 }
                 // 컨텍스트(모델)로 가는 결과만 상한을 건다 — UI(ToolExecuted)와 관찰자엔 원문 유지.
                 _messages.Add(new ToolResultMessage(call.Id, CapToolOutput(output, _maxToolResultChars), isError));
-                yield return new ToolExecuted(call.Name, call.Id, output, isError);
+                yield return new ToolExecuted(call.Name, call.Id, output, isError) { Images = images };
 
                 var observation = await _observer
                     .AfterToolAsync(tool, call, callContext, output, isError, ct)
@@ -1436,11 +1436,12 @@ public sealed class QueryEngine
         a.CacheReadTokens + b.CacheReadTokens,
         a.CacheCreationTokens + b.CacheCreationTokens);
 
-    private static async Task<(string Output, bool IsError)> ExecuteToolAsync(
+    private static async Task<(string Output, bool IsError, IReadOnlyList<(string Base64, string MediaType)>? Images)> ExecuteToolAsync(
         ITool tool, ToolUseBlock call, ToolContext context, CancellationToken ct)
     {
         var sb = new StringBuilder();
         var isError = false;
+        IReadOnlyList<(string Base64, string MediaType)>? images = null;
         try
         {
             await foreach (var progress in tool.ExecuteAsync(call.Input, context, ct).WithCancellation(ct))
@@ -1452,6 +1453,11 @@ public sealed class QueryEngine
                         if (o.IsError)
                         {
                             isError = true;
+                        }
+
+                        if (o.Images is { Count: > 0 })
+                        {
+                            images = images is null ? o.Images : images.Concat(o.Images).ToList();
                         }
 
                         break;
@@ -1468,10 +1474,10 @@ public sealed class QueryEngine
         catch (Exception ex)
         {
             ToolEvents.Completed?.Invoke(call.Id, true);
-            return ($"Tool '{call.Name}' failed: {ex.Message}", true);
+            return ($"Tool '{call.Name}' failed: {ex.Message}", true, null);
         }
 
         ToolEvents.Completed?.Invoke(call.Id, isError);
-        return (sb.ToString(), isError);
+        return (sb.ToString(), isError, images);
     }
 }

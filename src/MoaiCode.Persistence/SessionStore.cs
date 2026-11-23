@@ -42,6 +42,14 @@ public sealed class SessionStore
         var sb = new StringBuilder();
         foreach (var m in messages)
         {
+            // 시스템 프롬프트는 저장하지 않는다 — 실행할 때마다 그때의 프롬프트로 다시 조립되고
+            // (--append-system-prompt 값도 매번의 인자), 복원(Restore)은 시스템 메시지를 무시하므로
+            // 어차피 쓰이지 않는다. 덧붙인 문구가 세션 파일에 영구히 남는 것을 막는다.
+            if (m is SystemMessage)
+            {
+                continue;
+            }
+
             sb.AppendLine(JsonSerializer.Serialize<Message>(m, Json));
         }
 

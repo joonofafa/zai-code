@@ -40,7 +40,14 @@ public sealed record ToolContext(
 /// <summary>툴 실행 중 스트리밍되는 진행 이벤트.</summary>
 public abstract record ToolProgress;
 
-public sealed record ToolOutput(string Text, bool IsError = false) : ToolProgress;
+public sealed record ToolOutput(string Text, bool IsError = false) : ToolProgress
+{
+    /// <summary>
+    /// 툴 결과에 딸린 이미지(화면 표시용 — stream-json tool_result 블록으로만 나가고 모델·세션엔 실리지 않는다).
+    /// 첨부한 툴: ImageCreate/ImageFetch. 항목 = (base64 데이터, MIME).
+    /// </summary>
+    public IReadOnlyList<(string Base64, string MediaType)>? Images { get; init; }
+}
 
 public sealed record ToolStatus(string Message) : ToolProgress;
 

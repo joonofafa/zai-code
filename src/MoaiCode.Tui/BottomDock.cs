@@ -50,6 +50,8 @@ public sealed class BottomDock
     // 리사이즈 재설치 스크롤량 오버라이드: OnResize 가 CPR 실측으로 계산해 Draw 설치 경로에
     // 전달한다(1회용). null 이면 Draw 가 직접 CPR 으로 정확히 필요한 만큼만 스크롤한다.
     private int? _installScrollOverride;
+    // OnResize 가 계산해 Draw 설치 시퀀스 선두에 붙일 유령 지움 밴드(1회용). (-1,-1)=없음.
+    private (int First, int Last) _pendingEraseBand = (-1, -1);
     // 마지막으로 커서를 둔 행(1-기준)과 그때 composer 박스 상단 행(1-기준). 커서는 항상
     // 박스 안(프롬프트=편집 위치) 또는 박스 바로 위(턴=영역 하단 파킹)에 있으므로, 리사이즈
     // 후 CPR(ESC[6n) 실측 커서 행과의 차이가 곧 박스 전체의 평행이동량이다(모델 프리 판별).
@@ -169,6 +171,13 @@ public sealed class BottomDock
                 }
                 _lastConvTail = Math.Max(1, cur);
                 scroll = Math.Clamp(_lastConvTail + reserved - h, 0, reserved);
+            }
+
+            // 리사이즈 재설치: 옛 박스(유령) 지움을 이 시퀀스 선두에 붙인다(한 번의 쓰기).
+            if (_pendingEraseBand is ( > 0, _) band)
+            {
+                AppendGhostErase(sb, band.First, band.Last);
+                _pendingEraseBand = (-1, -1);
             }
 
             sb.Append($"\x1b[{h};1H");
@@ -722,6 +731,19 @@ public sealed class BottomDock
     // 재설치 스크롤량은 "대화 꼬리(_lastConvTail)가 새 박스와 겹치는 만큼"만 — 꼬리 역시
     // shift 로 평행이동 보정한다. 무조건 reserved 행을 올리면 빈 행이 스크롤백으로 밀려 들어가
     // 창을 키울 때마다 돌아와 "키운 만큼의 공란"이 됐었다.
+    // 리사이즈 시 유령 박스를 지울 행 밴드의 ANSI 프리앰블(스크롤 영역 해제 + 행 단위 지움).
+    // OnResize 가 계산한 밴드를 Draw 설치 시퀀스 앞에 붙여 "지움+재설치+재그림"이 한 번의
+    // Console.Write 로 나가게 한다(upstream ink 의 교훈: 지운 뒤 느리게 그리면 그 사이 화면이
+    // 빈 채로 보인다 — erase 와 paint 는 한 원자적 시퀀스여야 한다).
+    private void AppendGhostErase(StringBuilder sb, int first, int last)
+    {
+        sb.Append("\x1b[r");   // 스크롤 영역 해제(밴드 지움을 전체 화면 좌표로)
+        for (var row = Math.Max(1, first); row <= last; row++)
+        {
+            sb.Append($"\x1b[{row};1H\x1b[2K");
+        }
+    }
+
     private void OnResize(StringBuilder buf, int pos)
     {
         var w = Width();
@@ -737,13 +759,8 @@ public sealed class BottomDock
             return;
         }
 
-        var sb = new StringBuilder("\x1b[r");                  // 스크롤 영역 해제
-        for (var row = Math.Max(1, first); row <= last; row++)
-        {
-            sb.Append($"\x1b[{row};1H\x1b[2K");
-        }
-
-        Console.Write(sb.ToString());
+        // 밴드는 Draw 설치 경로 선두에 붙여 한 번에 출력한다(별도 Console.Write 금지 — 원자성).
+        // Draw 는 !_installed 경로로 진입해 CPR/오버라이드 스크롤 → DECSTBM → 박스 렌더를 이어 쓴다.
         _installed = false;
         _reserved = 0;
         if (shift is { } s)
@@ -762,20 +779,19 @@ public sealed class BottomDock
             // 유실되지 않는다 — 사용자가 계속 타이핑하면 출력이 밀려나 자연 복구된다.
             _installScrollOverride = 0;
         }
-        Draw(buf, pos);   // Draw 가 새 크기로 재설치(예약 줄 재확보 + composer 재그림)
+        _pendingEraseBand = first > 0 && first <= last ? (first, last) : (-1, -1);
+        Draw(buf, pos);   // 유령 지움 + 새 크기 재설치 + composer 재그림을 한 시퀀스로
     }
 
     // 리사이즈 시 지울 행 밴드(1-기준 포함), CPR 이 보고한 평행이동량 shift, 커서 실측 행.
-    // 유령 박스의 현재 위치 = _lastBoxTop + shift(커서와 박스는 함께 이동). 그 구간만 지운다.
-    // shift 측정 불가(CPR 무응답)면 지우지 않는다(0,0,null,null) — 데이터 안전 최우선.
+    // v4(upstream ink 의 "오염된 프레임은 전부 다시 그린다" 원칙 채용): 유령 위치를 규칙으로
+    // "예측"하지 않고 CPR 으로 "실측"한다 — 폭 변경(reflow)도 더 이상 예외가 아니다. 커서는
+    // 박스 안(프롬프트=편집 위치) 또는 바로 위(턴=파킹)에 있으므로, 실측 shift 는 높이 이동이든
+    // wrap/unwrap reflow 든 박스의 실제 이동량이다. 폭이 변하면 박스 내부 행도 다시 wrap 되므로
+    // (전폭 구분선이 늘어남) 측정 앵커 앞뒤로 reflow 여유분만 둔다. CPR 무응답일 때만 지우기를
+    // 포기한다(데이터 안전 최우선) — 잘못 추정한 밴드 지우기는 대화를 지우기 때문이다.
     private (int First, int Last, int? Shift, int? CursorRow) ResizeEraseBand(int w, int h)
     {
-        var margin = w != _lastW ? 4 : 0;   // 폭 변경 시에만 wrap reflow 여유
-        if (margin > 0 || h == _lastH)
-        {
-            return (0, 0, null, null);   // 폭 변경/reflow — 유령 위치 예측 불가, 지우지 않는다
-        }
-
         var probe = QueryCursorRow();
         if (probe is not { } row)
         {
@@ -785,12 +801,16 @@ public sealed class BottomDock
         var shift = row - _lastCursorRow;
         var ghostTop = _lastBoxTop + shift;
         var ghostBottom = ghostTop + Math.Max(1, _reserved) - 1;
+        // 폭 변경 시 박스 내부 reflow 여유: 위로는 입력행 위 구분선 1줄이 늘어난 만큼(+above),
+        // 아래로는 박스 전체 행이 늘어날 수 있는 만큼(+below). 높이만 변하면 0(종전의 정밀 밴드).
+        // rewrap = 옛 폭의 한 줄이 새 폭에서 차지하는 줄 수 - 1.
+        var rewrap = w != _lastW ? (int)Math.Ceiling(_lastW / (double)Math.Max(1, w)) - 1 : 0;
+        var first = Math.Max(1, Math.Min(ghostTop, row) - Math.Min(4, rewrap));
+        var last = Math.Min(h, Math.Max(ghostBottom, row) + Math.Min(8, Math.Max(1, _reserved) * rewrap));
         // 턴 모드에서 커서(park) 행은 박스 바로 위 = 스피너 행이다(불변식: _lastBoxTop == _lastCursorRow+1).
         // 스피너는 매 프레임 2K 로 이 행을 지우고 다시 그리는 크롬이라 데이터가 아니다 — 밴드에 포함해
         // 지우지 않으면 리사이즈마다 옛 스피너 프레임("⠦ 생각 중 (7s)")이 화면에 남는다.
-        // (프롬프트 모드에선 커서가 박스 안이라 유니온은 항상 무해하다.)
-        var first = Math.Max(1, Math.Min(ghostTop, row));
-        var last = Math.Min(h, Math.Max(ghostBottom, row));
+        // (프롬프트 모드에선 커서가 박스 안이라 유니온은 항상 무해하다. 위 Math.Min/Max 가 이미 반영.)
         return first > last ? (0, 0, shift, row) : (first, last, shift, row);
     }
 

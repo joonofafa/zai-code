@@ -37,8 +37,8 @@ public static class ModelPicker
     internal const int FilterThreshold = 30;
 
     // 컨텍스트 창으로 받는 범위(토큰). 이보다 작으면 압축만 되풀이하고, 크면 오타일 가능성이 높다.
-    internal const int MinContextWindow = 1_024;
-    internal const int MaxContextWindow = 100_000_000;
+    public const int MinContextWindow = 1_024;
+    public const int MaxContextWindow = 100_000_000;
 
     /// <summary>
     /// 고른 모델의 컨텍스트 창(토큰)을 묻는다(/provider·/model 공용). Enter 는 제안값 — 모델 목록이 알려 준 값,

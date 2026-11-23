@@ -27,10 +27,10 @@ ProxyConfig.Apply(Directory.GetCurrentDirectory());
 var root = new RootCommand(L10n.Get("app.description"));
 
 // 헤드리스 1회 실행 공용 로직 (run 서브커맨드 / 루트의 -p 플래그가 공유).
-static async Task<int> RunHeadlessAsync(string prompt, string? model, string outputFormat, bool ignoreConfirm, CancellationToken ct)
+static async Task<int> RunHeadlessAsync(string prompt, string? model, string outputFormat, bool ignoreConfirm, string? appendSystemPrompt, CancellationToken ct)
 {
     var rt = await AppBootstrap.BuildAsync(interactive: false, verbose: false, streamJsonPermissions: false, ct, modelOverride: model,
-        ignoreConfirm: ignoreConfirm);
+        ignoreConfirm: ignoreConfirm, appendSystemPrompt: appendSystemPrompt);
     await using var _ = rt.Mcp;
     rt.Ctx.State.LastUserRequest = prompt;   // 위험 판정 분류기용 원문 요청
     return string.Equals(outputFormat, "stream-json", StringComparison.OrdinalIgnoreCase)
@@ -39,12 +39,12 @@ static async Task<int> RunHeadlessAsync(string prompt, string? model, string out
 }
 
 // stdin 의 NDJSON 턴을 EOF 까지 처리하는 영속 모드 (--input-format stream-json).
-static async Task<int> RunStreamLoopAsync(string? model, bool ignoreConfirm, CancellationToken ct)
+static async Task<int> RunStreamLoopAsync(string? model, bool ignoreConfirm, string? appendSystemPrompt, string? resumeId, CancellationToken ct)
 {
     var rt = await AppBootstrap.BuildAsync(interactive: false, verbose: false, streamJsonPermissions: true, ct, modelOverride: model,
-        ignoreConfirm: ignoreConfirm);
+        ignoreConfirm: ignoreConfirm, appendSystemPrompt: appendSystemPrompt);
     await using var _ = rt.Mcp;
-    return await StreamJsonRunner.RunLoopAsync(rt.Ctx.Engine, rt.PermissionGate, ct);
+    return await StreamJsonRunner.RunLoopAsync(rt.Ctx.Engine, rt.PermissionGate, ct, rt.Ctx.Sessions, resumeId);
 }
 
 // run: 1회 프롬프트 헤드리스 실행
@@ -59,15 +59,20 @@ outputFormatOpt.AcceptOnlyFromAmong("text", "json", "stream-json");
 // 배치 자동화: 사람의 확인 없이 실행(파괴적 명령 포함). 하드 차단·deny 규칙은 그대로, 확인 없이 지나간 동작은 모두 감사 로그에 남는다.
 // 대화형 REPL 에서는 쓰지 않는다(사람이 있으니 확인한다).
 static Option<bool> IgnoreConfirmOption() => new("--ignore-confirm") { Description = L10n.Get("cli.ignoreConfirm.description") };
+// 시스템 프롬프트 끝에 덧붙일 문구(claude CLI 의 --append-system-prompt 와 같은 이름·동작).
+// 값이 있으면 조립된 시스템 프롬프트 맨 끝에 빈 줄 하나를 두고 그대로 붙인다. 세션에는 저장하지 않는다(매 실행 인자로 받는다).
+static Option<string?> AppendSystemPromptOption() => new("--append-system-prompt") { Description = L10n.Get("cli.appendSystemPrompt.description") };
 var ignoreConfirmOpt = IgnoreConfirmOption();
+var appendSystemPromptOpt = AppendSystemPromptOption();
 var runCmd = new Command("run", L10n.Get("cli.run.description"));
 runCmd.Arguments.Add(promptArg);
 runCmd.Options.Add(modelOpt);
 runCmd.Options.Add(outputFormatOpt);
 runCmd.Options.Add(ignoreConfirmOpt);
+runCmd.Options.Add(appendSystemPromptOpt);
 runCmd.SetAction(async (ParseResult pr, CancellationToken ct) =>
     await RunHeadlessAsync(pr.GetValue(promptArg) ?? "", pr.GetValue(modelOpt), pr.GetValue(outputFormatOpt) ?? "text",
-        pr.GetValue(ignoreConfirmOpt), ct));
+        pr.GetValue(ignoreConfirmOpt), pr.GetValue(appendSystemPromptOpt), ct));
 root.Subcommands.Add(runCmd);
 
 // 루트 레벨 -p/--print: `moai -p "프롬프트"` = 헤드리스 1회 실행(claude -p 패리티).
@@ -93,7 +98,7 @@ var rootInputFormatOpt = new Option<string>("--input-format")
 };
 rootInputFormatOpt.AcceptOnlyFromAmong("text", "stream-json");
 // claude CLI 호환을 위해 받기만 하는 옵션들 — 파싱이 깨지지 않게 한다.
-// 툴 허용은 이 CLI 에선 권한 게이트/MOAI_YES 가 담당하고, 세션 복원은 아직 없다.
+// 툴 허용은 이 CLI 에선 권한 게이트/MOAI_YES 가 담당한다. --resume 은 stream-json 입력 모드에서만 세션을 복원한다.
 var rootVerboseOpt = new Option<bool>("--verbose") { Description = "Accepted for CLI compatibility (no-op)." };
 var rootAllowedToolsOpt = new Option<string?>("--allowedTools")
 {
@@ -101,7 +106,7 @@ var rootAllowedToolsOpt = new Option<string?>("--allowedTools")
 };
 var rootResumeOpt = new Option<string?>("--resume")
 {
-    Description = "Accepted for CLI compatibility (no-op) — session restore is not implemented.",
+    Description = "Session id to continue (stream-json input mode; ids come from `mate sessions`). Ignored elsewhere.",
 };
 root.Options.Add(printOpt);
 root.Options.Add(rootModelOpt);
@@ -112,6 +117,8 @@ root.Options.Add(rootAllowedToolsOpt);
 root.Options.Add(rootResumeOpt);
 var rootIgnoreConfirmOpt = IgnoreConfirmOption();
 root.Options.Add(rootIgnoreConfirmOpt);
+var rootAppendSystemPromptOpt = AppendSystemPromptOption();
+root.Options.Add(rootAppendSystemPromptOpt);
 
 // tools: 사용 가능한 툴 목록
 var toolsCmd = new Command("tools", L10n.Get("cli.tools.description"));
@@ -127,6 +134,23 @@ toolsCmd.SetAction(async (ParseResult pr, CancellationToken ct) =>
     return 0;
 });
 root.Subcommands.Add(toolsCmd);
+
+// sessions: 현재 폴더의 저장된 세션 목록(최근 순). 한 줄 = id \t 수정시각(ISO) \t 메시지 수 \t 제목.
+// 런타임을 만들지 않는다 — 브리지·웹 UI 가 자주 부르므로 MCP 기동 없이 바로 끝나야 한다.
+var sessionsCmd = new Command("sessions", L10n.Get("cli.sessions.description"));
+sessionsCmd.SetAction(async (ParseResult pr, CancellationToken ct) =>
+{
+    var store = new MoaiCode.Persistence.SessionStore(MoaiCode.Core.Memory.ProjectMemory.SessionsDir(Directory.GetCurrentDirectory()));
+    foreach (var s in await store.ListInfosAsync(ct))
+    {
+        var title = s.Title.ReplaceLineEndings(" ").Replace('\t', ' ');
+        Console.WriteLine($"{s.Id}\t{s.ModifiedAt:yyyy-MM-ddTHH:mm:ss}\t{s.MessageCount}\t{title}");
+    }
+
+    return 0;
+});
+root.Subcommands.Add(sessionsCmd);
+root.Subcommands.Add(ProvidersCommand.Build());
 
 // skills: 로드된 스킬 목록
 var skillsCmd = new Command("skills", L10n.Get("cli.skills.description"));
@@ -268,7 +292,7 @@ root.SetAction(async (ParseResult pr, CancellationToken ct) =>
     // (브리지는 `-p --input-format stream-json --output-format stream-json` 처럼 -p 를 값 없이 준다.)
     if (string.Equals(pr.GetValue(rootInputFormatOpt), "stream-json", StringComparison.OrdinalIgnoreCase))
     {
-        return await RunStreamLoopAsync(pr.GetValue(rootModelOpt), pr.GetValue(rootIgnoreConfirmOpt), ct);
+        return await RunStreamLoopAsync(pr.GetValue(rootModelOpt), pr.GetValue(rootIgnoreConfirmOpt), pr.GetValue(rootAppendSystemPromptOpt), pr.GetValue(rootResumeOpt), ct);
     }
 
     var printPrompt = pr.GetValue(printOpt);
@@ -287,7 +311,7 @@ root.SetAction(async (ParseResult pr, CancellationToken ct) =>
     if (!string.IsNullOrEmpty(printPrompt))
     {
         return await RunHeadlessAsync(printPrompt, pr.GetValue(rootModelOpt), pr.GetValue(rootOutputFormatOpt) ?? "text",
-            pr.GetValue(rootIgnoreConfirmOpt), ct);
+            pr.GetValue(rootIgnoreConfirmOpt), pr.GetValue(rootAppendSystemPromptOpt), ct);
     }
 
     var interactive = !Console.IsInputRedirected;

@@ -54,7 +54,7 @@ public sealed class BashSecurityTierTests
 
     [Theory]
     // 파괴적이지만 정당할 수 있다 → 차단하지 않고 사람에게 확인.
-    [InlineData("rm -rf ~/gitHub/moai-code")]
+    [InlineData("rm -rf ~/gitHub/moaiCode")]
     [InlineData("rm -rf src")]
     [InlineData("rm -rf $HOME/build")]
     [InlineData("git push --force origin feature-branch")]

@@ -160,7 +160,10 @@ public sealed class ImageFetchTool : ITool, IConditionalTool
         }
 
         var kb = bytes.Length / 1024.0;
-        yield return new ToolOutput(L10n.Get("tools.imageFetch.saved", outPath, kb, mediaType));
+        yield return new ToolOutput(L10n.Get("tools.imageFetch.saved", outPath, kb, mediaType))
+        {
+            Images = new List<(string, string)> { (Convert.ToBase64String(bytes), mediaType) },
+        };
     }
 
     // 확장자가 없거나 이미지 확장자가 아니면 content-type 에 맞춰 붙인다.

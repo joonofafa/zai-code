@@ -22,8 +22,12 @@ public sealed record TurnCompleted(Usage Usage, string StopReason) : StreamEvent
     public string? Reasoning { get; init; }
 }
 
-/// <summary>툴 실행 완료 (QueryEngine이 디스패치 후 방출, UI 표시용).</summary>
-public sealed record ToolExecuted(string ToolName, string ToolUseId, string Output, bool IsError) : StreamEvent;
+/// <summary>툴 실행 완료 (QueryEngine이 디스패치 후 방출, UI 표시용). 이미지 첨부는 화면용이며 모델엔 실리지 않는다.</summary>
+public sealed record ToolExecuted(string ToolName, string ToolUseId, string Output, bool IsError) : StreamEvent
+{
+    /// <summary>stream-json tool_result 블록으로 내보낼 이미지(없으면 null — 기존 문자열 형식 그대로).</summary>
+    public IReadOnlyList<(string Base64, string MediaType)>? Images { get; init; }
+}
 
 /// <summary>
 /// 프로바이더가 구현하는 채팅 모델 추상화. async generator → IAsyncEnumerable.

@@ -48,9 +48,12 @@ public static class AppBootstrap
     /// <param name="modelOverride">실행 인자 --model. 저장된 모델보다 우선하되 이번 실행에만 쓴다.</param>
     /// <param name="ignoreConfirm">--ignore-confirm(배치 자동화). 비대화형에서만 쓴다 — 확인이 필요한 모든 지점을 자동 승인하고
     /// 감사 로그(~/.mate/logs/audit.jsonl)에 남긴다. 대화형에서는 무시한다(사람이 있으니 확인한다).</param>
+    /// <param name="appendSystemPrompt">--append-system-prompt. 값이 있으면 조립된 시스템 프롬프트 맨 끝에 빈 줄 하나를 두고
+    /// 그대로 덧붙인다(claude CLI 의 같은 이름 옵션과 동일 동작). 세션 저장 대상에서 시스템 프롬프트는 이미 제외되므로
+    /// 덧붙인 문구는 파일에 남지 않고, --resume 으로 다시 띄울 때 이번 실행의 인자값이 다시 적용된다.</param>
     public static async Task<AppRuntime> BuildAsync(
         bool interactive, bool verbose, bool streamJsonPermissions, CancellationToken ct, string? modelOverride = null,
-        bool ignoreConfirm = false)
+        bool ignoreConfirm = false, string? appendSystemPrompt = null)
     {
         var cwd = Directory.GetCurrentDirectory();
 
@@ -255,7 +258,12 @@ public static class AppBootstrap
             log: MoaiLog.Info,   // 턴/툴/한도 이벤트를 ~/.moai/logs/moai.log 에 기록(진단용).
             currentPhase: taskStore.CurrentPhase);   // 페이즈 경계에서 하베스트→압축→다음 안내
         var promptCtx = BuildPromptContext(cwd, settings, toolList, await repoMapTask.ConfigureAwait(false));
-        engine.Seed(new[] { new SystemMessage(SystemPromptBuilder.Build(promptCtx with { AlwaysOnSkills = alwaysOnSkills })) });
+        // 시스템 프롬프트 조립(상시 스킬 변화에도 같은 조각을 쓴다). --append-system-prompt 값이 있으면
+        // 맨 끝에 빈 줄 하나를 두고 덧붙인다 — 기존 섹션 구성·순서는 그대로.
+        string BuildSystemPrompt(string alwaysOn) =>
+            SystemPromptBuilder.Build(promptCtx with { AlwaysOnSkills = alwaysOn })
+            + (string.IsNullOrEmpty(appendSystemPrompt) ? "" : "\n\n" + appendSystemPrompt);
+        engine.Seed(new[] { new SystemMessage(BuildSystemPrompt(alwaysOnSkills)) });
 
         var ctx = new SlashContext(
             engine,
@@ -319,7 +327,7 @@ public static class AppBootstrap
                 if (section != alwaysOnSkills)
                 {
                     alwaysOnSkills = section;
-                    engine.ReplaceSeed(new[] { new SystemMessage(SystemPromptBuilder.Build(promptCtx with { AlwaysOnSkills = section })) });
+                    engine.ReplaceSeed(new[] { new SystemMessage(BuildSystemPrompt(section)) });
                 }
 
                 return L10n.Get("slash.skills.toggleSaved", active.Count, all.Count - active.Count);

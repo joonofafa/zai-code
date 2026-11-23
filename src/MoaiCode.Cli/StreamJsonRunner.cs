@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using System.Threading.Channels;
 using MoaiCode.Core.Agent;
 using MoaiCode.Core.Messages;
+using MoaiCode.Persistence;
 using MoaiCode.Providers;
 
 namespace MoaiCode.Cli;
@@ -14,7 +15,8 @@ namespace MoaiCode.Cli;
 ///
 /// 출력: system/init → (assistant: text|tool_use, user: tool_result, permission_request|result)* → result
 /// 입력(--input-format stream-json): stdin 에서 {"type":"user","message":{...}} 턴과
-/// {"type":"permission_response",...} 승인 응답을 한 줄씩 읽어 라우팅한다.
+/// {"type":"permission_response",...} 승인 응답을 한 줄씩 읽어 라우팅한다. {"type":"interrupt"} 는 진행 중인 턴만
+/// 취소한다 — result(stop_reason "canceled")로 턴이 끝나고 프로세스와 대화 맥락은 남는다.
 /// 프로세스가 살아 있는 동안 대화 맥락(QueryEngine)이 유지된다.
 /// </summary>
 public static class StreamJsonRunner
@@ -38,17 +40,35 @@ public static class StreamJsonRunner
     }
 
     /// <summary>permission 게이트가 연결된 변형. AppBootstrap 이 만든 게이트를 주입받는다.</summary>
-    public static async Task<int> RunLoopAsync(QueryEngine engine, StreamJsonPermissionGate? gate, CancellationToken ct)
+    /// <param name="sessions">주면 턴이 끝날 때마다 대화를 저장한다(REPL 의 /resume 과 같은 저장소).</param>
+    /// <param name="resumeId">주면 그 세션을 복원해 이어 간다. 없는 id 면 새 세션으로 시작한다.</param>
+    public static async Task<int> RunLoopAsync(
+        QueryEngine engine, StreamJsonPermissionGate? gate, CancellationToken ct,
+        SessionStore? sessions = null, string? resumeId = null)
     {
         var sessionId = NewSessionId();
-        EmitInit(sessionId);
+        IReadOnlyList<Message> restored = Array.Empty<Message>();
+        if (sessions is not null && !string.IsNullOrEmpty(resumeId))
+        {
+            restored = await sessions.LoadAsync(resumeId, ct).ConfigureAwait(false);
+            if (restored.Count > 0)
+            {
+                engine.Restore(restored);
+                sessionId = resumeId;
+            }
+        }
+
+        EmitInit(sessionId, resumed: restored.Count > 0);
+        Replay(sessionId, restored);
 
         // stdin 라우팅: user 턴은 채널로, permission_response 는 게이트로. 한 줄씩 읽는 건 이 태스크 하나뿐.
         var turns = Channel.CreateUnbounded<string>(new UnboundedChannelOptions
         {
             SingleReader = true,
         });
-        var reader = Task.Run(() => ReadStdinAsync(turns, gate, ct), ct);
+        // 진행 중인 턴만 끊는 취소 토큰. stdin 의 {"type":"interrupt"} 가 이것을 취소한다(프로세스·세션은 그대로).
+        var turn = new TurnControl();
+        var reader = Task.Run(() => ReadStdinAsync(turns, gate, turn, ct), ct);
 
         var last = 0;
         try
@@ -68,7 +88,24 @@ public static class StreamJsonRunner
                                 continue;   // 빈 줄·해석 불가·비-user 이벤트는 건너뛴다.
                             }
 
-                            last = await RunTurnAsync(engine, text, sessionId, ct).ConfigureAwait(false);
+                            using (var turnCts = CancellationTokenSource.CreateLinkedTokenSource(ct))
+                            {
+                                turn.Current = turnCts;
+                                try
+                                {
+                                    last = await RunTurnAsync(engine, text, sessionId, turnCts.Token).ConfigureAwait(false);
+                                }
+                                finally
+                                {
+                                    turn.Current = null;
+                                }
+                            }
+
+                            if (sessions is not null)
+                            {
+                                // 턴 단위 저장 — 상대(브리지·웹 UI)가 끊겨도 마지막으로 끝난 턴까지는 --resume 으로 잇는다.
+                                await sessions.SaveAsync(sessionId, engine.Messages, CancellationToken.None).ConfigureAwait(false);
+                            }
                         }
                     }
                 }
@@ -98,8 +135,33 @@ public static class StreamJsonRunner
         return last;
     }
 
-    // stdin 을 계속 읽어 한 줄씩 분류한다. user → 채널, permission_response → 게이트, 그 외 → 버림.
-    private static async Task ReadStdinAsync(Channel<string> turns, StreamJsonPermissionGate? gate, CancellationToken ct)
+    /// <summary>지금 도는 턴의 취소원. 턴 사이에는 null 이라 interrupt 가 와도 아무 일도 없다.</summary>
+    private sealed class TurnControl
+    {
+        public volatile CancellationTokenSource? Current;
+    }
+
+    // interrupt 이벤트면 true. 진행 중인 턴을 취소하고 대기 중인 승인도 거부로 마감한다.
+    internal static bool IsInterrupt(string line)
+    {
+        if (!line.Contains("interrupt", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        try
+        {
+            return JsonNode.Parse(line)?["type"]?.GetValue<string>() == "interrupt";
+        }
+        catch (Exception e) when (e is System.Text.Json.JsonException or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    // stdin 을 계속 읽어 한 줄씩 분류한다. user → 채널, permission_response → 게이트, interrupt → 턴 취소, 그 외 → 버림.
+    private static async Task ReadStdinAsync(
+        Channel<string> turns, StreamJsonPermissionGate? gate, TurnControl turn, CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
@@ -124,6 +186,21 @@ public static class StreamJsonRunner
 
             if (TryRoutePermissionResponse(line, gate))
             {
+                continue;
+            }
+
+            if (IsInterrupt(line))
+            {
+                try
+                {
+                    turn.Current?.Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // 턴이 방금 끝났다 — 끊을 것이 없다.
+                }
+
+                gate?.FailAllPending();
                 continue;
             }
 
@@ -340,12 +417,78 @@ public static class StreamJsonRunner
         return errCode;
     }
 
-    private static void EmitInit(string sessionId) => Emit(new JsonObject
+    private static void EmitInit(string sessionId, bool resumed = false)
     {
-        ["type"] = "system",
-        ["subtype"] = "init",
-        ["session_id"] = sessionId,
-    });
+        var init = new JsonObject
+        {
+            ["type"] = "system",
+            ["subtype"] = "init",
+            ["session_id"] = sessionId,
+        };
+        if (resumed)
+        {
+            init["resumed"] = true;
+        }
+
+        Emit(init);
+    }
+
+    /// <summary>
+    /// 복원한 대화를 같은 이벤트 형식에 "replay":true 를 붙여 다시 내보낸다 — 상대가 이전 대화를 화면에
+    /// 다시 그릴 수 있게. 시스템 메시지와 추론 블록은 보내지 않는다.
+    /// </summary>
+    private static void Replay(string sessionId, IReadOnlyList<Message> messages)
+    {
+        foreach (var m in messages)
+        {
+            JsonObject? ev = m switch
+            {
+                UserMessage u => new JsonObject
+                {
+                    ["type"] = "user",
+                    ["message"] = new JsonObject { ["role"] = "user", ["content"] = new JsonArray(TextBlockNode(u.Text)) },
+                },
+                AssistantMessage a when a.Content.Any(b => b is TextBlock or ToolUseBlock) => new JsonObject
+                {
+                    ["type"] = "assistant",
+                    ["message"] = new JsonObject
+                    {
+                        ["role"] = "assistant",
+                        ["content"] = new JsonArray(a.Content
+                            .Select(b => b switch
+                            {
+                                TextBlock t => TextBlockNode(t.Text),
+                                ToolUseBlock t => ToolUseNode(t),
+                                _ => null,
+                            })
+                            .Where(n => n is not null).ToArray()),
+                    },
+                },
+                ToolResultMessage r => new JsonObject
+                {
+                    ["type"] = "user",
+                    ["message"] = new JsonObject
+                    {
+                        ["role"] = "user",
+                        ["content"] = new JsonArray(new JsonObject
+                        {
+                            ["type"] = "tool_result",
+                            ["tool_use_id"] = r.ToolUseId,
+                            ["is_error"] = r.IsError,
+                            ["content"] = r.Output,
+                        }),
+                    },
+                },
+                _ => null,
+            };
+            if (ev is not null)
+            {
+                ev["session_id"] = sessionId;
+                ev["replay"] = true;
+                Emit(ev);
+            }
+        }
+    }
 
     private static void EmitAssistant(string sessionId, JsonNode block) => Emit(new JsonObject
     {
@@ -358,23 +501,56 @@ public static class StreamJsonRunner
         },
     });
 
-    // 툴 결과는 claude 와 같이 'user' 이벤트의 tool_result 블록으로 돌려준다.
-    private static void EmitToolResult(string sessionId, ToolExecuted x) => Emit(new JsonObject
+    // 툴 결과는 claude 와 같이 'user' 이벤트의 tool_result 블록으로 돌려준다. 이미지 첨부가 있으면
+    // content 를 Claude Code 형식 블록 배열([{type:text},{type:image,source:{type:base64,...}}])로
+    // 내보내고, 없으면 지금까지처럼 문자열 그대로(하위 호환 — 기존 소비자는 문자열만 본다).
+    private static void EmitToolResult(string sessionId, ToolExecuted x)
     {
-        ["type"] = "user",
-        ["session_id"] = sessionId,
-        ["message"] = new JsonObject
+        JsonNode content = x.Images is { Count: > 0 } ? BuildToolResultContent(x.Output, x.Images) : x.Output;
+        Emit(new JsonObject
         {
-            ["role"] = "user",
-            ["content"] = new JsonArray(new JsonObject
+            ["type"] = "user",
+            ["session_id"] = sessionId,
+            ["message"] = new JsonObject
             {
-                ["type"] = "tool_result",
-                ["tool_use_id"] = x.ToolUseId,
-                ["is_error"] = x.IsError,
-                ["content"] = x.Output,
-            }),
-        },
-    });
+                ["role"] = "user",
+                ["content"] = new JsonArray(new JsonObject
+                {
+                    ["type"] = "tool_result",
+                    ["tool_use_id"] = x.ToolUseId,
+                    ["is_error"] = x.IsError,
+                    ["content"] = content,
+                }),
+            },
+        });
+    }
+
+    /// <summary>툴 결과 본문 + 이미지를 Claude Code 형식 콘텐츠 블록 배열로 만든다(테스트 대상).</summary>
+    internal static JsonArray BuildToolResultContent(
+        string text, IReadOnlyList<(string Base64, string MediaType)> images)
+    {
+        var blocks = new JsonArray();
+        if (text.Length > 0)
+        {
+            blocks.Add(new JsonObject { ["type"] = "text", ["text"] = text });
+        }
+
+        foreach (var (b64, mediaType) in images)
+        {
+            blocks.Add(new JsonObject
+            {
+                ["type"] = "image",
+                ["source"] = new JsonObject
+                {
+                    ["type"] = "base64",
+                    ["media_type"] = string.IsNullOrEmpty(mediaType) ? "image/png" : mediaType,
+                    ["data"] = b64,
+                },
+            });
+        }
+
+        return blocks;
+    }
 
     private static JsonNode TextBlockNode(string text) => new JsonObject
     {
