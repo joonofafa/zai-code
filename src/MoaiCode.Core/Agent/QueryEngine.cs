@@ -684,6 +684,15 @@ public sealed class QueryEngine
                     continue;
                 }
 
+                // 필수 인자가 빠진 호출은 실행 전에 무엇이 빠졌는지 짚어 돌려준다(작은 모델이 인자 이름을 지어내는 경우).
+                if (ToolArguments.Violation(tool.InputSchema, call.Input) is { } violation)
+                {
+                    _log($"tool args incomplete: {call.Name}");
+                    _messages.Add(new ToolResultMessage(call.Id, violation, true));
+                    yield return new ToolExecuted(call.Name, call.Id, violation, true);
+                    continue;
+                }
+
                 // 읽기 전용 툴은 확인을 거치지 않되, 명시적 deny 규칙(IReadOnlyToolGate)은 지킨다.
                 var allowed = tool.IsReadOnly
                     ? !(_gate is IReadOnlyToolGate ro && ro.DeniesReadOnly(tool, call))

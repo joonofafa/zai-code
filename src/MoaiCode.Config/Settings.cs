@@ -73,6 +73,12 @@ public sealed record Settings
     public bool Offline { get; init; }
 
     /// <summary>감사 로그(~/.mate/logs/audit.jsonl) 보관일. 시작할 때 이보다 오래된 줄을 지운다. 0 = 지우지 않음. 기본 90(오피스챗과 같음).</summary>
+    /// <summary>
+    /// 모델에게 주지 않을 툴 이름. 끝의 <c>*</c> 는 앞부분 일치(<c>mcp__db__*</c>). 작은 사내 모델은 툴이 많을수록 호출이 흔들리므로
+    /// 쓰지 않는 툴을 끄는 데 쓴다. 중앙 정책 파일에 적으면 조직 차원에서 툴을 뺄 수 있다. 프로젝트 레이어에서도 받는다(줄이는 쪽이라 안전).
+    /// </summary>
+    public IReadOnlyList<string> DisabledTools { get; init; } = Array.Empty<string>();
+
     public int AuditRetentionDays { get; init; } = 90;
 
     /// <summary>중앙 정책 파일(<see cref="SettingsLoader.ManagedSettingsPath"/>)을 읽었는지. 그 파일의 값은 사용자 설정·환경변수보다 우선한다.</summary>

@@ -187,6 +187,9 @@ public static class SettingsLoader
                 AuditRetentionDays = allowSensitive
                     ? GetInt(root, "auditRetentionDays", "audit_retention_days") ?? baseline.AuditRetentionDays
                     : baseline.AuditRetentionDays,
+                DisabledTools = root.TryGetProperty("disabledTools", out var dt) && dt.ValueKind == JsonValueKind.Array
+                    ? MergeRules(baseline.DisabledTools, ReadStringArray(dt))
+                    : baseline.DisabledTools,
                 DisableIgnoreConfirm = managed
                     ? GetBool(root, "disableIgnoreConfirm", "disable_ignore_confirm") ?? baseline.DisableIgnoreConfirm
                     : baseline.DisableIgnoreConfirm,

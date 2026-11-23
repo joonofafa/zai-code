@@ -56,6 +56,58 @@ public static class ToolArguments
     public static bool IsInvalid(JsonElement input) =>
         input.ValueKind == JsonValueKind.Object && input.TryGetProperty(InvalidKey, out _);
 
+    /// <summary>
+    /// 인자가 툴 스키마의 필수 항목을 채웠는지 본다. 어긋나면 모델에게 돌려줄 설명(빠진 이름·스키마에 없는 이름·쓸 수 있는 이름),
+    /// 맞으면 null. 고쳐서 실행하지 않는다 — 조용히 고치면 작은 모델의 잘못된 호출이 가려지고 엉뚱한 값으로 실행될 수 있다.
+    /// 값의 형식까지는 보지 않는다(각 툴이 본다).
+    /// </summary>
+    public static string? Violation(JsonElement schema, JsonElement input)
+    {
+        if (schema.ValueKind != JsonValueKind.Object
+            || !schema.TryGetProperty("required", out var required) || required.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        if (input.ValueKind != JsonValueKind.Object)
+        {
+            return "The arguments must be a JSON object. Nothing was executed.";
+        }
+
+        var missing = new List<string>();
+        foreach (var r in required.EnumerateArray())
+        {
+            if (r.GetString() is { } name
+                && (!input.TryGetProperty(name, out var v) || v.ValueKind == JsonValueKind.Null))
+            {
+                missing.Add(name);
+            }
+        }
+
+        if (missing.Count == 0)
+        {
+            return null;
+        }
+
+        var known = schema.TryGetProperty("properties", out var props) && props.ValueKind == JsonValueKind.Object
+            ? props.EnumerateObject().Select(p => p.Name).ToList()
+            : new List<string>();
+        var unknown = input.EnumerateObject().Select(p => p.Name).Where(n => known.Count > 0 && !known.Contains(n)).ToList();
+        var sb = new System.Text.StringBuilder("Nothing was executed: missing required argument(s): ");
+        sb.Append(string.Join(", ", missing)).Append('.');
+        if (unknown.Count > 0)
+        {
+            sb.Append(" Not an argument of this tool: ").Append(string.Join(", ", unknown)).Append('.');
+        }
+
+        if (known.Count > 0)
+        {
+            sb.Append(" Valid arguments: ").Append(string.Join(", ", known)).Append('.');
+        }
+
+        return sb.Append(" Call the tool again with the exact argument names.").ToString();
+    }
+
     /// <summary>스트림으로 모은 툴 인자 원문을 해석한다. 깨진 JSON 은 표식 객체(원문 앞 2000자)로 돌려준다.</summary>
     public static JsonElement Parse(string json)
     {

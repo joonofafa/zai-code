@@ -77,4 +77,18 @@ public sealed class ManagedPolicyTests : IDisposable
         var managed = SettingsLoader.ApplyManagedJson(Settings.Default, """{"disableIgnoreConfirm":true}""");
         Assert.True(SettingsLoader.ApplyJson(managed, """{"disableIgnoreConfirm":false}""").DisableIgnoreConfirm);
     }
+
+    [Fact]
+    public void DisabledTools_mergeAcrossLayers_andMatchByNameOrPrefix()
+    {
+        var user = SettingsLoader.ApplyJson(Settings.Default, """{"disabledTools":["ImageCreate"]}""");
+        var project = SettingsLoader.ApplyJson(user, """{"disabledTools":["mcp__db__*"]}""",
+            allowSensitive: false, allowAutomation: false, allowPermissionRules: false);
+
+        Assert.Equal(["ImageCreate", "mcp__db__*"], project.DisabledTools);
+        Assert.True(MoaiCode.Cli.AppBootstrap.IsDisabledTool("ImageCreate", project.DisabledTools));
+        Assert.True(MoaiCode.Cli.AppBootstrap.IsDisabledTool("mcp__db__query", project.DisabledTools));
+        Assert.False(MoaiCode.Cli.AppBootstrap.IsDisabledTool("ImageCreateX", project.DisabledTools));
+        Assert.False(MoaiCode.Cli.AppBootstrap.IsDisabledTool("Bash", project.DisabledTools));
+    }
 }

@@ -250,7 +250,14 @@ public static class AppBootstrap
             shellCwd: () => bashTool.CurrentDirectory);
 
         // 하위 에이전트가 부모와 동일한 게이트를 쓰도록 여기서 생성해 툴 목록에 추가(SEC-004).
+        subTools.RemoveAll(t => IsDisabledTool(t.Name, settings.DisabledTools));
         toolList.Add(new AgentTool(model, subTools, gate: gate, extraInstructions: () => alwaysOnSkills));
+        // 설정으로 끈 툴은 모델에게 주지 않는다(하위 에이전트 포함).
+        var removedTools = toolList.RemoveAll(t => IsDisabledTool(t.Name, settings.DisabledTools));
+        if (removedTools > 0)
+        {
+            MoaiLog.Info($"tools: {removedTools} disabled by settings");
+        }
 
         var observer = new HarnessToolObserver(settings, checkpoints);
         // 단일 툴 결과의 컨텍스트 유입 상한(거대 출력 → 잦은 컴팩션 방지). MOAI_MAX_TOOL_RESULT_CHARS 로 조정, 0/음수면 무제한.
@@ -434,6 +441,22 @@ public static class AppBootstrap
     }
 
     // 격리 실행 설정: 방식·사용 가능 여부(시험 실행)·쓰기 경로·이 세션 전용 /tmp. 시작할 때 한 번.
+    /// <summary>disabledTools 항목과 맞는지 — 정확히 같거나, 끝이 * 이면 앞부분 일치.</summary>
+    internal static bool IsDisabledTool(string name, IReadOnlyList<string> disabled)
+    {
+        foreach (var d in disabled)
+        {
+            if (d.EndsWith('*')
+                    ? name.StartsWith(d[..^1], StringComparison.Ordinal)
+                    : string.Equals(name, d, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static void ConfigureSandbox(Settings settings, string cwd)
     {
         SandboxPolicy.Mode = settings.Sandbox switch

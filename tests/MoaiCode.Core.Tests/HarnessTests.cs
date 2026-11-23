@@ -509,13 +509,40 @@ public class OutputRecoveryTests
         Assert.Equal(Reminders.InvalidToolArguments, result.Output);
     }
 
-    private sealed class LambdaTool(string name, Action onRun) : ITool
+    // 필수 인자가 빠진 호출(작은 모델이 인자 이름을 지어낸 경우)은 실행하지 않고, 빠진 이름과 쓸 수 있는 이름을 돌려준다.
+    [Fact]
+    public async Task Tool_call_missing_a_required_argument_is_not_executed_and_names_the_arguments()
+    {
+        var executed = 0;
+        var tool = new LambdaTool("Write", () => executed++,
+            """{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"},"mode":{"type":"string"}},"required":["path","content"]}""");
+        JsonElement Args(string json) => JsonDocument.Parse(json).RootElement.Clone();
+        var model = new ScriptedModel(
+            _ => new StreamEvent[] { new ToolCallRequested(new ToolUseBlock("c1", "Write", Args("""{"file":"a.txt","content":"x"}"""))), new TurnCompleted(new Usage(1, 1), "tool_calls") },
+            _ => new StreamEvent[] { new ToolCallRequested(new ToolUseBlock("c2", "Write", Args("""{"path":"a.txt","content":"x"}"""))), new TurnCompleted(new Usage(1, 1), "tool_calls") },
+            _ => Answer("ok"));
+        var engine = new QueryEngine(model, new ITool[] { tool });
+        engine.Seed(new[] { new SystemMessage("sys") });
+
+        var results = (await Run(engine)).OfType<ToolExecuted>().ToList();
+
+        Assert.Equal(1, executed);   // 고쳐 보낸 두 번째 호출만 실행
+        Assert.True(results[0].IsError);
+        Assert.Contains("missing required argument(s): path.", results[0].Output);
+        Assert.Contains("Not an argument of this tool: file.", results[0].Output);
+        Assert.Contains("Valid arguments: path, content, mode.", results[0].Output);
+        Assert.False(results[1].IsError);
+        Assert.Null(ToolArguments.Violation(tool.InputSchema, Args("""{"path":"a","content":"b","extra":1}""")));
+        Assert.NotNull(ToolArguments.Violation(tool.InputSchema, Args("""{"path":null,"content":"b"}""")));
+    }
+
+    private sealed class LambdaTool(string name, Action onRun, string schema = """{"type":"object"}""") : ITool
     {
         public string Name => name;
         public string Description => "";
         public bool IsReadOnly => true;
         public bool IsConcurrencySafe => true;
-        public JsonElement InputSchema { get; } = JsonDocument.Parse("""{"type":"object"}""").RootElement.Clone();
+        public JsonElement InputSchema { get; } = JsonDocument.Parse(schema).RootElement.Clone();
 
         public async IAsyncEnumerable<ToolProgress> ExecuteAsync(
             JsonElement input, ToolContext context, [EnumeratorCancellation] CancellationToken ct)
