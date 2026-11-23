@@ -837,6 +837,38 @@ public class CompactionTests
             m is UserMessage u && u.Text.StartsWith("[Summary of earlier conversation]"));
     }
 
+    // 맥락의 대부분이 오래된 툴 출력이면 그것만 비우고 끝낸다 — 요약(모델 호출)을 하지 않고 대화는 그대로 남는다.
+    [Fact]
+    public async Task Old_tool_results_are_cleared_before_summarizing()
+    {
+        // 창 4000 → 임계선 2800 tok. 기록은 약 3000 tok, 오래된 출력 6개를 비우면 약 1500 tok(임계선의 80% 아래).
+        var engine = new QueryEngine(new OkModel(), Array.Empty<ITool>(), contextWindowTokens: 4000);
+        engine.Seed(new[] { new SystemMessage("sys") });
+
+        var empty = JsonDocument.Parse("{}").RootElement.Clone();
+        var hist = new List<Message> { new SystemMessage("sys"), new UserMessage("please look into it") };
+        for (var i = 1; i <= 12; i++)
+        {
+            hist.Add(new AssistantMessage(new List<ContentBlock> { new ToolUseBlock($"c{i}", "Read", empty) }));
+            hist.Add(new ToolResultMessage($"c{i}", $"out{i} " + new string('x', 1000), IsError: i == 1));
+        }
+
+        engine.Restore(hist);   // 1 + 1 + 24
+
+        await foreach (var _ in engine.SubmitAsync("go"))
+        {
+        }
+
+        Assert.DoesNotContain(engine.Messages, m => m is UserMessage u && u.Text.StartsWith("[Summary of earlier conversation]"));
+        Assert.Contains(engine.Messages, m => m is UserMessage u && u.Text == "please look into it");
+        var results = engine.Messages.OfType<ToolResultMessage>().ToList();
+        Assert.Equal(12, results.Count);                                      // 쌍은 그대로
+        Assert.StartsWith(QueryEngine.ClearedToolResultPrefix, results[0].Output);
+        Assert.True(results[0].IsError);                                      // 오류 여부 보존
+        Assert.StartsWith("out12 ", results[^1].Output);                      // 최근 것은 원문
+        Assert.True(results.Count(r => r.Output.StartsWith(QueryEngine.ClearedToolResultPrefix)) >= 6);
+    }
+
     // 요약 호출엔 <analysis>+<summary> 구조로 응답, 메인 호출엔 "ok".
     private sealed class StructuredSummaryModel : IChatModel
     {

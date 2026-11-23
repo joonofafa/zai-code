@@ -1000,6 +1000,19 @@ public sealed class QueryEngine
             return false;
         }
 
+        // 1단계: 오래된 툴 결과만 비운다 — 모델 호출 없이 끝나고 대화(요청·답·무슨 툴을 불렀는지)는 그대로 남는다.
+        // 긴 작업의 맥락은 대개 예전 파일 내용·명령 출력이 차지한다. 이것으로 충분히 줄면 요약(2단계)은 하지 않는다.
+        var freed = ClearOldToolResults();
+        if (freed > 0)
+        {
+            var after = EstimateTokens(_messages);
+            _log($"context: cleared old tool results ({freed} chars), now ~{after} tok");
+            if (after < _compactTokens * 80 / 100)
+            {
+                return false;   // 대화가 그대로라 원래 의도를 다시 고정할 필요가 없다
+            }
+        }
+
         var did = await CompactCoreAsync(12, ct).ConfigureAwait(false);
 
         // 선제 압축으로 오래된 문맥이 요약돼 사라지기 직전 — durable 사실을 메모리에 자동 저장(main 세션만).
@@ -1126,6 +1139,32 @@ public sealed class QueryEngine
         }
 
         return false;
+    }
+
+    private const int ClearKeepRecentMessages = 12;
+    private const int ClearMinChars = 400;
+    internal const string ClearedToolResultPrefix = "[Old tool output cleared to save context";
+
+    /// <summary>
+    /// 최근 <see cref="ClearKeepRecentMessages"/>개보다 오래된 툴 결과 중 큰 것을 한 줄 표식으로 바꾼다. tool_use/tool_result 쌍과
+    /// 오류 여부는 그대로 둔다(메시지를 빼지 않는다). 비운 글자 수를 돌려준다.
+    /// </summary>
+    private int ClearOldToolResults()
+    {
+        var end = Math.Max(_seed.Count, _messages.Count - ClearKeepRecentMessages);
+        var freed = 0;
+        for (var i = _seed.Count; i < end; i++)
+        {
+            if (_messages[i] is ToolResultMessage tr && tr.Output.Length > ClearMinChars
+                && !tr.Output.StartsWith(ClearedToolResultPrefix, StringComparison.Ordinal))
+            {
+                var stub = $"{ClearedToolResultPrefix}: {tr.Output.Length} chars. Run the tool again if you need this output.]";
+                freed += tr.Output.Length - stub.Length;
+                _messages[i] = tr with { Output = stub };
+            }
+        }
+
+        return freed;
     }
 
     /// <summary>
