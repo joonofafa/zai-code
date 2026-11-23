@@ -326,6 +326,7 @@ public sealed class QueryEngine
         }
         var toolCallRetries = 0;
         var announceNudges = 0;
+        var stopGateBlocks = 0;
         var goalNudges = 0;
         var turn = 0;
         var extensions = 0;
@@ -650,6 +651,23 @@ public sealed class QueryEngine
                 {
                     yield return new StreamNotice(
                         "model returned an empty response — retry with a shorter message");
+                }
+
+                // 종료 관문: 관찰자가 끝내면 안 된다고 하면(고친 뒤 테스트가 실패 중) 그 결과를 주고 계속하게 한다.
+                // 상한을 넘겨도 실패 중이면 끝내되, 통과하지 못했다는 것을 사용자에게 알린다.
+                if (IsNormalStop(stopReason)
+                    && await _observer.BeforeStopAsync(toolContext, ct).ConfigureAwait(false) is { Length: > 0 } stopGate)
+                {
+                    if (stopGateBlocks < MaxStopGateBlocks)
+                    {
+                        stopGateBlocks++;
+                        _log($"stop gate: verification failing -> continuing ({stopGateBlocks}/{MaxStopGateBlocks})");
+                        _messages.Add(new UserMessage(stopGate));
+                        continue;
+                    }
+
+                    _log("stop gate: verification still failing after the limit -> stopping");
+                    yield return new StreamNotice("verification is still failing — stopping without a passing run");
                 }
 
                 _log($"done: stop={stopReason} turns={turn} ext={extensions}");
@@ -1416,6 +1434,7 @@ public sealed class QueryEngine
 
     // 출력이 토큰 한도로 잘렸는지 (OpenAI: length, Anthropic: max_tokens).
     private const int MaxConsecutiveOutputCuts = 3;
+    private const int MaxStopGateBlocks = 2;
 
     // 이어받기로 넘길 추론의 최대 길이(문자). 넘치면 앞을 버리고 끝부분(결론·계획이 있는 쪽)을 남긴다.
     private const int MaxCarriedReasoningChars = 100_000;

@@ -57,6 +57,12 @@ public sealed record Settings
     public string? TestCommand { get; init; }
     public bool AutoLint { get; init; }
     public bool AutoTest { get; init; }
+
+    /// <summary>
+    /// 종료 관문: 파일을 고친 뒤에는 <see cref="TestCommand"/> 가 통과해야 작업을 끝낸다. 실패하면 결과를 모델에 돌려주고
+    /// 계속하게 한다(한 요청에 최대 2회). 테스트 명령이 없으면 아무것도 하지 않는다.
+    /// </summary>
+    public bool TestGate { get; init; }
     public int RepoMapTokens { get; init; } = 1200;
 
     /// <summary>세션 트랜스크립트 보존: 최근 N개만 유지(그 밖은 저장 시 삭제). 0=무제한(정리 안 함).

@@ -16,6 +16,9 @@ public sealed class HarnessToolObserver : IToolObserver
     // 이번 턴에 파일 수정(Edit/Write)이 있었는지. 검증을 매 편집마다가 아니라 턴당 1회만 돌리기 위한 플래그.
     private bool _dirty;
 
+    // 마지막으로 테스트가 통과한 뒤 파일 수정이 있었는지(종료 관문용).
+    private bool _editedSinceGreen;
+
     public HarnessToolObserver(Settings settings, CheckpointStore checkpoints)
     {
         _settings = settings;
@@ -56,6 +59,7 @@ public sealed class HarnessToolObserver : IToolObserver
         if (!isError && tool.Name is "Edit" or "Write")
         {
             _dirty = true;
+            _editedSinceGreen = true;
         }
 
         return ValueTask.FromResult<string?>(null);
@@ -73,14 +77,19 @@ public sealed class HarnessToolObserver : IToolObserver
         var observations = new List<string>();
         if (_settings.AutoLint && !string.IsNullOrWhiteSpace(_settings.LintCommand))
         {
-            observations.Add(await RunVerificationAsync("lint", _settings.LintCommand!, context.WorkingDirectory, ct)
-                .ConfigureAwait(false));
+            observations.Add((await RunVerificationAsync("lint", _settings.LintCommand!, context.WorkingDirectory, ct)
+                .ConfigureAwait(false)).Text);
         }
 
         if (_settings.AutoTest && !string.IsNullOrWhiteSpace(_settings.TestCommand))
         {
-            observations.Add(await RunVerificationAsync("test", _settings.TestCommand!, context.WorkingDirectory, ct)
-                .ConfigureAwait(false));
+            var (text, passed) = await RunVerificationAsync("test", _settings.TestCommand!, context.WorkingDirectory, ct)
+                .ConfigureAwait(false);
+            observations.Add(text);
+            if (passed)
+            {
+                _editedSinceGreen = false;
+            }
         }
 
         observations = observations.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
@@ -96,7 +105,29 @@ public sealed class HarnessToolObserver : IToolObserver
                "\n</system-reminder>";
     }
 
-    private static async Task<string> RunVerificationAsync(
+    public async ValueTask<string?> BeforeStopAsync(ToolContext context, CancellationToken ct)
+    {
+        if (!_settings.TestGate || string.IsNullOrWhiteSpace(_settings.TestCommand) || !_editedSinceGreen)
+        {
+            return null;
+        }
+
+        var (text, passed) = await RunVerificationAsync("test", _settings.TestCommand!, context.WorkingDirectory, ct)
+            .ConfigureAwait(false);
+        if (passed)
+        {
+            _editedSinceGreen = false;
+            return null;
+        }
+
+        return "<system-reminder>\n" +
+               "The task cannot be finished yet: files were edited and the test command does not pass. " +
+               "Fix the failure and make it pass. If it cannot pass for a reason outside this task, say exactly why.\n\n" +
+               text +
+               "\n</system-reminder>";
+    }
+
+    private static async Task<(string Text, bool Passed)> RunVerificationAsync(
         string label,
         string command,
         string workingDirectory,
@@ -124,7 +155,7 @@ public sealed class HarnessToolObserver : IToolObserver
         using var p = Process.Start(psi);
         if (p is null)
         {
-            return $"{label}: failed to start `{command}`";
+            return ($"{label}: failed to start `{command}`", false);
         }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -138,7 +169,7 @@ public sealed class HarnessToolObserver : IToolObserver
             var text = (await stdoutTask.ConfigureAwait(false)) +
                        (await stderrTask.ConfigureAwait(false));
             text = Truncate(text.Trim());
-            return $"{label}: `{command}` exited {p.ExitCode}\n{text}";
+            return ($"{label}: `{command}` exited {p.ExitCode}\n{text}", p.ExitCode == 0);
         }
         catch (OperationCanceledException)
         {
@@ -157,7 +188,7 @@ public sealed class HarnessToolObserver : IToolObserver
                 throw;
             }
 
-            return $"{label}: `{command}` timed out after 300000ms";
+            return ($"{label}: `{command}` timed out after 300000ms", false);
         }
     }
 

@@ -509,6 +509,47 @@ public class OutputRecoveryTests
         Assert.Equal(Reminders.InvalidToolArguments, result.Output);
     }
 
+    // 종료 관문: 관찰자가 막는 동안은 끝내지 않고 그 메시지를 모델에 준다. 상한(2회)을 넘겨도 막히면 알리고 끝낸다.
+    [Fact]
+    public async Task Stop_gate_keeps_the_turn_going_until_it_passes_or_the_limit_is_reached()
+    {
+        var passing = new GateObserver(failures: 1);
+        var model = new ScriptedModel(_ => Answer("done"), _ => Answer("fixed"));
+        var engine = new QueryEngine(model, Array.Empty<ITool>(), observer: passing);
+        engine.Seed(new[] { new SystemMessage("sys") });
+
+        var evs = await Run(engine);
+
+        Assert.Equal(2, model.Seen.Count);                                    // 한 번 막히고 다시 답함
+        Assert.Contains(model.Seen[1], m => m is UserMessage u && u.Text == "tests fail");
+        Assert.DoesNotContain(evs, e => e is StreamNotice);
+
+        var stuck = new GateObserver(failures: 99);
+        var model2 = new ScriptedModel(_ => Answer("a"), _ => Answer("b"), _ => Answer("c"));
+        var engine2 = new QueryEngine(model2, Array.Empty<ITool>(), observer: stuck);
+        engine2.Seed(new[] { new SystemMessage("sys") });
+
+        var evs2 = await Run(engine2);
+
+        Assert.Equal(3, model2.Seen.Count);                                   // 2회 막은 뒤 끝냄
+        Assert.Contains(evs2, e => e is StreamNotice n && n.Text.Contains("verification is still failing"));
+    }
+
+    private sealed class GateObserver(int failures) : IToolObserver
+    {
+        private int _left = failures;
+
+        public ValueTask BeforeToolAsync(ITool tool, ToolUseBlock call, ToolContext context, CancellationToken ct) => ValueTask.CompletedTask;
+
+        public ValueTask<string?> AfterToolAsync(ITool tool, ToolUseBlock call, ToolContext context, string output, bool isError, CancellationToken ct)
+            => ValueTask.FromResult<string?>(null);
+
+        public ValueTask<string?> AfterTurnAsync(ToolContext context, CancellationToken ct) => ValueTask.FromResult<string?>(null);
+
+        public ValueTask<string?> BeforeStopAsync(ToolContext context, CancellationToken ct)
+            => ValueTask.FromResult(_left-- > 0 ? "tests fail" : null);
+    }
+
     // 필수 인자가 빠진 호출(작은 모델이 인자 이름을 지어낸 경우)은 실행하지 않고, 빠진 이름과 쓸 수 있는 이름을 돌려준다.
     [Fact]
     public async Task Tool_call_missing_a_required_argument_is_not_executed_and_names_the_arguments()

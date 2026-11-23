@@ -23,6 +23,12 @@ public interface IToolObserver
     /// 턴당 1회로 디바운스하는 지점. 주입할 관찰 메시지가 있으면 반환(없으면 null).
     /// </summary>
     ValueTask<string?> AfterTurnAsync(ToolContext context, CancellationToken ct);
+
+    /// <summary>
+    /// 모델이 작업을 끝내려 할 때(툴 호출 없이 답함) 호출. 끝내면 안 되는 이유가 있으면 모델에게 줄 메시지를 돌려준다
+    /// (예: 고친 뒤 테스트가 아직 실패). null 이면 그대로 끝낸다. 엔진이 한 요청에서 막는 횟수에 상한을 둔다.
+    /// </summary>
+    ValueTask<string?> BeforeStopAsync(ToolContext context, CancellationToken ct) => ValueTask.FromResult<string?>(null);
 }
 
 public sealed class NullToolObserver : IToolObserver

@@ -151,6 +151,9 @@ public static class SettingsLoader
                 AutoTest = allowAutomation
                     ? GetBool(root, "autoTest", "auto_test") ?? baseline.AutoTest
                     : baseline.AutoTest,
+                TestGate = allowAutomation
+                    ? GetBool(root, "testGate", "test_gate") ?? baseline.TestGate
+                    : baseline.TestGate,
                 RepoMapTokens = GetInt(root, "repoMapTokens", "repo_map_tokens") ?? baseline.RepoMapTokens,
                 // 세션 보존 임계값은 settings.json 전용(env 미노출 — 런타임 설정 방침).
                 SessionRetainCount = allowSensitive
