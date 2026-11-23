@@ -27,6 +27,12 @@ public static class SandboxPolicy
     /// <summary>격리 환경을 실제로 쓸 수 있는가(시작할 때 시험 실행으로 확인).</summary>
     public static bool Available { get; set; }
 
+    /// <summary>
+    /// 격리 안에서 네트워크를 쓸 수 있는지(설정 sandboxNetwork, 기본 true). false 면 격리된 명령은 자기만의 빈 네트워크에서 돌아
+    /// 호스트의 포트에도 바깥에도 닿지 못한다 — 조회 명령(kubectl get·psql)도 사람 승인을 거쳐 호스트에서 실행해야 한다.
+    /// </summary>
+    public static bool Network { get; set; } = true;
+
     /// <summary>격리해서 실행한다.</summary>
     public static bool Active => Mode != SandboxMode.Off && Available;
 

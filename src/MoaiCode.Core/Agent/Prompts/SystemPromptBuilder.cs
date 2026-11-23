@@ -294,7 +294,13 @@ public static class SystemPromptBuilder
         {
             lines.Add(" - Sandbox: ON. Bash commands that the user did not approve one by one run in an isolated sandbox: the " +
                       "workspace and a private /tmp are writable, everything else is read-only; disks, host processes and service " +
-                      "sockets (docker, systemd) are not reachable; the network works. Use the workspace for files. If a command " +
+                      "sockets (docker, systemd) are not reachable; " +
+                      (ctx.SandboxNetworkOff
+                          ? "the sandbox network is OFF — sandboxed commands cannot reach any host, not even localhost services, so anything " +
+                            "that needs the network (kubectl, psql, curl, git fetch, package installs) must be retried with " +
+                            "dangerously_disable_sandbox: true. "
+                          : "the network works. ") +
+                      "Use the workspace for files. If a command " +
                       "genuinely must change the host, retry it with dangerously_disable_sandbox: true and say why — the user will " +
                       "be asked to approve that exact command.");
         }

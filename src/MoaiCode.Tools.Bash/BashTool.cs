@@ -67,7 +67,7 @@ public sealed class BashTool : ITool
 
         Long-running commands (servers, watchers, `tail -f`, log monitors, long builds): set `run_in_background: true`. The tool returns a shell id immediately instead of blocking; read new output later with BashOutput and stop it with KillShell. Background shells do not carry `cd` over to the next command and are terminated when the session exits.
 
-        Sandbox: when the environment says Bash is sandboxed, commands the user did not approve one by one run isolated — only the workspace and a private /tmp are writable, devices, host processes and service sockets (docker, systemd) are not reachable, and the network works. If a command fails with "Read-only file system" or cannot reach a service because of this, and it really must run on the host, call it again with `dangerously_disable_sandbox: true`; the user will be asked to approve that exact command. Do not use it to get around a refusal.
+        Sandbox: when the environment says Bash is sandboxed, commands the user did not approve one by one run isolated — only the workspace and a private /tmp are writable, devices, host processes and service sockets (docker, systemd) are not reachable. The network works unless the environment says the sandbox network is off. If a command fails with "Read-only file system" or cannot reach a service or host because of this, and it really must run on the host, call it again with `dangerously_disable_sandbox: true`; the user will be asked to approve that exact command. Do not use it to get around a refusal.
         """;
 
     public bool IsReadOnly => false;

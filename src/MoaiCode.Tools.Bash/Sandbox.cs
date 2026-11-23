@@ -18,7 +18,10 @@ public static class Sandbox
 {
     private const string Bwrap = "bwrap";
 
-    /// <summary>이 머신에서 격리를 쓸 수 있는지 시험 실행한다(Linux + bwrap + 사용자 네임스페이스). 약 1초.</summary>
+    /// <summary>
+    /// 이 머신에서 격리를 쓸 수 있는지 시험 실행한다(Linux + bwrap + 사용자 네임스페이스). 약 1초.
+    /// 네트워크 차단이 켜져 있으면 그것까지 되는지 본다 — 차단을 못 하는데 격리된 것처럼 돌지 않게.
+    /// </summary>
     public static bool Probe()
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || FindBwrap() is not { } bwrap)
@@ -34,8 +37,15 @@ public static class Sandbox
                 RedirectStandardError = true,
                 UseShellExecute = false,
             };
-            foreach (var a in new[] { "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/run",
-                         "--unshare-user", "--unshare-pid", "--unshare-ipc", "--die-with-parent", "--new-session", "--", "/bin/sh", "-c", "exit 0" })
+            var probe = new List<string> { "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/run",
+                "--unshare-user", "--unshare-pid", "--unshare-ipc", "--die-with-parent", "--new-session" };
+            if (!SandboxPolicy.Network)
+            {
+                probe.Add("--unshare-net");
+            }
+
+            probe.AddRange(new[] { "--", "/bin/sh", "-c", "exit 0" });
+            foreach (var a in probe)
             {
                 psi.ArgumentList.Add(a);
             }
@@ -97,6 +107,11 @@ public static class Sandbox
             a.AddRange(new[] { "--ro-bind-try", r, r });
         }
 
+        if (!SandboxPolicy.Network)
+        {
+            a.Add("--unshare-net");   // 빈 네트워크(자기 loopback 만) — 호스트 포트·내부망·바깥 어디에도 닿지 못한다
+        }
+
         a.AddRange(new[]
         {
             "--unshare-user", "--unshare-pid", "--unshare-ipc", "--unshare-uts", "--unshare-cgroup-try",
@@ -116,7 +131,15 @@ public static class Sandbox
         || output.Contains("읽기전용 파일 시스템", StringComparison.Ordinal)
         || output.Contains("읽기 전용 파일 시스템", StringComparison.Ordinal)
         || output.Contains("docker.sock", StringComparison.Ordinal)
-        || output.Contains("Failed to connect to bus", StringComparison.Ordinal);
+        || output.Contains("Failed to connect to bus", StringComparison.Ordinal)
+        || (!SandboxPolicy.Network && LooksLikeNoNetwork(output));
+
+    private static bool LooksLikeNoNetwork(string output) =>
+        output.Contains("Network is unreachable", StringComparison.OrdinalIgnoreCase)
+        || output.Contains("Could not resolve host", StringComparison.OrdinalIgnoreCase)
+        || output.Contains("Temporary failure in name resolution", StringComparison.OrdinalIgnoreCase)
+        || output.Contains("Connection refused", StringComparison.OrdinalIgnoreCase)
+        || output.Contains("No route to host", StringComparison.OrdinalIgnoreCase);
 
     private static string? FindBwrap()
     {

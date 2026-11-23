@@ -102,6 +102,9 @@ public sealed record Settings
     /// <summary>격리 안에서 추가로 쓸 수 있게 할 폴더(절대 경로, ~ 허용). 작업 폴더·전용 /tmp·기본 캐시 폴더는 따로 들어간다.</summary>
     public IReadOnlyList<string> SandboxWritable { get; init; } = Array.Empty<string>();
 
+    /// <summary>격리된 셸 명령의 네트워크(기본 true). false 면 격리 안에서 어떤 호스트에도 닿지 못한다 — 사용자 레이어·중앙 정책에서만 읽는다.</summary>
+    public bool SandboxNetwork { get; init; } = true;
+
     /// <summary>
     /// 워크스페이스(작업 디렉토리) 밖의 절대경로 Write/Edit 는 권한 모드(auto/auto-act)와 무관하게
     /// 항상 확인받는다. 비대화형이면 거부. 실수로 시스템/홈 파일을 건드리는 사고 방지.

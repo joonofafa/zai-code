@@ -187,6 +187,9 @@ public static class SettingsLoader
                 SandboxWritable = allowSensitive && root.TryGetProperty("sandboxWritable", out var sw) && sw.ValueKind == JsonValueKind.Array
                     ? ReadStringArray(sw)
                     : baseline.SandboxWritable,
+                SandboxNetwork = allowSensitive
+                    ? GetBool(root, "sandboxNetwork", "sandbox_network") ?? baseline.SandboxNetwork
+                    : baseline.SandboxNetwork,
                 AuditRetentionDays = allowSensitive
                     ? GetInt(root, "auditRetentionDays", "audit_retention_days") ?? baseline.AuditRetentionDays
                     : baseline.AuditRetentionDays,

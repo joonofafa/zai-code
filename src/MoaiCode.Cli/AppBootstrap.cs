@@ -465,6 +465,7 @@ public static class AppBootstrap
             "off" => SandboxMode.Off,
             _ => SandboxMode.Auto,
         };
+        SandboxPolicy.Network = settings.SandboxNetwork;   // Probe 가 이 값까지 시험하므로 먼저 정한다
         SandboxPolicy.Available = SandboxPolicy.Mode != SandboxMode.Off && MoaiCode.Tools.Bash.Sandbox.Probe();
 
         var home = AppPaths.UserHome;
@@ -498,7 +499,7 @@ public static class AppBootstrap
                 MoaiLog.Warn($"sandbox: private tmp not created ({ex.GetType().Name})");
             }
 
-            MoaiLog.Info("sandbox: active (bubblewrap)");
+            MoaiLog.Info(SandboxPolicy.Network ? "sandbox: active (bubblewrap)" : "sandbox: active (bubblewrap, network off)");
         }
         else if (SandboxPolicy.RequiredButUnavailable)
         {
@@ -539,6 +540,7 @@ public static class AppBootstrap
             ToolNames = tools.Where(t => t is not IConditionalTool { IsAvailable: false }).Select(t => t.Name).ToList(),
             Offline = NetworkPolicy.Offline,
             Sandboxed = SandboxPolicy.Active,
+            SandboxNetworkOff = SandboxPolicy.Active && !SandboxPolicy.Network,
         };
     }
 

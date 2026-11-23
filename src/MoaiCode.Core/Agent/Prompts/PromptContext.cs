@@ -27,4 +27,7 @@ public sealed record PromptContext
 
     /// <summary>셸 명령 격리 실행(<see cref="Tools.SandboxPolicy"/>) — 환경 절에 알린다.</summary>
     public bool Sandboxed { get; init; }
+
+    /// <summary>격리 안에서 네트워크가 막혀 있다(<see cref="Tools.SandboxPolicy.Network"/> 가 false).</summary>
+    public bool SandboxNetworkOff { get; init; }
 }

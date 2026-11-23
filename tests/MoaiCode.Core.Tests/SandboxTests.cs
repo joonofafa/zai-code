@@ -42,6 +42,7 @@ public sealed class SandboxTests : IDisposable
         SandboxPolicy.Available = false;
         SandboxPolicy.Writable = [];
         SandboxPolicy.TmpDir = null;
+        SandboxPolicy.Network = true;
         AuditLog.FilePath = _previousAudit;
         Directory.Delete(_root, recursive: true);
         Directory.Delete(_outside, recursive: true);
@@ -164,6 +165,37 @@ public sealed class SandboxTests : IDisposable
         Assert.True(Directory.Exists(live));     // 하루 넘게 켜 둔 세션
         Assert.False(Directory.Exists(dead));
         Assert.False(Directory.Exists(legacy));  // 프로세스 번호가 없는 옛 이름은 시각으로만
+    }
+
+    [Fact]
+    public async Task Network_off_cuts_sandboxed_commands_from_host_ports_but_not_approved_ones()
+    {
+        if (!SandboxPolicy.Available)
+        {
+            return;
+        }
+
+        using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+        var probe = $"(exec 3<>/dev/tcp/127.0.0.1/{port}) 2>/dev/null && echo CONNECTED || echo BLOCKED";
+
+        Assert.Contains("CONNECTED", (await Run(probe, _workspace)).Text);    // 기본값: 네트워크 공유
+
+        SandboxPolicy.Network = false;
+        if (!Sandbox.Probe())
+        {
+            return;   // 이 환경은 네트워크 분리를 지원하지 않는다
+        }
+
+        Assert.Contains("BLOCKED", (await Run(probe, _workspace)).Text);
+
+        SandboxPolicy.AllowUnsandboxed("net-approved");
+        Assert.Contains("CONNECTED", (await Run(probe, _workspace, "net-approved")).Text);   // 사람이 승인한 호출은 호스트에서
+
+        Assert.False(SettingsLoader.ApplyJson(Settings.Default, """{"sandboxNetwork":false}""").SandboxNetwork);
+        Assert.True(SettingsLoader.ApplyJson(Settings.Default, """{"sandboxNetwork":false}""",
+            allowSensitive: false, allowAutomation: false, allowPermissionRules: false).SandboxNetwork);   // 프로젝트 설정은 못 바꾼다
     }
 
     [Fact]
