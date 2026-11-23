@@ -44,7 +44,7 @@ public class AppendSystemPromptTests
         var append = "Always begin your reply with the word PINEAPPLE.\nline two";
         var model = NewEngine(append, out var engine);
         await RunAsync(engine, "hello");
-        var system = Assert.IsType<SystemMessage>(Assert.Single(model.Sent.Where(m => m is SystemMessage)));
+        var system = Assert.IsType<SystemMessage>(Assert.Single(model.Sent, m => m is SystemMessage));
         Assert.StartsWith("BASE SYSTEM PROMPT", system.Text, StringComparison.Ordinal);
         Assert.EndsWith(append, system.Text, StringComparison.Ordinal);
         Assert.Contains("\n\n" + append, system.Text, StringComparison.Ordinal);
@@ -56,7 +56,7 @@ public class AppendSystemPromptTests
     {
         var model = NewEngine(null, out var engine);
         await RunAsync(engine, "hello");
-        var system = Assert.IsType<SystemMessage>(Assert.Single(model.Sent.Where(m => m is SystemMessage)));
+        var system = Assert.IsType<SystemMessage>(Assert.Single(model.Sent, m => m is SystemMessage));
         Assert.Equal("BASE SYSTEM PROMPT", system.Text);
     }
 
@@ -101,7 +101,7 @@ public class AppendSystemPromptTests
             second.Restore(await store.LoadAsync("s1", CancellationToken.None));
             await RunAsync(second, "again");
 
-            var system = Assert.IsType<SystemMessage>(Assert.Single(model2.Sent.Where(m => m is SystemMessage)));
+            var system = Assert.IsType<SystemMessage>(Assert.Single(model2.Sent, m => m is SystemMessage));
             Assert.EndsWith("NEW-APPENDIX", system.Text, StringComparison.Ordinal);
             Assert.DoesNotContain("OLD-APPENDIX", system.Text);
         }

@@ -131,7 +131,7 @@ public static class TemplateAnalyzer
                 }
 
                 var sch = fill.GetFirstChild<D.SchemeColor>()?.Val;
-                if (sch is not null && accentMap.TryGetValue(sch.InnerText, out var mapped) && mapped.Length > 0)
+                if (sch?.InnerText is { } schemeName && accentMap.TryGetValue(schemeName, out var mapped) && mapped.Length > 0)
                 {
                     Bump(mapped);
                 }

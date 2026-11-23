@@ -17,12 +17,12 @@ try
     Console.SetOut(new StringWriter(captured));
     var draw = typeof(BottomDock).GetMethod("Draw", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
     var buf = new StringBuilder();
-    draw.Invoke(dock, new object[] { buf, 0, null });      // 최초 설치
+    draw.Invoke(dock, new object?[] { buf, 0, null });      // 최초 설치
     captured.Clear();
-    draw.Invoke(dock, new object[] { buf, 0, null });      // 재그리기(설치 후 steady-state)
+    draw.Invoke(dock, new object?[] { buf, 0, null });      // 재그리기(설치 후 steady-state)
     captured.Clear();
     buf.Append("hello 안녕");                              // 타이핑한 내용이 있는 상태
-    draw.Invoke(dock, new object[] { buf, buf.Length, null });
+    draw.Invoke(dock, new object?[] { buf, buf.Length, null });
 }
 finally { Console.SetOut(origOut); }
 

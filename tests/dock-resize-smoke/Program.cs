@@ -90,7 +90,7 @@ public static class Child
             Console.Write($"CONV LINE {i,2}\r\n");
         }
 
-        draw.Invoke(dock, new object[] { buf, 0, null });
+        draw.Invoke(dock, new object?[] { buf, 0, null });
         lastW.SetValue(dock, 100);
         lastH.SetValue(dock, 24);
         Mark("install");

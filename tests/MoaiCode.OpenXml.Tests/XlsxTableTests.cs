@@ -65,7 +65,7 @@ public sealed class XlsxTableTests : IDisposable
         Assert.NotNull(table.AutoFilter);
         Assert.Equal("A1:C4", table.Reference!.Value);
         Assert.Equal(3, table.TableColumns!.Count());
-        var names = table.TableColumns.Elements<TableColumn>().Select(c => c.Name!.Value!).ToList();
+        var names = table.TableColumns!.Elements<TableColumn>().Select(c => c.Name!.Value!).ToList();
         Assert.Equal(new[] { "ID", "항목", "상태" }, names);
         Assert.Contains(wsPart.Worksheet.Elements<TableParts>(), _ => true);
     }

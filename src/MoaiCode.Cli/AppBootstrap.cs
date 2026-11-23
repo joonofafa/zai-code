@@ -260,7 +260,7 @@ public static class AppBootstrap
         var promptCtx = BuildPromptContext(cwd, settings, toolList, await repoMapTask.ConfigureAwait(false));
         // 시스템 프롬프트 조립(상시 스킬 변화에도 같은 조각을 쓴다). --append-system-prompt 값이 있으면
         // 맨 끝에 빈 줄 하나를 두고 덧붙인다 — 기존 섹션 구성·순서는 그대로.
-        string BuildSystemPrompt(string alwaysOn) =>
+        string BuildSystemPrompt(string? alwaysOn) =>
             SystemPromptBuilder.Build(promptCtx with { AlwaysOnSkills = alwaysOn })
             + (string.IsNullOrEmpty(appendSystemPrompt) ? "" : "\n\n" + appendSystemPrompt);
         engine.Seed(new[] { new SystemMessage(BuildSystemPrompt(alwaysOnSkills)) });

@@ -151,7 +151,6 @@ public class TabInputPipelineTests
     {
         private readonly object _sync = new();
         private readonly Queue<byte> _buf = new();
-        private bool _eof;
 
         public void Push(byte[] data)
         {
@@ -169,7 +168,7 @@ public class TabInputPipelineTests
         {
             lock (_sync)
             {
-                while (_buf.Count == 0 && !_eof)
+                while (_buf.Count == 0)
                 {
                     Monitor.Wait(_sync);
                 }

@@ -138,7 +138,7 @@ public class TuiThemeTests : IDisposable
     }
 
     [Fact]
-    public void Theme_selector_lists_all_six_themes_grouped()
+    public async Task Theme_selector_lists_all_six_themes_grouped()
     {
         // /theme list — 셀렉터가 제공하는 6종 전체(스와치 소스)가 Dark/Light 그룹으로 표시된다.
         var cmd = new ThemeCommand();
@@ -151,7 +151,7 @@ public class TuiThemeTests : IDisposable
             new MoaiCode.Persistence.CheckpointStore(_dir, Path.Combine(_dir, "checkpoints")),
             new AgentRuntimeState(),
             new[] { "Read" }, Array.Empty<string>(), Array.Empty<string>(), "EchoChatModel");
-        var r = cmd.ExecuteAsync(ctx, new[] { "list" }, default).GetAwaiter().GetResult();
+        var r = await cmd.ExecuteAsync(ctx, new[] { "list" }, default);
         foreach (var id in new[] { Dark1, Dark2, Dark3, Light1, Light2, Light3 })
         {
             Assert.Contains(id, r.Output);
