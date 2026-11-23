@@ -19,6 +19,11 @@ namespace MoaiCode.Config;
 /// 파일은 Unix 에서 0600. 보관은 <see cref="Trim"/>(기본 90일, 0=영구).
 /// </para>
 /// <para>
+/// 변조 탐지: 각 줄의 prev 는 바로 앞 줄(원문 바이트)의 SHA-256 이다. 중간 줄을 고치거나 빼거나 끼워 넣으면 그 다음 줄의 prev 가
+/// 맞지 않는다(<see cref="Verify"/>, <c>mate audit verify</c>). 한계 — 맨 끝을 잘라 내는 것과 파일 전체를 다시 계산해 쓰는 것은
+/// 이 파일만으로는 알 수 없다. 그것까지 막으려면 마지막 해시(<see cref="VerifyResult.Head"/>)를 다른 곳에 보관해 대조한다.
+/// </para>
+/// <para>
 /// 쓰기 실패: 사람이 승인한 기록은 실패해도 진행한다(오피스챗과 같음). 확인 없이 자동 승인하는 경우(--ignore-confirm)는
 /// 기록이 승인의 조건이라, 기록하지 못하면 거부한다(<see cref="TryWrite"/> 가 false).
 /// </para>
@@ -41,7 +46,8 @@ public static class AuditLog
         [property: JsonPropertyName("session")] string Session,
         [property: JsonPropertyName("pid")] int Pid,
         [property: JsonPropertyName("cwd")] string Cwd,
-        [property: JsonPropertyName("tool_use_id")] string? ToolUseId);
+        [property: JsonPropertyName("tool_use_id")] string? ToolUseId,
+        [property: JsonPropertyName("prev")] string? Prev = null);
 
     /// <summary>
     /// 결과 값. 오피스챗의 ok/error/declined 에 셸용 approved(승인 — 실행 전에 먼저 쓴다)·denied(사람 없음·규칙)·blocked(하드 차단)를
@@ -100,11 +106,14 @@ public static class AuditLog
     {
         try
         {
-            var bytes = new UTF8Encoding(false).GetBytes(JsonSerializer.Serialize(entry, Json) + "\n");
             lock (Gate)
             {
-                using var fs = OpenExclusive(FileMode.Append, FileAccess.Write);
-                fs.Write(bytes);
+                // 앞 줄의 해시를 읽고 이어 붙이는 동안 다른 프로세스가 끼어들지 못하게 독점으로 연다.
+                using var fs = OpenExclusive(FileMode.OpenOrCreate, FileAccess.ReadWrite);
+                var (prev, endsWithNewline) = LastLineHash(fs);
+                var line = JsonSerializer.Serialize(entry with { Prev = prev }, Json) + "\n";
+                fs.Seek(0, SeekOrigin.End);
+                fs.Write(new UTF8Encoding(false).GetBytes(endsWithNewline ? line : "\n" + line));
                 fs.Flush(flushToDisk: true);
             }
 
@@ -165,6 +174,108 @@ public static class AuditLog
         if (entry is not null)
         {
             TryWrite(entry with { Outcome = isError ? Outcomes.Error : Outcomes.Ok });
+        }
+    }
+
+    /// <summary>첫 줄의 prev — 앞 기록이 없다.</summary>
+    public const string Genesis = "genesis";
+
+    /// <summary>
+    /// 검증 결과. <paramref name="BadLine"/> 이 null 이면 이어짐이 맞다. <paramref name="Chained"/> 는 prev 가 있는 줄 수,
+    /// <paramref name="Head"/> 는 마지막 줄의 해시(다른 곳에 보관해 두면 끝을 잘라 낸 것도 대조할 수 있다),
+    /// <paramref name="Anchored"/> 는 이어짐의 첫 줄이 genesis 인지(아니면 앞부분이 보관 기한으로 지워졌거나 확인할 수 없다).
+    /// </summary>
+    public sealed record VerifyResult(int Lines, int Chained, int? BadLine, string? Head, bool Anchored);
+
+    /// <summary>파일의 해시 이어짐을 확인한다. prev 가 없는 앞쪽 줄(이전 버전 기록)은 건너뛴다.</summary>
+    public static VerifyResult Verify(string? path = null)
+    {
+        path ??= FilePath;
+        if (!File.Exists(path))
+        {
+            return new VerifyResult(0, 0, null, null, true);
+        }
+
+        int lines = 0, chained = 0;
+        string? previousHash = null;
+        var anchored = true;
+        foreach (var line in File.ReadLines(path, new UTF8Encoding(false)))
+        {
+            if (line.Length == 0)
+            {
+                continue;
+            }
+
+            lines++;
+            var prev = PrevOf(line);
+            if (prev is null)
+            {
+                // 이어짐이 시작된 뒤에 prev 없는 줄이 나오면 끼워 넣었거나 prev 를 지운 것이다.
+                if (chained > 0)
+                {
+                    return new VerifyResult(lines, chained, lines, previousHash, anchored);
+                }
+            }
+            else
+            {
+                if (chained == 0 && lines == 1)
+                {
+                    anchored = prev == Genesis;   // 맨 앞 줄: 앞 기록이 없으니 대조할 것이 없다
+                }
+                else if (prev != (previousHash ?? Genesis))
+                {
+                    return new VerifyResult(lines, chained, lines, previousHash, anchored);
+                }
+
+                chained++;
+            }
+
+            previousHash = LineHash(Encoding.UTF8.GetBytes(line));
+        }
+
+        return new VerifyResult(lines, chained, null, previousHash, anchored);
+    }
+
+    private static string? PrevOf(string line)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(line);
+            return doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty("prev", out var p) && p.ValueKind == JsonValueKind.String
+                ? p.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string LineHash(ReadOnlySpan<byte> line) => Convert.ToHexString(SHA256.HashData(line)).ToLowerInvariant();
+
+    // 파일 마지막 줄의 해시와, 파일이 줄바꿈으로 끝나는지. 빈 파일이면 genesis.
+    private static (string Prev, bool EndsWithNewline) LastLineHash(FileStream fs)
+    {
+        var length = fs.Length;
+        if (length == 0)
+        {
+            return (Genesis, true);
+        }
+
+        for (var window = 8192L; ; window *= 4)
+        {
+            var take = (int)Math.Min(window, length);
+            var buf = new byte[take];
+            fs.Seek(length - take, SeekOrigin.Begin);
+            fs.ReadExactly(buf);
+            var endsWithNewline = buf[^1] == (byte)'\n';
+            var end = endsWithNewline ? take - 1 : take;
+            var start = Array.LastIndexOf(buf, (byte)'\n', Math.Max(end - 1, 0), end) + 1;
+            if (start > 0 || take == length)
+            {
+                return (LineHash(buf.AsSpan(start, end - start)), endsWithNewline);
+            }
         }
     }
 

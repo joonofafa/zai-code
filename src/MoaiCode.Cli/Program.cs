@@ -193,6 +193,37 @@ mcpListCmd.SetAction((ParseResult pr, CancellationToken ct) =>
 mcpCmd.Subcommands.Add(mcpListCmd);
 root.Subcommands.Add(mcpCmd);
 
+// audit verify: 감사 로그의 해시 이어짐 확인(중간 줄 수정·삭제·삽입 탐지). 맞으면 0, 어긋나면 1.
+var auditCmd = new Command("audit", L10n.Get("cli.audit.description"));
+var auditVerifyCmd = new Command("verify", L10n.Get("cli.audit.verify.description"));
+var auditFileOpt = new Option<string?>("--file") { Description = L10n.Get("cli.audit.verify.file") };
+auditVerifyCmd.Options.Add(auditFileOpt);
+auditVerifyCmd.SetAction((ParseResult pr, CancellationToken ct) =>
+{
+    var path = pr.GetValue(auditFileOpt) ?? AuditLog.FilePath;
+    var r = AuditLog.Verify(path);
+    if (r.BadLine is { } bad)
+    {
+        Console.WriteLine(L10n.Get("cli.audit.verify.broken", path, bad));
+        return Task.FromResult(1);
+    }
+
+    Console.WriteLine(L10n.Get("cli.audit.verify.ok", path, r.Lines, r.Chained, r.Head ?? "-"));
+    if (r.Lines > r.Chained)
+    {
+        Console.WriteLine(L10n.Get("cli.audit.verify.legacy", r.Lines - r.Chained));
+    }
+
+    if (!r.Anchored)
+    {
+        Console.WriteLine(L10n.Get("cli.audit.verify.trimmed"));
+    }
+
+    return Task.FromResult(0);
+});
+auditCmd.Subcommands.Add(auditVerifyCmd);
+root.Subcommands.Add(auditCmd);
+
 // auth: 자격증명 저장/조회
 var authCmd = new Command("auth", L10n.Get("cli.auth.description"));
 var providerArg = new Argument<string>("provider") { Description = L10n.Get("cli.auth.provider.description") };
