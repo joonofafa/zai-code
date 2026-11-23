@@ -4,6 +4,12 @@
     <AssemblyName>mate</AssemblyName>
     <!-- Z.ai Code 1.2.0 — moai-code 에서 갈라져 나온 z.ai 전용 단일 코딩 에이전트.
          (조직 서버 연동·GUI 제거, WebSearch=Gemini grounding, stream-json 프로토콜)
+         1.6.0: 하네스 보강 6종 — 감사 로그 해시 이어짐과 mate audit verify(중간 줄 수정·삭제·삽입 탐지),
+               중앙 정책 파일(/etc/mate/managed-settings.json, 사용자·환경변수보다 우선, disableIgnoreConfirm),
+               필수 인자가 빠진 툴 호출은 실행 전에 빠진 이름을 짚어 돌려줌 + disabledTools 설정,
+               요약 전에 오래된 툴 결과부터 비움, testGate(고친 뒤 테스트가 통과해야 종료, 최대 2회),
+               sandboxNetwork: false(격리 안 네트워크 차단). 함께: append-system-prompt·providers 명령·
+               stream-json 세션 수정(11/16 작업분), 빌드 경고 15건 정리
          1.5.2: 사내 사용 전 코드 리뷰 15건 — 셸 판정 누락(curl 파이프 bash -s, 코드 속 SQL 삭제, python -E 스크립트,
                cd 뒤 빌드 폴더 삭제, PowerShell rm -Recurse)과 과잉 차단(코드 줄 shutdown, MCP 문장, 시스템 파일 복사) 수정,
                격리 안 .git/hooks·config·~/.mate·셸 시작 파일 읽기 전용, 서브에이전트가 /diff 기록을 지우던 것,
@@ -93,7 +99,7 @@
          1.2.0: 세션/메모리 프로젝트별 스코핑, 백그라운드 셸(run_in_background·BashOutput/KillShell),
                입력바 표시폭 클램프(한글 wrap 잔상 제거)
          1.1.0: GEMINI 키 저장소 복원, 붙여넣기 홍수 수정, 큐잉 플래시 피드백, 턴 중 Shift+Tab -->
-    <Version>1.5.2</Version>
+    <Version>1.6.0</Version>
     <!-- 멀티타깃: win-* RID 는 net10.0-windows(Office COM 툴 포함), 나머지는 net10.0. -->
     <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
     <!-- 크로스 게시 대상 (Linux에서 win-x64 self-contained exe 생성 가능) -->
