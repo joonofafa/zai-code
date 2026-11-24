@@ -59,9 +59,9 @@ for RID in "${RIDS[@]}"; do
   fi
 done
 
-# 통합 체크섬 (dist/<rid>/mate[.exe] 기준 상대경로).
+# 통합 체크섬 (현재 dist/<rid>/mate[.exe]만; linux 게시본의 dist/versions 보관본은 제외).
 echo ""
-( cd dist && find . -type f \( -name mate -o -name mate.exe \) | sort \
+( cd dist && find . -mindepth 2 -maxdepth 2 -type f \( -name mate -o -name mate.exe \) | sort \
     | xargs sha256sum > SHASUMS256.txt )
 echo "📄 통합 체크섬: dist/SHASUMS256.txt"
 cat dist/SHASUMS256.txt
